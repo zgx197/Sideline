@@ -1,0 +1,19 @@
+[gd_scene format=3 uid="uid://4dms37400fxp"]
+
+[ext_resource type="Script" uid="uid://c8xfp5e4gcej7" path="res://scripts/main/Main.cs" id="1"]
+[ext_resource type="Script" uid="uid://box2g6w1q7k8d" path="res://scripts/window/WindowManager.cs" id="2"]
+[ext_resource type="PackedScene" path="res://scenes/ui/IdlePanel.tscn" id="3"]
+[ext_resource type="PackedScene" path="res://scenes/ui/DungeonPanel.tscn" id="4"]
+
+[node name="Main" type="Node" unique_id=430688930]
+script = ExtResource("1")
+
+[node name="WindowManager" type="Node" parent="." unique_id=2009923800]
+script = ExtResource("2")
+
+[node name="CanvasLayer" type="CanvasLayer" parent="." unique_id=1172568268]
+
+[node name="IdlePanel" parent="CanvasLayer" unique_id=1365170366 instance=ExtResource("3")]
+
+[node name="DungeonPanel" parent="CanvasLayer" unique_id=1031441611 instance=ExtResource("4")]
+visible = false
