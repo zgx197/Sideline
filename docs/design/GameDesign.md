@@ -174,7 +174,7 @@ Lattice 使用 **AGPL-3.0**：
 ## 开发路线图
 
 ### Phase 0 — 技术验证（2~4 周）
-- [ ] Godot 4 无边框窗口原型（挂机模式可行性验证）
+- [x] Godot 4 无边框窗口原型（挂机模式已实现：小窗口、无边框、置顶、拖拽、ESC 切换）
 - [ ] 最小 ECS 框架：Entity / Component / System 跑通
 - [ ] FP 定点数库验证
 
@@ -226,3 +226,8 @@ Lattice 使用 **AGPL-3.0**：
 | 排行榜 | Steam Leaderboards API |
 | 存档 | 本地 JSON / SQLite，挂机离线收益用时间差计算 |
 | C# 脚本约定 | 只使用 C#，禁止 .gd 文件；Godot .NET 版必须使用 mono 构建 |
+
+### Phase 0 运行心得
+- 已生成 `Sideline.csproj`/`Sideline.sln`，在 Windsurf 中 `dotnet build` 成功后可在 Godot 中正常编译运行
+- 注意编辑器设置：`Run → Window Placement → Embed Game in Editor` 需关闭，确保游戏以独立无边框窗口运行
+- 按 `F5` 启动后，ESC 或面板按钮可以在挂机/刷宝模式间切换，挂机模式支持拖拽与界面交互
