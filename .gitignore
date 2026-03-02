@@ -1,0 +1,96 @@
+# ===========================
+# Godot 4
+# ===========================
+godot/.godot/
+godot/.import/
+godot/export/
+godot/*.translation
+godot/android/
+
+# Godot C# 构建产物
+godot/.mono/
+godot/mono_crash.*.json
+
+# ===========================
+# C# / .NET
+# ===========================
+[Bb]in/
+[Oo]bj/
+*.user
+*.suo
+*.vs/
+.vs/
+*.userprefs
+*.pidb
+*.booproj
+*.svd
+*.pdb
+*.mdb
+*.opendb
+*.VC.db
+
+# NuGet
+*.nupkg
+*.nuget.targets
+packages/
+project.lock.json
+project.fragment.lock.json
+artifacts/
+
+# ===========================
+# IDE
+# ===========================
+# VS Code / Windsurf
+.vscode/
+!.vscode/extensions.json
+!.vscode/launch.json
+!.vscode/tasks.json
+
+# Rider
+.idea/
+*.sln.iml
+
+# Visual Studio
+*.aps
+*.ncb
+*.sdf
+*.opensdf
+*.vcxproj.filters
+ipch/
+
+# ===========================
+# AI 生成素材（原稿不入库，处理后的入 godot/assets/）
+# ===========================
+ai/generated/
+
+# ===========================
+# 操作系统
+# ===========================
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# ===========================
+# 构建 & 发布
+# ===========================
+build/
+dist/
+release/
+*.zip
+*.tar.gz
+
+# ===========================
+# 日志 & 临时文件
+# ===========================
+*.log
+*.tmp
+*.temp
+crash_log_*.txt
