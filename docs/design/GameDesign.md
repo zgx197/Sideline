@@ -1,6 +1,6 @@
 # Sideline — 游戏设计与技术架构文档
 
-> 版本：v0.1 | 日期：2026-03-03
+> 版本：v0.2 | 日期：2026-03-03
 
 ---
 
@@ -45,6 +45,18 @@
 
 渲染器：**兼容（Compatibility）**（2D 游戏首选，性能更好，兼容性更广）
 
+#### 环境配置
+
+| 项目 | 版本/说明 |
+|------|----------|
+| **Godot 版本** | 4.6.1-stable **mono** 版（必须是 mono/.NET 版，非 Steam 版）|
+| **安装路径** | `D:\GodotCSharp\Godot_v4.6.1-stable_mono_win64\` |
+| **.NET SDK** | 9.0.202（兼容 Godot 4.x，要求 .NET 8+）|
+| **IDE** | Windsurf（基于 VS Code），配合 C# Dev Kit + Godot Tools 插件 |
+| **语言约定** | 项目内**只使用 C#**，禁止创建 `.gd` 脚本文件 |
+
+> 注意：Steam 版 Godot 为标准版，不含 C# 支持，需从 [godotengine.org](https://godotengine.org/download) 单独下载 `.NET` 版。
+
 ### 逻辑层：Lattice（自研确定性 ECS 帧同步框架）
 
 详见 [Lattice 框架设计](#lattice-框架设计) 章节。
@@ -54,17 +66,47 @@
 ## 仓库结构
 
 ```
-Sideline/                   # 私有仓库（GitHub Private）
-├── godot/                  # Godot 4 项目（渲染层）
+Sideline/                        # 私有仓库（GitHub Private）
+├── godot/                       # Godot 4 项目（渲染层，C# only）
 │   ├── project.godot
-│   ├── scenes/
-│   ├── scripts/
-│   └── assets/
-├── src/                    # 纯 C# 逻辑层（Lattice 接入点）
+│   ├── scenes/                  # 场景文件 (.tscn)
+│   │   ├── main/                # 主场景、启动场景
+│   │   ├── ui/                  # UI 场景
+│   │   └── gameplay/            # 游戏玩法场景
+│   ├── scripts/                 # C# 脚本（渲染/桥接层）
+│   │   ├── bridge/              # GodotRenderBridge，同步 Lattice 状态到 Node
+│   │   ├── ui/                  # UI 逻辑
+│   │   └── window/              # 窗口管理（无边框/置顶/模式切换）
+│   ├── assets/                  # 游戏资源
+│   │   ├── sprites/             # 精灵图（手工或 AI 生成）
+│   │   ├── animations/          # 动画序列帧
+│   │   ├── audio/               # 音效/音乐
+│   │   ├── fonts/               # 字体
+│   │   └── shaders/             # 着色器
+│   └── addons/                  # Godot 插件
+│
+├── src/                         # 纯 C# 逻辑层（无引擎依赖）
+│   └── Sideline.Logic/          # 游戏逻辑项目，引用 Lattice
+│
+├── ai/                          # AI 辅助开发相关
+│   ├── mcp/                     # Godot MCP 配置与工具脚本
+│   ├── prompts/                 # 复用的 AI Prompt 模板
+│   │   ├── art/                 # 图片生成提示词（角色/地图/UI）
+│   │   └── code/                # 代码生成提示词模板
+│   ├── generated/               # AI 生成的原始素材（待处理）
+│   │   ├── sprites/             # AI 生成的精灵图原稿
+│   │   └── sequences/           # AI 生成的序列帧原稿
+│   └── workflows/               # AI 自动化流程定义（如序列帧生成流水线）
+│
+├── .windsurf/                   # Windsurf IDE 配置
+│   └── workflows/               # Windsurf 工作流
+│
 ├── docs/
 │   └── design/
-│       └── GameDesign.md   # 本文档
+│       └── GameDesign.md        # 本文档
+│
 ├── .gitignore
+├── .windsurfignore
 └── README.md
 ```
 
@@ -153,6 +195,27 @@ Lattice 使用 **AGPL-3.0**：
 
 ---
 
+## AI 辅助开发规划
+
+### 已采用
+- **Windsurf IDE**：AI 代码补全、代码生成、重构辅助
+
+### 规划中
+| 工具/方案 | 用途 | 优先级 |
+|---------|------|-------|
+| **Godot MCP** | 让 AI 直接操作 Godot 编辑器（创建场景、节点、设置属性） | Phase 1 |
+| **AI 序列帧生成** | 使用 Stable Diffusion / ComfyUI 生成 2D 角色动画序列帧 | Phase 1 |
+| **Windsurf Workflows** | 将重复开发任务固化为一键执行的 AI 工作流 | 持续 |
+| **AI Agent** | 自动化测试、代码审查、文档生成 | Phase 2 |
+
+### ai/ 目录约定
+- `ai/prompts/` — 存放经过验证的高质量提示词，复用而非每次重写
+- `ai/generated/` — AI 生成的**原始素材**，经人工筛选后移入 `godot/assets/`
+- `ai/workflows/` — ComfyUI workflow JSON、序列帧处理脚本等自动化流程
+- `ai/mcp/` — Godot MCP 服务配置、自定义工具定义
+
+---
+
 ## 技术要点备忘
 
 | 要点 | 说明 |
@@ -162,3 +225,4 @@ Lattice 使用 **AGPL-3.0**：
 | 随机地图 | BSP（二叉空间分割），seed 确定性生成 |
 | 排行榜 | Steam Leaderboards API |
 | 存档 | 本地 JSON / SQLite，挂机离线收益用时间差计算 |
+| C# 脚本约定 | 只使用 C#，禁止 .gd 文件；Godot .NET 版必须使用 mono 构建 |
