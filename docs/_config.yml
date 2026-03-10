@@ -1,0 +1,61 @@
+# Sideline - 地下世界经营者
+# Jekyll 配置文件
+
+title: "Sideline"
+description: "工作间隙偷偷经营地下世界的2D独立游戏"
+author: "Sideline Team"
+
+# 网站配置
+baseurl: "/Sideline"  # 如果是项目站点，填写仓库名
+url: ""  # 留空，GitHub Pages 会自动处理
+
+# Jekyll 主题（使用 GitHub Pages 支持的极简主题）
+# 我们会自定义样式覆盖
+remote_theme: pages-themes/cayman@v0.2.0
+
+# 插件
+plugins:
+  - jekyll-feed
+  - jekyll-sitemap
+  - jekyll-seo-tag
+
+# 页面导航
+navigation:
+  - title: "首页"
+    url: "/"
+  - title: "关于游戏"
+    url: "/about/"
+  - title: "开发文档"
+    url: "/docs/"
+  - title: "更新日志"
+    url: "/blog/"
+
+# 游戏信息
+game_info:
+  version: "Phase 0"
+  platforms:
+    - "Windows (Steam)"
+  release_date: "预计 2025 Q4"
+
+# 社交链接
+social:
+  steam: "#"
+  github: "#"
+  email: "contact@sideline.game"
+
+# 构建设置
+markdown: kramdown
+highlighter: rouge
+kramdown:
+  input: GFM
+  syntax_highlighter: rouge
+
+# 分页
+paginate: 5
+paginate_path: "/blog/page/:num/"
+
+# 排除文件
+exclude:
+  - README.md
+  - Gemfile
+  - Gemfile.lock
