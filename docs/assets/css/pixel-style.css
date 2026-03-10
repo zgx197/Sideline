@@ -1,0 +1,450 @@
+/* ========================================
+   Sideline - 像素游戏风格样式
+   ======================================== */
+
+/* 导入像素字体 */
+@import url('https://fonts.googleapis.com/css2?family=ZCOOL+KuaiLe&family=VT323&display=swap');
+
+/* CSS 变量 - 像素游戏配色 */
+:root {
+    /* 主色调 - 暗黑地牢风 */
+    --color-bg-primary: #1a1a2e;
+    --color-bg-secondary: #16213e;
+    --color-bg-dark: #0f0f23;
+    
+    /* 强调色 */
+    --color-accent-green: #4ecca3;
+    --color-accent-purple: #9d4edd;
+    --color-accent-gold: #ffd700;
+    --color-accent-red: #e63946;
+    --color-accent-blue: #4cc9f0;
+    
+    /* 文字颜色 */
+    --color-text-primary: #f8f9fa;
+    --color-text-secondary: #adb5bd;
+    --color-text-muted: #6c757d;
+    
+    /* 边框和阴影 */
+    --border-pixel: 4px;
+    --shadow-pixel: 4px 4px 0px rgba(0, 0, 0, 0.5);
+    --shadow-pixel-hover: 6px 6px 0px rgba(0, 0, 0, 0.5);
+}
+
+/* 基础样式重置 */
+* {
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'ZCOOL KuaiLe', 'Microsoft YaHei', sans-serif;
+    background-color: var(--color-bg-primary);
+    color: var(--color-text-primary);
+    line-height: 1.8;
+    margin: 0;
+    padding: 0;
+    background-image: 
+        linear-gradient(rgba(26, 26, 46, 0.9), rgba(26, 26, 46, 0.9)),
+        url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%2316213e' fill-opacity='0.4'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+}
+
+/* 像素边框按钮 */
+.pixel-btn {
+    display: inline-block;
+    padding: 12px 24px;
+    font-family: 'ZCOOL KuaiLe', sans-serif;
+    font-size: 1.1rem;
+    text-decoration: none;
+    text-transform: uppercase;
+    border: var(--border-pixel) solid;
+    box-shadow: var(--shadow-pixel);
+    transition: all 0.1s;
+    cursor: pointer;
+    position: relative;
+}
+
+.pixel-btn:hover {
+    transform: translate(-2px, -2px);
+    box-shadow: var(--shadow-pixel-hover);
+}
+
+.pixel-btn:active {
+    transform: translate(2px, 2px);
+    box-shadow: 2px 2px 0px rgba(0, 0, 0, 0.5);
+}
+
+.pixel-btn-primary {
+    background-color: var(--color-accent-green);
+    color: var(--color-bg-dark);
+    border-color: #3ba382;
+}
+
+.pixel-btn-secondary {
+    background-color: var(--color-accent-purple);
+    color: var(--color-text-primary);
+    border-color: #7b2cbf;
+}
+
+.pixel-btn-gold {
+    background-color: var(--color-accent-gold);
+    color: var(--color-bg-dark);
+    border-color: #d4af37;
+}
+
+/* 像素卡片 */
+.pixel-card {
+    background-color: var(--color-bg-secondary);
+    border: var(--border-pixel) solid var(--color-accent-purple);
+    box-shadow: var(--shadow-pixel);
+    padding: 24px;
+    margin-bottom: 24px;
+}
+
+.pixel-card-green {
+    border-color: var(--color-accent-green);
+}
+
+.pixel-card-gold {
+    border-color: var(--color-accent-gold);
+}
+
+/* 导航栏 */
+.pixel-nav {
+    background-color: var(--color-bg-dark);
+    border-bottom: var(--border-pixel) solid var(--color-accent-purple);
+    padding: 16px 0;
+    position: sticky;
+    top: 0;
+    z-index: 1000;
+}
+
+.pixel-nav-container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.pixel-logo {
+    font-family: 'VT323', monospace;
+    font-size: 2rem;
+    color: var(--color-accent-green);
+    text-decoration: none;
+    text-shadow: 2px 2px var(--color-accent-purple);
+}
+
+.pixel-logo:hover {
+    color: var(--color-accent-gold);
+}
+
+.pixel-nav-links {
+    display: flex;
+    gap: 32px;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.pixel-nav-links a {
+    color: var(--color-text-primary);
+    text-decoration: none;
+    font-size: 1.1rem;
+    padding: 8px 16px;
+    border: 2px solid transparent;
+    transition: all 0.2s;
+}
+
+.pixel-nav-links a:hover {
+    border-color: var(--color-accent-green);
+    background-color: rgba(78, 204, 163, 0.1);
+}
+
+/* 英雄区域 */
+.hero {
+    text-align: center;
+    padding: 100px 20px;
+    background: linear-gradient(180deg, var(--color-bg-dark) 0%, var(--color-bg-primary) 100%);
+    border-bottom: var(--border-pixel) solid var(--color-accent-purple);
+}
+
+.hero h1 {
+    font-family: 'VT323', monospace;
+    font-size: 5rem;
+    margin: 0 0 20px 0;
+    color: var(--color-accent-green);
+    text-shadow: 
+        4px 4px 0 var(--color-accent-purple),
+        8px 8px 0 var(--color-bg-dark);
+    letter-spacing: 4px;
+}
+
+.hero-subtitle {
+    font-size: 1.5rem;
+    color: var(--color-text-secondary);
+    margin-bottom: 40px;
+}
+
+.hero-buttons {
+    display: flex;
+    gap: 20px;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
+/* 特性网格 */
+.features-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 32px;
+    max-width: 1200px;
+    margin: 60px auto;
+    padding: 0 20px;
+}
+
+.feature-item {
+    text-align: center;
+}
+
+.feature-icon {
+    font-size: 3rem;
+    margin-bottom: 16px;
+}
+
+.feature-item h3 {
+    color: var(--color-accent-gold);
+    font-size: 1.5rem;
+    margin-bottom: 12px;
+}
+
+.feature-item p {
+    color: var(--color-text-secondary);
+}
+
+/* 内容容器 */
+.content-container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 60px 20px;
+}
+
+.content-container h2 {
+    color: var(--color-accent-green);
+    font-size: 2.5rem;
+    margin-bottom: 32px;
+    border-bottom: var(--border-pixel) solid var(--color-accent-purple);
+    padding-bottom: 16px;
+}
+
+.content-container h3 {
+    color: var(--color-accent-gold);
+    font-size: 1.5rem;
+    margin-top: 32px;
+    margin-bottom: 16px;
+}
+
+.content-container p {
+    margin-bottom: 16px;
+    color: var(--color-text-secondary);
+}
+
+.content-container ul, .content-container ol {
+    color: var(--color-text-secondary);
+    margin-bottom: 16px;
+}
+
+.content-container li {
+    margin-bottom: 8px;
+}
+
+.content-container a {
+    color: var(--color-accent-green);
+    text-decoration: none;
+}
+
+.content-container a:hover {
+    color: var(--color-accent-gold);
+    text-decoration: underline;
+}
+
+/* 代码块 */
+pre {
+    background-color: var(--color-bg-dark);
+    border: 2px solid var(--color-accent-purple);
+    border-radius: 0;
+    padding: 20px;
+    overflow-x: auto;
+    font-family: 'Courier New', monospace;
+}
+
+code {
+    background-color: rgba(157, 78, 221, 0.2);
+    padding: 2px 8px;
+    font-family: 'Courier New', monospace;
+    color: var(--color-accent-green);
+}
+
+pre code {
+    background-color: transparent;
+    padding: 0;
+    color: var(--color-text-primary);
+}
+
+/* 博客文章列表 */
+.blog-list {
+    max-width: 800px;
+    margin: 0 auto;
+}
+
+.blog-item {
+    background-color: var(--color-bg-secondary);
+    border-left: var(--border-pixel) solid var(--color-accent-green);
+    padding: 24px;
+    margin-bottom: 24px;
+    transition: all 0.2s;
+}
+
+.blog-item:hover {
+    border-left-color: var(--color-accent-gold);
+    transform: translateX(4px);
+}
+
+.blog-date {
+    color: var(--color-text-muted);
+    font-size: 0.9rem;
+    margin-bottom: 8px;
+}
+
+.blog-title {
+    color: var(--color-accent-green);
+    font-size: 1.5rem;
+    text-decoration: none;
+    display: block;
+    margin-bottom: 8px;
+}
+
+.blog-title:hover {
+    color: var(--color-accent-gold);
+}
+
+.blog-excerpt {
+    color: var(--color-text-secondary);
+}
+
+/* 标签 */
+.tag {
+    display: inline-block;
+    background-color: var(--color-accent-purple);
+    color: var(--color-text-primary);
+    padding: 4px 12px;
+    font-size: 0.85rem;
+    margin-right: 8px;
+    margin-bottom: 8px;
+    border: 2px solid #7b2cbf;
+}
+
+.tag-green {
+    background-color: var(--color-accent-green);
+    border-color: #3ba382;
+    color: var(--color-bg-dark);
+}
+
+/* 页脚 */
+.pixel-footer {
+    background-color: var(--color-bg-dark);
+    border-top: var(--border-pixel) solid var(--color-accent-purple);
+    padding: 40px 20px;
+    text-align: center;
+    margin-top: 60px;
+}
+
+.pixel-footer p {
+    color: var(--color-text-muted);
+    margin: 8px 0;
+}
+
+.social-links {
+    margin-top: 20px;
+}
+
+.social-links a {
+    color: var(--color-accent-green);
+    text-decoration: none;
+    margin: 0 16px;
+    font-size: 1.1rem;
+}
+
+.social-links a:hover {
+    color: var(--color-accent-gold);
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+    .hero h1 {
+        font-size: 3rem;
+    }
+    
+    .pixel-nav-links {
+        gap: 8px;
+    }
+    
+    .pixel-nav-links a {
+        padding: 4px 8px;
+        font-size: 0.9rem;
+    }
+    
+    .features-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .hero-buttons {
+        flex-direction: column;
+        align-items: center;
+    }
+}
+
+/* 像素化装饰元素 */
+.pixel-decoration {
+    image-rendering: pixelated;
+    image-rendering: -moz-crisp-edges;
+    image-rendering: crisp-edges;
+}
+
+/* 状态徽章 */
+.status-badge {
+    display: inline-block;
+    background-color: var(--color-accent-gold);
+    color: var(--color-bg-dark);
+    padding: 4px 12px;
+    font-size: 0.8rem;
+    border: 2px solid #d4af37;
+    margin-left: 12px;
+    vertical-align: middle;
+}
+
+/* 表格样式 */
+table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    margin: 24px 0;
+}
+
+th {
+    background-color: var(--color-accent-purple);
+    color: var(--color-text-primary);
+    padding: 12px;
+    text-align: left;
+    border: 2px solid #7b2cbf;
+}
+
+td {
+    padding: 12px;
+    border: 2px solid var(--color-bg-dark);
+    background-color: var(--color-bg-secondary);
+    color: var(--color-text-secondary);
+}
+
+tr:hover td {
+    background-color: rgba(157, 78, 221, 0.2);
+}

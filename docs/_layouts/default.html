@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% if page.title %}{{ page.title }} - {% endif %}{{ site.title }}</title>
+    <meta name="description" content="{% if page.description %}{{ page.description }}{% else %}{{ site.description }}{% endif %}">
+    
+    <!-- 自定义像素风格 CSS -->
+    <link rel="stylesheet" href="{{ '/assets/css/pixel-style.css' | relative_url }}">
+    
+    <!-- SEO -->
+    {% seo %}
+    
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%231a1a2e'/%3E%3Ctext y='.9em' font-size='90'%3E🎮%3C/text%3E%3C/svg%3E">
+</head>
+<body>
+    <!-- 导航栏 -->
+    <nav class="pixel-nav">
+        <div class="pixel-nav-container">
+            <a href="{{ '/' | relative_url }}" class="pixel-logo">◈ SIDELINE</a>
+            <ul class="pixel-nav-links">
+                {% for item in site.navigation %}
+                <li><a href="{{ item.url | relative_url }}">{{ item.title }}</a></li>
+                {% endfor %}
+            </ul>
+        </div>
+    </nav>
+
+    <!-- 页面内容 -->
+    {{ content }}
+
+    <!-- 页脚 -->
+    <footer class="pixel-footer">
+        <p>© {{ 'now' | date: '%Y' }} {{ site.title }} - 工作间隙的地下冒险</p>
+        <p>使用 Godot 4 + C# 开发 | 目标平台: Steam</p>
+        <div class="social-links">
+            {% if site.social.steam %}<a href="{{ site.social.steam }}">Steam</a>{% endif %}
+            {% if site.social.github %}<a href="{{ site.social.github }}">GitHub</a>{% endif %}
+            {% if site.social.email %}<a href="mailto:{{ site.social.email }}">联系开发者</a>{% endif %}
+        </div>
+    </footer>
+</body>
+</html>
