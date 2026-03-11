@@ -15,6 +15,91 @@
 
 ---
 
+## 技术栈选择：.NET 8
+
+经过对 .NET 8 / 9 / 10 三个版本的深入分析，Lattice 选择 **.NET 8** 作为目标框架。
+
+### 版本对比
+
+| 特性 | .NET 8 ✅ | .NET 9 | .NET 10 |
+|------|----------|--------|---------|
+| **Godot 4.6 支持** | 官方完整支持 | 实验性/计算兼容 | 不支持 |
+| **LTS 长期支持** | 是（到 2026-11） | 否 | 否 |
+| **C# 版本** | C# 12 | C# 13 | C# 14 |
+| **稳定性** | ⭐⭐⭐⭐⭐ | ⭐⭐⭐ | ⭐ |
+| **ECS开发风险** | 低 | 中 | 高 |
+
+### 各版本详细分析
+
+#### .NET 8（推荐）✅
+
+**优势：**
+- **官方完整支持**：Godot 4.6 主要测试目标，稳定性最高
+- **LTS 保障**：长期支持到 2026-11，确定性框架需要稳定基础
+- **所有需要的特性已齐全**：
+  - `Span<T>`、`Memory<T>` - 零拷贝内存操作
+  - `ArrayPool<T>` - 内存池替代自定义 Allocator
+  - `Source Generators` - 自动生成组件代码
+  - `Unsafe` 类 - 必要时使用（如 `MemoryMarshal.Cast`）
+  - `ref struct` - 栈上分配，避免 GC
+  - `readonly struct` - 性能优化
+
+**对 Lattice 的收益：**
+```csharp
+// .NET 8 完全支持的特性
+public ref struct ComponentSpan<T>  // 零GC遍历
+public readonly struct FP          // 定点数性能优化
+public static ReadOnlySpan<byte> LookupTable => new byte[] { ... }; // 查找表内联
+```
+
+#### .NET 9（实验性）⚠️
+
+**优势：**
+- SIMD 优化（`Vector<T>` 改进）
+- Android 官方支持（Godot 4.6 导出 Android 需要）
+
+**缺陷（对确定性框架致命）：**
+- **非 LTS**：支持周期仅 18 个月
+- **确定性风险**：JIT 编译器优化改变可能影响运算一致性
+- **兼容性风险**：不是 Godot 4.6 主要测试目标
+
+#### .NET 10（不支持）❌
+
+**现状：**
+- 目前处于 Preview/RC 阶段（预计 2025-11 正式发布）
+- Godot 4.6 完全不支持
+- 无稳定的 `Godot.NET.Sdk` 版本
+
+### 选择 .NET 8 的核心原因
+
+1. **确定性优先**：帧同步框架不能容忍运行时不确定性，.NET 8 经过大量游戏项目验证
+2. **Godot 4.6 官方支持**：避免奇怪的兼容性问题
+3. **LTS 保障**：开发周期内持续获得安全更新
+4. **功能足够**：所有需要的特性已能满足 Lattice 设计
+
+### .NET 8 提供的核心特性（Lattice 将使用）
+
+```csharp
+// 1. Span<T> - 零拷贝组件访问
+public Span<T> GetComponents<T>() where T : struct
+{
+    return MemoryMarshal.Cast<byte, T>(_storage);
+}
+
+// 2. ArrayPool - 内存管理
+private readonly ArrayPool<byte> _pool = ArrayPool<byte>.Shared;
+
+// 3. Source Generator - 自动生成组件代码
+[Generator]
+public class ComponentGenerator : ISourceGenerator { ... }
+
+// 4. Unsafe - 必要时使用（确定性可控）
+public ref T GetRef<T>(int index) 
+    => ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_array), index);
+```
+
+---
+
 ## 架构设计（参考 FrameSyncEngine）
 
 ```
@@ -319,4 +404,5 @@ public struct FP
 ---
 
 **状态**: 🚧 开发中（Sideline Phase 0）  
+**目标框架**: .NET 8  
 **最后更新**: 2026-03-11
