@@ -147,8 +147,8 @@ jobs:
         dotnet test --configuration Release \
           --verbosity minimal \
           /p:CollectCoverage=true \
-          /p:CoverletOutputFormat="lcov,cobertura" \
-          /p:CoverletOutput=./coverage/
+          /p:CoverletOutputFormat=lcov \
+          /p:CoverletOutput=./coverage/lcov.info
 
     - name: Install ReportGenerator
       run: dotnet tool install --global dotnet-reportgenerator-globaltool
