@@ -1,0 +1,63 @@
+# 将 CI 报告更新到 docs 文件夹，集成到游戏官网
+name: Update Reports to Docs
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    branches: [main]
+    types:
+      - completed
+
+jobs:
+  update-reports:
+    if: github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Download Coverage Report
+        uses: dawidd6/action-download-artifact@v3
+        with:
+          workflow: ci.yml
+          run_id: ${{ github.event.workflow_run.id }}
+          name: coverage-report
+          path: ./docs/reports/coverage
+      
+      - name: Download Benchmark Results
+        uses: dawidd6/action-download-artifact@v3
+        with:
+          workflow: ci.yml
+          run_id: ${{ github.event.workflow_run.id }}
+          name: benchmark-results
+          path: ./docs/reports/benchmark
+      
+      - name: Create Reports Index
+        run: |
+          mkdir -p ./docs/reports
+          cat > ./docs/reports/index.html << 'EOF'
+          <!DOCTYPE html>
+          <html>
+          <head>
+              <meta charset="UTF-8">
+              <meta http-equiv="refresh" content="0; url=../">
+              <title>CI Reports</title>
+          </head>
+          <body>
+              <p>Redirecting to <a href="../">main site</a>...</p>
+          </body>
+          </html>
+          EOF
+      
+      - name: Commit and Push
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add docs/reports/
+          git diff --staged --quiet || (git commit -m "docs: update CI reports" && git push)
