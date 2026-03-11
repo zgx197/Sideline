@@ -329,6 +329,85 @@ public struct FP
 
 ---
 
+## 防呆设计哲学（Poka-Yoke）
+
+Lattice 的设计不仅关注功能实现，更注重**防止错误使用**。好的框架应该让正确的用法容易，让错误的用法困难（甚至不可能）。
+
+> **核心理念**：借鉴 FrameSyncEngine 使用 `unsafe` 形成的"心理门槛"效应，但用更安全、更明确的方式实现。
+
+### 为什么不用 `unsafe` 但保留其"警示效应"
+
+| 方案 | FrameSyncEngine | Lattice 设计 |
+|------|-----------------|--------------|
+| **性能优化** | 使用 `unsafe` 指针操作 | 使用 `AggressiveInlining`，性能相当 |
+| **规范限制** | `unsafe` 关键字强制审查 | 显式 API 命名 + 编译时禁止 |
+| **防呆效果** | 平台限制（Web导出困难） | 编译错误 > 运行时错误 |
+
+**关键洞察**：`unsafe` 的真正价值不在于性能，而在于它形成的**显式同意机制**——开发者必须 conscious 地使用危险功能。
+
+### 具体设计策略
+
+#### 1. 显式标记危险操作
+
+```csharp
+public struct FP
+{
+    // ✅ 安全的唯一入口
+    [MethodImpl(AggressiveInlining)]
+    public static FP FromRaw(long raw) => new() { RawValue = raw };
+    
+    // ⚠️ 危险操作：显式 UNSAFE 后缀 + 编译警告
+    #if DEBUG
+    [Obsolete("警告：FromFloat_UNSAFE 只能在编辑器配置中使用！模拟中会导致非确定性", true)]
+    #endif
+    public static FP FromFloat_UNSAFE(float f) => FromRaw((long)(f * ONE));
+}
+```
+
+#### 2. 编译时禁止隐式转换
+
+```csharp
+// ❌ 不提供隐式转换——让错误在编译期暴露
+// public static implicit operator FP(float f)  <-- 故意不提供
+
+// ✅ 显式转换——开发者必须 conscious 地调用
+FP a = FP.FromRaw(FP.Raw._1_5);  // 正确
+FP b = 1.5f;                      // 编译错误！
+FP c = FP.FromFloat_UNSAFE(1.5f); // 显式标记，代码审查时一眼看出问题
+```
+
+#### 3. API 设计原则
+
+| 原则 | 说明 | 示例 |
+|------|------|------|
+| **单一入口** | 确定性操作只有一条安全路径 | `FromRaw()` |
+| **显式危险** | 不安全的操作必须有 `UNSAFE` 后缀 | `FromFloat_UNSAFE()` |
+| **编译报错** | Debug 模式下危险操作直接编译失败 | `[Obsolete(..., true)]` |
+| **文档警示** | 每个危险操作必须有 XML 文档警告 | `/// <warning>` |
+
+#### 4. 心理门槛设计
+
+```csharp
+// 开发者写代码时的心理流程：
+// 1. 想写：FP pos = 1.5f;
+//    结果：编译错误！❌ 没有隐式转换
+//    思考：哦，必须用定点数...
+//
+// 2. 想写：FP pos = FP.FromFloat(1.5f);
+//    结果：编译错误！❌ 没有这个方法
+//    思考：看来框架禁止 float...
+//
+// 3. 发现：FP.FromFloat_UNSAFE(1.5f);
+//    结果：编译错误（Debug）⚠️ Obsolete 报错
+//    思考：这真的很危险，我应该用预计算的 Raw 值...
+//
+// 4. 最终：FP pos = FP.FromRaw(FP.Raw._1_50);
+//    结果：编译通过 ✅
+//    思考：这是正确的确定性做法！
+```
+
+---
+
 ## 确定性保障清单
 
 为确保帧同步的确定性，必须遵守以下规则：
@@ -339,7 +418,7 @@ public struct FP
 - [x] **逻辑更新**: 使用固定时间步长（Fixed Timestep）
 - [x] **组件数据**: 全部使用值类型（`struct`），禁止引用类型
 - [x] **系统执行**: 按固定顺序执行，不依赖 `Dictionary` 遍历顺序
-- [ ] **浮点文本**: 不使用浮点数字面量（用 `FP.FromFloat(1.5f)`）
+- [x] **API 设计**: 危险操作必须有 `UNSAFE` 后缀，禁止隐式转换
 
 ---
 
