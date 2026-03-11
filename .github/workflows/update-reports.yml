@@ -37,6 +37,7 @@ jobs:
           run_id: ${{ github.event.workflow_run.id }}
           name: benchmark-results
           path: ./docs/reports/benchmark
+        continue-on-error: true  # Benchmark 只在 push 到 main 时运行，可能不存在
       
       - name: Create Reports Index
         run: |
