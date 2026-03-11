@@ -28,7 +28,7 @@ navigation:
   - title: "开发文档"
     url: "/docs/"
   - title: "开发报告"
-    url: "/reports/coverage/"
+    url: "/reports/"
   - title: "更新日志"
     url: "/blog/"
 
