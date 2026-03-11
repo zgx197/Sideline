@@ -27,6 +27,8 @@ navigation:
     url: "/about/"
   - title: "开发文档"
     url: "/docs/"
+  - title: "开发规范"
+    url: "/development/Workflow"
   - title: "开发报告"
     url: "/reports/"
   - title: "更新日志"
