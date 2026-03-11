@@ -266,28 +266,22 @@ jobs:
     
     - name: Copy Reports to Docs
       run: |
-        # 检查 coverage artifact - artifact 保留了原始路径结构
-        # 上传路径: godot/Lattice.Tests/coverage/report/
-        # 下载路径: ./coverage-temp/godot/Lattice.Tests/coverage/report/
-        COVERAGE_SRC="./coverage-temp/godot/Lattice.Tests/coverage/report"
-        if [ -d "$COVERAGE_SRC" ] && [ "$(ls -A $COVERAGE_SRC)" ]; then
-          echo "✓ Coverage artifact found at $COVERAGE_SRC"
-          cp -r $COVERAGE_SRC/* ./docs/reports/coverage/
-          echo "✓ Copied to ./docs/reports/coverage/"
+        # 检查 coverage artifact
+        # actions/download-artifact@v4 默认展平路径，文件直接在 ./coverage-temp/
+        if [ -d "./coverage-temp" ] && [ "$(ls -A ./coverage-temp)" ]; then
+          echo "✓ Coverage artifact found in ./coverage-temp"
+          cp -r ./coverage-temp/* ./docs/reports/coverage/
+          echo "✓ Copied $(ls -1 ./coverage-temp | wc -l) files to ./docs/reports/coverage/"
         else
           echo "✗ Coverage artifact not found or empty!"
-          echo "Contents of ./coverage-temp:"
-          find ./coverage-temp -type f 2>/dev/null || echo "(empty or not found)"
           exit 1
         fi
         
         # 检查 benchmark artifact（可选）
-        # 上传路径: godot/Lattice.Benchmarks/benchmark-results/
-        BENCHMARK_SRC="./benchmark-temp/godot/Lattice.Benchmarks/benchmark-results"
-        if [ -d "$BENCHMARK_SRC" ] && [ "$(ls -A $BENCHMARK_SRC 2>/dev/null)" ]; then
-          echo "✓ Benchmark artifact found at $BENCHMARK_SRC"
-          cp -r $BENCHMARK_SRC/* ./docs/reports/benchmark/
-          echo "✓ Copied to ./docs/reports/benchmark/"
+        if [ -d "./benchmark-temp" ] && [ "$(ls -A ./benchmark-temp 2>/dev/null)" ]; then
+          echo "✓ Benchmark artifact found in ./benchmark-temp"
+          cp -r ./benchmark-temp/* ./docs/reports/benchmark/
+          echo "✓ Copied $(ls -1 ./benchmark-temp 2>/dev/null | wc -l) files to ./docs/reports/benchmark/"
         else
           echo "⚠ Benchmark artifact not found (optional)"
         fi
