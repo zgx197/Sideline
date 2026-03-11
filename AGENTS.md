@@ -217,6 +217,7 @@ public partial class WindowManager : Node
 ## 相关文档
 
 - `docs/design/GameDesign.md` - 完整游戏设计文档（技术选型、Lattice 框架设计、AI 辅助开发规划）
+- `docs/development/Workflow.md` - **开发流程规范**（分支策略、提交规范、CI/CD 流程）
 
 ---
 
