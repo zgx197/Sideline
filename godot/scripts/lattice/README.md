@@ -151,8 +151,9 @@ lattice/
 │   └── SystemGroup.cs      # 系统组（按顺序执行）
 │
 ├── Math/                   # 定点数与确定性数学
-│   ├── FP.cs               # 定点数 (Q16.16)
+│   ├── FP.cs               # 定点数 (Q16.16 / Q48.16)
 │   ├── FPVector2.cs        # 2D 定点向量
+│   ├── FPVector3.cs        # 3D 定点向量（支持3D俯视角）
 │   ├── FPMath.cs           # 数学函数（含查找表）
 │   └── FPLut.cs            # 查找表（三角函数等）
 │
@@ -309,7 +310,7 @@ public struct FP
 |------|---------------------|-----------------|
 | **分层架构** | Core / Simulation / Runtime / Editor | Core / Simulation / Bridge（简化）|
 | **多帧设计** | Verified / Predicted / PredictedPrevious / PreviousUpdatePredicted | Verified / Predicted / Previous（简化）|
-| **定点数格式** | Q16.16 (`long` 存储) | 相同，直接借鉴 |
+| **定点数格式** | Q16.16 / Q48.16 (`long` 存储) | 相同，直接借鉴 |
 | **查找表** | `FPLut` 预计算三角函数 | 相同，预计算 sin/cos/atan2 |
 | **系统分类** | SystemBase / SystemGroup / SystemMainThread / SystemThreaded | SystemBase / SystemGroup（初期单线程）|
 | **输入缓冲** | `InputBuffer` 支持预测和回滚 | 相同实现 |
@@ -351,10 +352,10 @@ public struct FP
 - [ ] 确定性验证：相同输入跑两次，状态哈希一致
 
 ### Phase 1 - 定点数与数学
-- [ ] `FP` 定点数实现（Q16.16）
+- [ ] `FP` 定点数实现（Q16.16 / Q48.16）
 - [ ] 三角函数查找表（`FPLut.Sin`, `FPLut.Cos`）
-- [ ] `FPVector2` 2D 向量运算
-- [ ] 与 Godot `Vector2` 的双向转换
+- [ ] `FPVector2` / `FPVector3` 向量运算（支持3D俯视角）
+- [ ] 与 Godot `Vector2` / `Vector3` 的双向转换
 
 ### Phase 2 - 核心 ECS
 - [ ] `Frame` 单帧数据容器
