@@ -204,7 +204,21 @@ jobs:
     - name: Run Benchmarks
       run: |
         cd godot/Lattice.Benchmarks
-        dotnet run --configuration Release
+        dotnet run --configuration Release --exporters json html markdown
+
+    - name: Debug - Find Benchmark Output
+      run: |
+        echo "=== Current Directory ==="
+        pwd
+        echo ""
+        echo "=== All Files ==="
+        find . -type f -name "*.json" -o -name "*.html" -o -name "*.md" 2>/dev/null | head -20
+        echo ""
+        echo "=== benchmark-results Directory ==="
+        ls -la godot/Lattice.Benchmarks/benchmark-results/ 2>/dev/null || echo "Directory not found"
+        echo ""
+        echo "=== BenchmarkDotNet.Artifacts Directory ==="
+        ls -la godot/Lattice.Benchmarks/BenchmarkDotNet.Artifacts/ 2>/dev/null || echo "Directory not found"
 
     - name: Upload Benchmark Results
       uses: actions/upload-artifact@v4
@@ -212,6 +226,7 @@ jobs:
         name: benchmark-results
         path: godot/Lattice.Benchmarks/benchmark-results/
         retention-days: 90
+        if-no-files-found: warn
         if-no-files-found: warn  # 如果没有文件，只警告不失败
 
   # ==================== 4. 更新报告到 Docs ====================
