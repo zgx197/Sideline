@@ -147,8 +147,8 @@ jobs:
         dotnet test --configuration Release \
           --verbosity minimal \
           /p:CollectCoverage=true \
-          /p:CoverletOutputFormat=lcov \
-          /p:CoverletOutput=./coverage/lcov.info
+          /p:CoverletOutputFormat=cobertura \
+          /p:CoverletOutput=./coverage/coverage.cobertura.xml
 
     - name: Install ReportGenerator
       run: dotnet tool install --global dotnet-reportgenerator-globaltool
@@ -171,7 +171,7 @@ jobs:
     - name: Upload to Codecov
       uses: codecov/codecov-action@v4
       with:
-        files: godot/Lattice.Tests/coverage/coverage.lcov
+        files: godot/Lattice.Tests/coverage/coverage.cobertura.xml
         flags: unittests
         name: lattice-coverage
         fail_ci_if_error: false
