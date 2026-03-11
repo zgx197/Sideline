@@ -9,12 +9,14 @@ on:
     paths:
       - 'godot/scripts/lattice/**'
       - 'godot/Lattice.Tests/**'
+      - 'godot/Lattice.Benchmarks/**'
       - '.github/workflows/**'
   pull_request:
     branches: [ main ]
     paths:
       - 'godot/scripts/lattice/**'
       - 'godot/Lattice.Tests/**'
+      - 'godot/Lattice.Benchmarks/**'
 
 env:
   DOTNET_VERSION: '8.0.x'
@@ -56,60 +58,46 @@ jobs:
         cd godot/Lattice.Tests
         dotnet build --no-restore --configuration Release
 
-    # 运行测试 (Release 模式更接近生产环境)
+    # 运行测试
     - name: Test
       run: |
         cd godot/Lattice.Tests
         dotnet test --no-build --verbosity normal --configuration Release
 
-    # 确定性验证: 运行两次测试，比较 TRX 结果文件
+    # 确定性验证
     - name: Determinism Check
       if: matrix.os == 'ubuntu-latest'
       run: |
-        set -e  # 任何命令失败立即退出
+        set -e
         cd godot/Lattice.Tests
         
         echo "=== Determinism Verification ==="
-        echo "Running first test execution..."
         
         # 第一次运行
         dotnet test --filter "FullyQualifiedName~Determinism" \
           --logger "trx;LogFileName=run1.trx" \
           --results-directory ./test-results \
-          --verbosity normal || { echo "First run failed!"; exit 1; }
-        
-        echo "Running second test execution..."
+          --verbosity minimal
         
         # 第二次运行
         dotnet test --filter "FullyQualifiedName~Determinism" \
           --logger "trx;LogFileName=run2.trx" \
           --results-directory ./test-results \
-          --verbosity normal || { echo "Second run failed!"; exit 1; }
+          --verbosity minimal
         
-        echo "Comparing results..."
-        
-        # 提取测试名称和结果（测试名称:outcome 格式）
+        # 提取并比较测试名称
         grep -oE 'testName="[^"]+"' ./test-results/run1.trx | \
           sed 's/testName="//;s/"$//' | sort > /tmp/tests1.txt
         grep -oE 'testName="[^"]+"' ./test-results/run2.trx | \
           sed 's/testName="//;s/"$//' | sort > /tmp/tests2.txt
         
-        # 比较测试列表
         if ! diff /tmp/tests1.txt /tmp/tests2.txt > /tmp/test_diff.txt 2>&1; then
           echo "❌ FAILED: Test lists differ!"
-          echo ""
-          echo "=== Diff output ==="
           cat /tmp/test_diff.txt
-          echo ""
-          echo "=== Run 1 tests ($(wc -l < /tmp/tests1.txt) total) ==="
-          head -20 /tmp/tests1.txt
-          echo ""
-          echo "=== Run 2 tests ($(wc -l < /tmp/tests2.txt) total) ==="
-          head -20 /tmp/tests2.txt
           exit 1
         fi
         
-        # 提取结果状态并与测试名称配对
+        # 提取并比较结果
         paste -d':' \
           <(grep -oE 'testName="[^"]+"' ./test-results/run1.trx | sed 's/testName="//;s/"$//') \
           <(grep -oE 'outcome="[^"]+"' ./test-results/run1.trx | sed 's/outcome="//;s/"$//') | \
@@ -120,30 +108,19 @@ jobs:
           <(grep -oE 'outcome="[^"]+"' ./test-results/run2.trx | sed 's/outcome="//;s/"$//') | \
           sort > /tmp/results2.txt
         
-        # 比较完整结果
         if ! diff /tmp/results1.txt /tmp/results2.txt > /tmp/result_diff.txt 2>&1; then
-          echo "❌ FAILED: Test outcomes differ between runs!"
-          echo ""
-          echo "=== Full diff (name:outcome) ==="
+          echo "❌ FAILED: Test outcomes differ!"
           cat /tmp/result_diff.txt
-          echo ""
-          echo "=== Run 1 results (first 10) ==="
-          head -10 /tmp/results1.txt
-          echo ""
-          echo "=== Run 2 results (first 10) ==="
-          head -10 /tmp/results2.txt
           exit 1
         fi
         
-        TEST_COUNT=$(wc -l < /tmp/tests1.txt)
         echo "✓ SUCCESS: Determinism verified!"
-        echo "  $TEST_COUNT tests executed with identical outcomes in both runs"
 
   # ==================== 2. 代码覆盖率 ====================
   coverage:
     name: Code Coverage
     runs-on: ubuntu-latest
-    needs: build-and-test  # 等测试通过后再运行
+    needs: build-and-test
 
     steps:
     - name: Checkout
@@ -154,17 +131,27 @@ jobs:
       with:
         dotnet-version: ${{ env.DOTNET_VERSION }}
 
-    - name: Install ReportGenerator
-      run: dotnet tool install --global dotnet-reportgenerator-globaltool
+    - name: Restore dependencies
+      run: |
+        cd godot/Lattice.Tests
+        dotnet restore
+
+    - name: Build
+      run: |
+        cd godot/Lattice.Tests
+        dotnet build --configuration Release
 
     - name: Test with Coverage
       run: |
         cd godot/Lattice.Tests
-        dotnet test \
+        dotnet test --configuration Release \
           --verbosity minimal \
           /p:CollectCoverage=true \
           /p:CoverletOutputFormat="lcov,cobertura" \
           /p:CoverletOutput=./coverage/
+
+    - name: Install ReportGenerator
+      run: dotnet tool install --global dotnet-reportgenerator-globaltool
 
     - name: Generate HTML Report
       run: |
@@ -174,7 +161,6 @@ jobs:
           -targetdir:"./coverage/report" \
           -reporttypes:"Html;MarkdownSummaryGithub"
 
-    # 上传覆盖率报告作为 Artifact
     - name: Upload Coverage Report
       uses: actions/upload-artifact@v4
       with:
@@ -182,7 +168,6 @@ jobs:
         path: godot/Lattice.Tests/coverage/report/
         retention-days: 30
 
-    # 上传覆盖率到 Codecov (可选)
     - name: Upload to Codecov
       uses: codecov/codecov-action@v4
       with:
@@ -191,26 +176,10 @@ jobs:
         name: lattice-coverage
         fail_ci_if_error: false
 
-    # 在 PR 中评论覆盖率
-    - name: Comment Coverage Summary
-      if: github.event_name == 'pull_request'
-      uses: actions/github-script@v7
-      with:
-        script: |
-          const fs = require('fs');
-          const summary = fs.readFileSync('godot/Lattice.Tests/coverage/report/SummaryGithub.md', 'utf8');
-          github.rest.issues.createComment({
-            issue_number: context.issue.number,
-            owner: context.repo.owner,
-            repo: context.repo.repo,
-            body: '## 📊 Code Coverage Report\n\n' + summary
-          });
-
   # ==================== 3. 性能基准测试 ====================
   benchmark:
     name: Performance Benchmark
     runs-on: ubuntu-latest
-    # 只在 push 到 main 时运行，PR 不运行（避免阻塞）
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: build-and-test
 
@@ -218,54 +187,28 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v4
       with:
-        fetch-depth: 0  # 需要完整历史来对比
+        fetch-depth: 0
 
     - name: Setup .NET
       uses: actions/setup-dotnet@v4
       with:
         dotnet-version: ${{ env.DOTNET_VERSION }}
 
-    # 创建 Benchmark 专用项目
-    - name: Create Benchmark Project
+    # 恢复 Benchmark 项目依赖
+    - name: Restore Benchmark Project
       run: |
-        cd godot/Lattice.Tests
-        cat > Benchmark.csproj << 'EOF'
-        <Project Sdk="Microsoft.NET.Sdk">
-          <PropertyGroup>
-            <OutputType>Exe</OutputType>
-            <TargetFramework>net8.0</TargetFramework>
-            <IsPackable>false</IsPackable>
-          </PropertyGroup>
-          <ItemGroup>
-            <PackageReference Include="BenchmarkDotNet" Version="0.13.11" />
-          </ItemGroup>
-          <ItemGroup>
-            <ProjectReference Include="../scripts/lattice/Lattice.csproj" />
-          </ItemGroup>
-        </Project>
-        EOF
+        cd godot/Lattice.Benchmarks
+        dotnet restore
 
     # 运行基准测试
     - name: Run Benchmarks
       run: |
-        cd godot/Lattice.Tests
-        dotnet run --project Benchmark.csproj --configuration Release -- --exporters json --artifacts ./benchmark-results
+        cd godot/Lattice.Benchmarks
+        dotnet run --configuration Release -- --exporters json --artifacts ./benchmark-results
 
-    # 上传基准结果
     - name: Upload Benchmark Results
       uses: actions/upload-artifact@v4
       with:
         name: benchmark-results
-        path: godot/Lattice.Tests/benchmark-results/
+        path: godot/Lattice.Benchmarks/benchmark-results/
         retention-days: 90
-
-    # 对比基准 (如果有历史数据)
-    - name: Compare Benchmarks
-      uses: benchmark-action/github-action-benchmark@v1
-      with:
-        tool: 'benchmarkdotnet'
-        output-file-path: godot/Lattice.Tests/benchmark-results/results.json
-        github-token: ${{ secrets.GITHUB_TOKEN }}
-        auto-push: true
-        comment-on-alert: true
-        alert-threshold: '150%'  # 性能下降 50% 时警告
