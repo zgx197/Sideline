@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+
+  </PropertyGroup>
+
+  <!-- 测试框架 -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.8.0" />
+    <PackageReference Include="xunit" Version="2.6.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.5.4">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="coverlet.collector" Version="6.0.0">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <!-- 性能测试（可选） -->
+  <ItemGroup>
+    <PackageReference Include="BenchmarkDotNet" Version="0.13.11" />
+  </ItemGroup>
+
+  <!-- 引用 Lattice 核心 -->
+  <ItemGroup>
+    <ProjectReference Include="..\scripts\lattice\Lattice.csproj" />
+  </ItemGroup>
+
+</Project>

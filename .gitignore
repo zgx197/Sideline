@@ -94,3 +94,6 @@ release/
 *.tmp
 *.temp
 crash_log_*.txt
+
+# Godot 4 .uid files
+*.uid
