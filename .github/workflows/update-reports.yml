@@ -22,6 +22,14 @@ jobs:
           ref: main
           token: ${{ secrets.GITHUB_TOKEN }}
       
+      # 清理旧的报告目录（避免残留文件）
+      - name: Clean Old Reports
+        run: |
+          rm -rf ./docs/reports/coverage
+          rm -rf ./docs/reports/benchmark
+          mkdir -p ./docs/reports/coverage
+          mkdir -p ./docs/reports/benchmark
+      
       - name: Download Coverage Report
         uses: dawidd6/action-download-artifact@v3
         with:
@@ -29,6 +37,7 @@ jobs:
           run_id: ${{ github.event.workflow_run.id }}
           name: coverage-report
           path: ./docs/reports/coverage
+          if_no_artifact_found: fail  # 覆盖率报告必须存在
       
       - name: Download Benchmark Results
         uses: dawidd6/action-download-artifact@v3
@@ -37,28 +46,51 @@ jobs:
           run_id: ${{ github.event.workflow_run.id }}
           name: benchmark-results
           path: ./docs/reports/benchmark
-        continue-on-error: true  # Benchmark 只在 push 到 main 时运行，可能不存在
+          if_no_artifact_found: ignore  # Benchmark 可能不存在（非 main push）
       
-      - name: Create Reports Index
+      # 调试：查看下载的文件结构
+      - name: Debug - List Downloaded Files
         run: |
-          mkdir -p ./docs/reports
-          cat > ./docs/reports/index.html << 'EOF'
-          <!DOCTYPE html>
-          <html>
-          <head>
-              <meta charset="UTF-8">
-              <meta http-equiv="refresh" content="0; url=../">
-              <title>CI Reports</title>
-          </head>
-          <body>
-              <p>Redirecting to <a href="../">main site</a>...</p>
-          </body>
-          </html>
-          EOF
+          echo "=== Reports Directory Structure ==="
+          find ./docs/reports -type f | head -20
+          echo ""
+          echo "=== Coverage Directory ==="
+          ls -la ./docs/reports/coverage/ || echo "Directory empty or not found"
+          echo ""
+          echo "=== Benchmark Directory ==="
+          ls -la ./docs/reports/benchmark/ || echo "Directory empty or not found"
+      
+      # 创建 .nojekyll 文件，确保 HTML 报告不被 Jekyll 处理
+      - name: Create .nojekyll Files
+        run: |
+          touch ./docs/reports/coverage/.nojekyll
+          touch ./docs/reports/benchmark/.nojekyll
+      
+      # 删除 CI 自动创建的 index.html（避免与 index.md 冲突）
+      - name: Remove Conflicting index.html
+        run: |
+          if [ -f ./docs/reports/index.html ]; then
+            echo "Removing conflicting index.html"
+            rm ./docs/reports/index.html
+          fi
       
       - name: Commit and Push
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
+          
+          # 显示将要添加的文件
+          echo "=== Files to be added ==="
+          git add -n docs/reports/
+          
           git add docs/reports/
-          git diff --staged --quiet || (git commit -m "docs: update CI reports" && git push)
+          git status
+          
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "docs: update CI reports from run ${{ github.event.workflow_run.id }}" \
+                      -m "- Coverage report: $(find ./docs/reports/coverage -type f | wc -l) files" \
+                      -m "- Benchmark results: $(find ./docs/reports/benchmark -type f 2>/dev/null | wc -l) files"
+            git push
+          fi
