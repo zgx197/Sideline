@@ -62,17 +62,51 @@ jobs:
         cd godot/Lattice.Tests
         dotnet test --no-build --verbosity normal --configuration Release
 
-    # 确定性验证: 运行两次测试，验证结果一致
+    # 确定性验证: 运行两次测试，比较 TRX 结果文件
     - name: Determinism Check
       if: matrix.os == 'ubuntu-latest'
       run: |
         cd godot/Lattice.Tests
-        # 运行两次确定性测试
-        echo "First run:"
-        dotnet test --filter "FullyQualifiedName~Determinism" --verbosity minimal
-        echo "Second run:"
-        dotnet test --filter "FullyQualifiedName~Determinism" --verbosity minimal
-        echo "✓ Determinism check passed: Both runs completed successfully"
+        
+        # 第一次运行，生成 TRX 结果文件
+        dotnet test --filter "FullyQualifiedName~Determinism" \
+          --logger "trx;LogFileName=run1.trx" \
+          --results-directory ./test-results \
+          --verbosity minimal
+        
+        # 第二次运行，生成 TRX 结果文件
+        dotnet test --filter "FullyQualifiedName~Determinism" \
+          --logger "trx;LogFileName=run2.trx" \
+          --results-directory ./test-results \
+          --verbosity minimal
+        
+        # 提取关键信息（测试名称和结果，忽略时间戳）
+        grep -oP 'testName="[^"]+"' ./test-results/run1.trx | sort > /tmp/tests1.txt
+        grep -oP 'testName="[^"]+"' ./test-results/run2.trx | sort > /tmp/tests2.txt
+        
+        # 比较测试列表
+        if ! diff -q /tmp/tests1.txt /tmp/tests2.txt > /dev/null 2>&1; then
+          echo "❌ Determinism check FAILED: Test lists differ between runs"
+          echo "Run 1 tests:"
+          cat /tmp/tests1.txt
+          echo "Run 2 tests:"
+          cat /tmp/tests2.txt
+          exit 1
+        fi
+        
+        # 提取结果状态
+        grep -oP 'outcome="[^"]+"' ./test-results/run1.trx | sort > /tmp/outcomes1.txt
+        grep -oP 'outcome="[^"]+"' ./test-results/run2.trx | sort > /tmp/outcomes2.txt
+        
+        # 比较结果状态
+        if ! diff -q /tmp/outcomes1.txt /tmp/outcomes2.txt > /dev/null 2>&1; then
+          echo "❌ Determinism check FAILED: Test outcomes differ between runs"
+          diff /tmp/outcomes1.txt /tmp/outcomes2.txt
+          exit 1
+        fi
+        
+        echo "✓ Determinism verified: Both runs produced identical test results"
+        echo "  $(wc -l < /tmp/tests1.txt) tests executed with consistent outcomes"
 
   # ==================== 2. 代码覆盖率 ====================
   coverage:
