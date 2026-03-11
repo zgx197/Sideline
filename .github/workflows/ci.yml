@@ -204,10 +204,7 @@ jobs:
     - name: Run Benchmarks
       run: |
         cd godot/Lattice.Benchmarks
-        # 创建输出目录
-        mkdir -p benchmark-results
-        # 使用 BenchmarkDotNet 的 artifacts 参数指定输出目录
-        dotnet run --configuration Release -- --artifacts benchmark-results
+        dotnet run --configuration Release
 
     - name: Upload Benchmark Results
       uses: actions/upload-artifact@v4
