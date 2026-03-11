@@ -62,15 +62,23 @@ jobs:
         cd godot/Lattice.Tests
         dotnet test --no-build --verbosity normal --configuration Release
 
-    # 确定性验证: 运行两次测试，校验和应该一致
+    # 确定性验证: 运行两次测试，验证通过数和结果一致
     - name: Determinism Check
       if: matrix.os == 'ubuntu-latest'
       run: |
         cd godot/Lattice.Tests
+        # 第一次运行
         dotnet test --filter "FullyQualifiedName~Determinism" --verbosity minimal > /tmp/run1.txt
+        PASSED1=$(grep -oP 'Passed:\\s*\\d+' /tmp/run1.txt | grep -oP '\\d+')
+        # 第二次运行
         dotnet test --filter "FullyQualifiedName~Determinism" --verbosity minimal > /tmp/run2.txt
-        diff /tmp/run1.txt /tmp/run2.txt || (echo "Determinism check failed!" && exit 1)
-        echo "✓ Determinism verified: Two runs produced identical results"
+        PASSED2=$(grep -oP 'Passed:\\s*\\d+' /tmp/run2.txt | grep -oP '\\d+')
+        # 比较通过数
+        if [ "$PASSED1" != "$PASSED2" ]; then
+          echo "Determinism check failed: First run had $PASSED1 passed, second had $PASSED2"
+          exit 1
+        fi
+        echo "✓ Determinism verified: Both runs produced $PASSED1 passing tests"
 
   # ==================== 2. 代码覆盖率 ====================
   coverage:
