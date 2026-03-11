@@ -1,0 +1,34 @@
+# 自动处理换行符
+* text=auto eol=lf
+
+# 特定文件类型的换行符处理
+*.cs text eol=lf
+*.csproj text eol=lf
+*.sln text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.json text eol=lf
+*.xml text eol=lf
+*.md text eol=lf
+*.sh text eol=lf
+*.ps1 text eol=lf
+*.bat text eol=crlf
+
+# 二进制文件（不处理换行符）
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.svg binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.eot binary
+*.pdf binary
+*.zip binary
+*.gz binary
+*.dll binary
+*.exe binary
+*.so binary
+*.dylib binary
