@@ -66,47 +66,78 @@ jobs:
     - name: Determinism Check
       if: matrix.os == 'ubuntu-latest'
       run: |
+        set -e  # 任何命令失败立即退出
         cd godot/Lattice.Tests
         
-        # 第一次运行，生成 TRX 结果文件
+        echo "=== Determinism Verification ==="
+        echo "Running first test execution..."
+        
+        # 第一次运行
         dotnet test --filter "FullyQualifiedName~Determinism" \
           --logger "trx;LogFileName=run1.trx" \
           --results-directory ./test-results \
-          --verbosity minimal
+          --verbosity normal || { echo "First run failed!"; exit 1; }
         
-        # 第二次运行，生成 TRX 结果文件
+        echo "Running second test execution..."
+        
+        # 第二次运行
         dotnet test --filter "FullyQualifiedName~Determinism" \
           --logger "trx;LogFileName=run2.trx" \
           --results-directory ./test-results \
-          --verbosity minimal
+          --verbosity normal || { echo "Second run failed!"; exit 1; }
         
-        # 提取关键信息（测试名称和结果，忽略时间戳）
-        grep -oP 'testName="[^"]+"' ./test-results/run1.trx | sort > /tmp/tests1.txt
-        grep -oP 'testName="[^"]+"' ./test-results/run2.trx | sort > /tmp/tests2.txt
+        echo "Comparing results..."
+        
+        # 提取测试名称和结果（测试名称:outcome 格式）
+        grep -oE 'testName="[^"]+"' ./test-results/run1.trx | \
+          sed 's/testName="//;s/"$//' | sort > /tmp/tests1.txt
+        grep -oE 'testName="[^"]+"' ./test-results/run2.trx | \
+          sed 's/testName="//;s/"$//' | sort > /tmp/tests2.txt
         
         # 比较测试列表
-        if ! diff -q /tmp/tests1.txt /tmp/tests2.txt > /dev/null 2>&1; then
-          echo "❌ Determinism check FAILED: Test lists differ between runs"
-          echo "Run 1 tests:"
-          cat /tmp/tests1.txt
-          echo "Run 2 tests:"
-          cat /tmp/tests2.txt
+        if ! diff /tmp/tests1.txt /tmp/tests2.txt > /tmp/test_diff.txt 2>&1; then
+          echo "❌ FAILED: Test lists differ!"
+          echo ""
+          echo "=== Diff output ==="
+          cat /tmp/test_diff.txt
+          echo ""
+          echo "=== Run 1 tests ($(wc -l < /tmp/tests1.txt) total) ==="
+          head -20 /tmp/tests1.txt
+          echo ""
+          echo "=== Run 2 tests ($(wc -l < /tmp/tests2.txt) total) ==="
+          head -20 /tmp/tests2.txt
           exit 1
         fi
         
-        # 提取结果状态
-        grep -oP 'outcome="[^"]+"' ./test-results/run1.trx | sort > /tmp/outcomes1.txt
-        grep -oP 'outcome="[^"]+"' ./test-results/run2.trx | sort > /tmp/outcomes2.txt
+        # 提取结果状态并与测试名称配对
+        paste -d':' \
+          <(grep -oE 'testName="[^"]+"' ./test-results/run1.trx | sed 's/testName="//;s/"$//') \
+          <(grep -oE 'outcome="[^"]+"' ./test-results/run1.trx | sed 's/outcome="//;s/"$//') | \
+          sort > /tmp/results1.txt
         
-        # 比较结果状态
-        if ! diff -q /tmp/outcomes1.txt /tmp/outcomes2.txt > /dev/null 2>&1; then
-          echo "❌ Determinism check FAILED: Test outcomes differ between runs"
-          diff /tmp/outcomes1.txt /tmp/outcomes2.txt
+        paste -d':' \
+          <(grep -oE 'testName="[^"]+"' ./test-results/run2.trx | sed 's/testName="//;s/"$//') \
+          <(grep -oE 'outcome="[^"]+"' ./test-results/run2.trx | sed 's/outcome="//;s/"$//') | \
+          sort > /tmp/results2.txt
+        
+        # 比较完整结果
+        if ! diff /tmp/results1.txt /tmp/results2.txt > /tmp/result_diff.txt 2>&1; then
+          echo "❌ FAILED: Test outcomes differ between runs!"
+          echo ""
+          echo "=== Full diff (name:outcome) ==="
+          cat /tmp/result_diff.txt
+          echo ""
+          echo "=== Run 1 results (first 10) ==="
+          head -10 /tmp/results1.txt
+          echo ""
+          echo "=== Run 2 results (first 10) ==="
+          head -10 /tmp/results2.txt
           exit 1
         fi
         
-        echo "✓ Determinism verified: Both runs produced identical test results"
-        echo "  $(wc -l < /tmp/tests1.txt) tests executed with consistent outcomes"
+        TEST_COUNT=$(wc -l < /tmp/tests1.txt)
+        echo "✓ SUCCESS: Determinism verified!"
+        echo "  $TEST_COUNT tests executed with identical outcomes in both runs"
 
   # ==================== 2. 代码覆盖率 ====================
   coverage:
