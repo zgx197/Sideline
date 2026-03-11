@@ -12,7 +12,8 @@ Console.WriteLine("Lattice Performance Benchmarks");
 Console.WriteLine("==============================");
 
 var config = DefaultConfig.Instance
-    .WithOption(ConfigOptions.DisableOptimizationsValidator, true);
+    .WithOption(ConfigOptions.DisableOptimizationsValidator, true)
+    .WithArtifactsPath("./benchmark-results");
 
 BenchmarkSwitcher
     .FromAssembly(typeof(Program).Assembly)
