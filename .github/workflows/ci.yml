@@ -239,14 +239,33 @@ jobs:
       uses: actions/download-artifact@v4
       with:
         name: coverage-report
-        path: ./docs/reports/coverage
+        path: ./coverage-temp
     
     - name: Download Benchmark Results (optional)
       uses: actions/download-artifact@v4
       with:
         name: benchmark-results
-        path: ./docs/reports/benchmark
+        path: ./benchmark-temp
       continue-on-error: true  # benchmark 可能不存在（如果 benchmark job 被跳过）
+    
+    - name: Copy Reports to Docs
+      run: |
+        # 检查并复制 coverage
+        if [ -d "./coverage-temp" ] && [ "$(ls -A ./coverage-temp)" ]; then
+          echo "✓ Coverage artifact found, copying..."
+          cp -r ./coverage-temp/* ./docs/reports/coverage/
+        else
+          echo "✗ Coverage artifact not found or empty!"
+          exit 1
+        fi
+        
+        # 检查并复制 benchmark（可选）
+        if [ -d "./benchmark-temp" ] && [ "$(ls -A ./benchmark-temp 2>/dev/null)" ]; then
+          echo "✓ Benchmark artifact found, copying..."
+          cp -r ./benchmark-temp/* ./docs/reports/benchmark/
+        else
+          echo "⚠ Benchmark artifact not found (optional)"
+        fi
     
     - name: Create .nojekyll Files
       run: |
