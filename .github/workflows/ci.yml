@@ -1,0 +1,204 @@
+# Lattice CI Pipeline
+# 触发条件: push 到 main 分支 或 pull request
+
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'godot/scripts/lattice/**'
+      - 'godot/Lattice.Tests/**'
+      - '.github/workflows/**'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'godot/scripts/lattice/**'
+      - 'godot/Lattice.Tests/**'
+
+env:
+  DOTNET_VERSION: '8.0.x'
+
+jobs:
+  # ==================== 1. 构建与测试 (多平台) ====================
+  build-and-test:
+    name: Build & Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+
+    - name: Cache NuGet packages
+      uses: actions/cache@v4
+      with:
+        path: ~/.nuget/packages
+        key: ${{ runner.os }}-nuget-${{ hashFiles('**/Lattice.Tests.csproj') }}
+        restore-keys: |
+          ${{ runner.os }}-nuget-
+
+    - name: Restore dependencies
+      run: |
+        cd godot/Lattice.Tests
+        dotnet restore
+
+    - name: Build
+      run: |
+        cd godot/Lattice.Tests
+        dotnet build --no-restore --configuration Release
+
+    # 运行测试 (Release 模式更接近生产环境)
+    - name: Test
+      run: |
+        cd godot/Lattice.Tests
+        dotnet test --no-build --verbosity normal --configuration Release
+
+    # 确定性验证: 运行两次测试，校验和应该一致
+    - name: Determinism Check
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        cd godot/Lattice.Tests
+        dotnet test --filter "FullyQualifiedName~Determinism" --verbosity minimal > /tmp/run1.txt
+        dotnet test --filter "FullyQualifiedName~Determinism" --verbosity minimal > /tmp/run2.txt
+        diff /tmp/run1.txt /tmp/run2.txt || (echo "Determinism check failed!" && exit 1)
+        echo "✓ Determinism verified: Two runs produced identical results"
+
+  # ==================== 2. 代码覆盖率 ====================
+  coverage:
+    name: Code Coverage
+    runs-on: ubuntu-latest
+    needs: build-and-test  # 等测试通过后再运行
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+
+    - name: Install ReportGenerator
+      run: dotnet tool install --global dotnet-reportgenerator-globaltool
+
+    - name: Test with Coverage
+      run: |
+        cd godot/Lattice.Tests
+        dotnet test \
+          --verbosity minimal \
+          /p:CollectCoverage=true \
+          /p:CoverletOutputFormat="lcov,cobertura" \
+          /p:CoverletOutput=./coverage/
+
+    - name: Generate HTML Report
+      run: |
+        cd godot/Lattice.Tests
+        reportgenerator \
+          -reports:"./coverage/coverage.cobertura.xml" \
+          -targetdir:"./coverage/report" \
+          -reporttypes:"Html;MarkdownSummaryGithub"
+
+    # 上传覆盖率报告作为 Artifact
+    - name: Upload Coverage Report
+      uses: actions/upload-artifact@v4
+      with:
+        name: coverage-report
+        path: godot/Lattice.Tests/coverage/report/
+        retention-days: 30
+
+    # 上传覆盖率到 Codecov (可选)
+    - name: Upload to Codecov
+      uses: codecov/codecov-action@v4
+      with:
+        files: godot/Lattice.Tests/coverage/coverage.lcov
+        flags: unittests
+        name: lattice-coverage
+        fail_ci_if_error: false
+
+    # 在 PR 中评论覆盖率
+    - name: Comment Coverage Summary
+      if: github.event_name == 'pull_request'
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const fs = require('fs');
+          const summary = fs.readFileSync('godot/Lattice.Tests/coverage/report/SummaryGithub.md', 'utf8');
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: '## 📊 Code Coverage Report\n\n' + summary
+          });
+
+  # ==================== 3. 性能基准测试 ====================
+  benchmark:
+    name: Performance Benchmark
+    runs-on: ubuntu-latest
+    # 只在 push 到 main 时运行，PR 不运行（避免阻塞）
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: build-and-test
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # 需要完整历史来对比
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+
+    # 创建 Benchmark 专用项目
+    - name: Create Benchmark Project
+      run: |
+        cd godot/Lattice.Tests
+        cat > Benchmark.csproj << 'EOF'
+        <Project Sdk="Microsoft.NET.Sdk">
+          <PropertyGroup>
+            <OutputType>Exe</OutputType>
+            <TargetFramework>net8.0</TargetFramework>
+            <IsPackable>false</IsPackable>
+          </PropertyGroup>
+          <ItemGroup>
+            <PackageReference Include="BenchmarkDotNet" Version="0.13.11" />
+          </ItemGroup>
+          <ItemGroup>
+            <ProjectReference Include="../scripts/lattice/Lattice.csproj" />
+          </ItemGroup>
+        </Project>
+        EOF
+
+    # 运行基准测试
+    - name: Run Benchmarks
+      run: |
+        cd godot/Lattice.Tests
+        dotnet run --project Benchmark.csproj --configuration Release -- --exporters json --artifacts ./benchmark-results
+
+    # 上传基准结果
+    - name: Upload Benchmark Results
+      uses: actions/upload-artifact@v4
+      with:
+        name: benchmark-results
+        path: godot/Lattice.Tests/benchmark-results/
+        retention-days: 90
+
+    # 对比基准 (如果有历史数据)
+    - name: Compare Benchmarks
+      uses: benchmark-action/github-action-benchmark@v1
+      with:
+        tool: 'benchmarkdotnet'
+        output-file-path: godot/Lattice.Tests/benchmark-results/results.json
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        auto-push: true
+        comment-on-alert: true
+        alert-threshold: '150%'  # 性能下降 50% 时警告
