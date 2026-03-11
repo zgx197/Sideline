@@ -226,7 +226,6 @@ jobs:
         name: benchmark-results
         path: godot/Lattice.Benchmarks/benchmark-results/
         retention-days: 90
-        if-no-files-found: warn
         if-no-files-found: warn  # 如果没有文件，只警告不失败
 
   # ==================== 4. 更新报告到 Docs ====================
