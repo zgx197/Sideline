@@ -2,10 +2,9 @@
 name: Deploy Reports to GitHub Pages
 
 on:
-  push:
-    branches: [main]
   workflow_run:
     workflows: ["CI"]
+    branches: [main]
     types:
       - completed
 
@@ -20,6 +19,7 @@ concurrency:
 
 jobs:
   deploy:
+    if: github.event.workflow_run.conclusion == 'success'
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -32,14 +32,18 @@ jobs:
         uses: actions/configure-pages@v4
 
       - name: Download Coverage Report
-        uses: actions/download-artifact@v4
+        uses: dawidd6/action-download-artifact@v3
         with:
+          workflow: ci.yml
+          run_id: ${{ github.event.workflow_run.id }}
           name: coverage-report
           path: ./_site/coverage
 
       - name: Download Benchmark Results
-        uses: actions/download-artifact@v4
+        uses: dawidd6/action-download-artifact@v3
         with:
+          workflow: ci.yml
+          run_id: ${{ github.event.workflow_run.id }}
           name: benchmark-results
           path: ./_site/benchmark
 
