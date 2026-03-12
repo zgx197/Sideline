@@ -388,16 +388,21 @@ jobs:
         git config --local user.email "github-actions[bot]@users.noreply.github.com"
         git config --local user.name "github-actions[bot]"
         
-        echo "=== Files to be added ==="
-        git add docs/reports/ -n
+        echo "=== Current Git Status ==="
+        git status --short
         
-        git add docs/reports/
+        echo "=== Check if files exist in docs/reports ==="
+        ls -la ./docs/reports/coverage/ | head -10
+        
+        echo "=== Force add all files ==="
+        git add -A docs/reports/
         
         echo "=== Staged changes ==="
         git diff --staged --stat
         git diff --staged --name-status
         
-        if git diff --staged --quiet; then
+        # 检查是否有变更（包括新文件、修改、删除）
+        if git diff --staged --quiet && [ -z "$(git status --porcelain docs/reports/)" ]; then
           echo "❌ No changes to commit!"
           echo "This means no files were added to docs/reports/"
           exit 1
