@@ -290,4 +290,82 @@ public class FPTests
     }
 
     #endregion
+
+    #region 三角函数
+
+    [Theory]
+    [InlineData(0, 0)]                    // Sin(0) = 0
+    [InlineData(1.5708, 1)]               // Sin(π/2) ≈ 1
+    [InlineData(3.1416, 0)]               // Sin(π) ≈ 0
+    [InlineData(4.7124, -1)]              // Sin(3π/2) ≈ -1
+    [InlineData(6.2832, 0)]               // Sin(2π) ≈ 0
+    public void Sin_ShouldApproximateMathSin(double angle, double expected)
+    {
+        FP fpAngle = FP.FromRaw((long)(angle * FP.ONE));
+        FP result = FP.Sin(fpAngle);
+        double actual = result.RawValue / (double)FP.ONE;
+        Assert.True(System.Math.Abs(actual - expected) < 0.01, 
+            $"Sin({angle}) expected ~{expected}, got {actual}");
+    }
+
+    [Theory]
+    [InlineData(0, 1)]                    // Cos(0) = 1
+    [InlineData(1.5708, 0)]               // Cos(π/2) ≈ 0
+    [InlineData(3.1416, -1)]              // Cos(π) ≈ -1
+    [InlineData(6.2832, 1)]               // Cos(2π) ≈ 1
+    public void Cos_ShouldApproximateMathCos(double angle, double expected)
+    {
+        FP fpAngle = FP.FromRaw((long)(angle * FP.ONE));
+        FP result = FP.Cos(fpAngle);
+        double actual = result.RawValue / (double)FP.ONE;
+        Assert.True(System.Math.Abs(actual - expected) < 0.01,
+            $"Cos({angle}) expected ~{expected}, got {actual}");
+    }
+
+    [Fact]
+    public void SinCos_PythagoreanIdentity()
+    {
+        // Sin²(x) + Cos²(x) = 1
+        FP angle = FP._1;  // 1 弧度
+        FP sin = FP.Sin(angle);
+        FP cos = FP.Cos(angle);
+        FP sum = sin * sin + cos * cos;
+        
+        // 允许 1% 误差
+        double actual = sum.RawValue / (double)FP.ONE;
+        Assert.True(System.Math.Abs(actual - 1.0) < 0.01, 
+            $"Sin² + Cos² should be ~1, got {actual}");
+    }
+
+    [Theory]
+    [InlineData(0, 0, 0)]                 // Atan2(0, 0) = 0
+    [InlineData(1, 0, 1.5708)]            // Atan2(1, 0) = π/2
+    [InlineData(0, 1, 0)]                 // Atan2(0, 1) = 0
+    [InlineData(-1, 0, -1.5708)]          // Atan2(-1, 0) = -π/2
+    [InlineData(1, 1, 0.7854)]            // Atan2(1, 1) = π/4
+    [InlineData(1, -1, 2.3562)]           // Atan2(1, -1) = 3π/4
+    public void Atan2_ShouldReturnCorrectAngle(double y, double x, double expected)
+    {
+        FP fpY = FP.FromRaw((long)(y * FP.ONE));
+        FP fpX = FP.FromRaw((long)(x * FP.ONE));
+        FP result = FP.Atan2(fpY, fpX);
+        double actual = result.RawValue / (double)FP.ONE;
+        Assert.True(System.Math.Abs(actual - expected) < 0.05,
+            $"Atan2({y}, {x}) expected ~{expected}, got {actual}");
+    }
+
+    [Fact]
+    public void Deg2Rad_Rad2Deg_RoundTrip()
+    {
+        // 90度 = 90 * 65536 = 5898240
+        FP degrees = FP.FromRaw(90 * FP.ONE);  // 90度
+        FP radians = FP.Deg2Rad(degrees);
+        FP back = FP.Rad2Deg(radians);
+        
+        // 允许小误差
+        long diff = FP.Abs(back - degrees).RawValue;
+        Assert.True(diff < 100, "Deg2Rad/Rad2Deg round trip failed");
+    }
+
+    #endregion
 }

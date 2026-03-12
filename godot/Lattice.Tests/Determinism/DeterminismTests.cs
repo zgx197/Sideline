@@ -454,6 +454,103 @@ public class DeterminismTests
 
     #endregion
 
+    #region 新修复的确定性测试
+
+    /// <summary>
+    /// ToString 必须是确定性的（纯整数实现）
+    /// </summary>
+    [Theory]
+    [InlineData(0)]
+    [InlineData(65536)]      // 1.0
+    [InlineData(-65536)]     // -1.0
+    [InlineData(32768)]      // 0.5
+    [InlineData(1234567)]    // 大数
+    [InlineData(-9876543)]   // 大负数
+    public void ToString_ShouldBeDeterministic(long rawValue)
+    {
+        FP fp = FP.FromRaw(rawValue);
+        
+        // 多次调用应该产生相同结果
+        string s1 = fp.ToString();
+        string s2 = fp.ToString();
+        string s3 = fp.ToString("F6");
+        string s4 = fp.ToString("F6");
+        
+        Assert.Equal(s1, s2);
+        Assert.Equal(s3, s4);
+        
+        // 验证格式正确性
+        Assert.Contains(".", s1);
+        if (rawValue < 0) Assert.StartsWith("-", s1);
+        else if (rawValue > 0) Assert.False(s1.StartsWith("-"));
+    }
+
+    /// <summary>
+    /// Sin/Cos 查找表初始化必须是确定性的
+    /// </summary>
+    [Fact]
+    public void TrigonometricFunctions_ShouldProduceSameResults()
+    {
+        // 测试多个角度
+        var testAngles = new[] { 0.0, 0.5, 1.0, 1.57, 3.14, 6.28 };
+        
+        foreach (double angle in testAngles)
+        {
+            FP fpAngle = FP.FromRaw((long)(angle * FP.ONE));
+            
+            // 多次计算应该相同
+            FP sin1 = FP.Sin(fpAngle);
+            FP sin2 = FP.Sin(fpAngle);
+            FP cos1 = FP.Cos(fpAngle);
+            FP cos2 = FP.Cos(fpAngle);
+            
+            Assert.Equal(sin1.RawValue, sin2.RawValue);
+            Assert.Equal(cos1.RawValue, cos2.RawValue);
+        }
+    }
+
+    /// <summary>
+    /// SinFast 与 Sin 在给定范围内结果应该一致
+    /// </summary>
+    [Theory]
+    [InlineData(0)]                    // 0
+    [InlineData(1.0)]                  // 1 弧度
+    [InlineData(1.5708)]               // π/2
+    [InlineData(3.1416)]               // π
+    [InlineData(4.7124)]               // 3π/2
+    [InlineData(6.2830)]               // 接近 2π
+    public void SinFast_ShouldMatchSin_InValidRange(double angle)
+    {
+        FP fpAngle = FP.FromRaw((long)(angle * FP.ONE));
+        
+        FP sinNormal = FP.Sin(fpAngle);
+        FP sinFast = FP.SinFast(fpAngle);
+        
+        // 允许小误差（查表精度限制）
+        long diff = FP.Abs(sinNormal - sinFast).RawValue;
+        Assert.True(diff <= 2, $"SinFast difference too large at angle {angle}: diff={diff}");
+    }
+
+    /// <summary>
+    /// Approximately 默认参数应该是确定性的
+    /// </summary>
+    [Fact]
+    public void ApproximatelyDefault_ShouldBeDeterministic()
+    {
+        FP a = FP.FromRaw(65536 + 5);   // 1.0 + 极小值
+        FP b = FP.FromRaw(65536 + 8);   // 1.0 + 稍大极小值
+        
+        // 多次调用应该相同
+        bool result1 = FP.Approximately(a, b);
+        bool result2 = FP.Approximately(a, b);
+        bool result3 = FP.Approximately(a, b);
+        
+        Assert.Equal(result1, result2);
+        Assert.Equal(result2, result3);
+    }
+
+    #endregion
+
     #region 辅助方法
 
     private (ulong Checksum, long FinalPosition, long FinalVelocity) RunSimulation(int seed, int frames)
