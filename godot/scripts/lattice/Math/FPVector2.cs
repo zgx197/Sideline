@@ -1,0 +1,422 @@
+// Copyright (c) 2026 Sideline Authors. All rights reserved.
+// Licensed under GPL-3.0.
+
+#nullable enable
+
+using System;
+using System.Runtime.CompilerServices;
+
+namespace Lattice.Math
+{
+    /// <summary>
+    /// 2D 定点数向量
+    /// <para>参考 FrameSyncEngine 设计，高性能实现</para>
+    /// </summary>
+    public readonly struct FPVector2 : IEquatable<FPVector2>
+    {
+        #region 字段
+
+        /// <summary>X 分量</summary>
+        public readonly FP X;
+
+        /// <summary>Y 分量</summary>
+        public readonly FP Y;
+
+        #endregion
+
+        #region 构造函数
+
+        /// <summary>
+        /// 从两个 FP 构造
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public FPVector2(FP x, FP y)
+        {
+            X = x;
+            Y = y;
+        }
+
+        /// <summary>
+        /// 从两个 int 构造（隐式转换）
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public FPVector2(int x, int y)
+        {
+            X = (FP)x;
+            Y = (FP)y;
+        }
+
+        /// <summary>
+        /// 从单个 FP 构造（两个分量相同）
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public FPVector2(FP value)
+        {
+            X = value;
+            Y = value;
+        }
+
+        #endregion
+
+        #region 常量
+
+        /// <summary>零向量 (0, 0)</summary>
+        public static FPVector2 Zero => default;
+
+        /// <summary>单位向量 (1, 1)</summary>
+        public static FPVector2 One => new(FP._1, FP._1);
+
+        /// <summary>右向量 (1, 0)</summary>
+        public static FPVector2 Right => new(FP._1, FP._0);
+
+        /// <summary>左向量 (-1, 0)</summary>
+        public static FPVector2 Left => new(-FP._1, FP._0);
+
+        /// <summary>上向量 (0, 1)</summary>
+        public static FPVector2 Up => new(FP._0, FP._1);
+
+        /// <summary>下向量 (0, -1)</summary>
+        public static FPVector2 Down => new(FP._0, -FP._1);
+
+        /// <summary>最大值向量</summary>
+        public static FPVector2 MaxValue => new(new FP(long.MaxValue), new FP(long.MaxValue));
+
+        /// <summary>最小值向量</summary>
+        public static FPVector2 MinValue => new(new FP(long.MinValue), new FP(long.MinValue));
+
+        #endregion
+
+        #region Swizzle (2D → 2D)
+
+        /// <summary>(X, X)</summary>
+        public readonly FPVector2 XX => new(X, X);
+
+        /// <summary>(X, Y) - 自身</summary>
+        public readonly FPVector2 XY => this;
+
+        /// <summary>(Y, X) - 交换</summary>
+        public readonly FPVector2 YX => new(Y, X);
+
+        /// <summary>(Y, Y)</summary>
+        public readonly FPVector2 YY => new(Y, Y);
+
+        #endregion
+
+        #region Swizzle (2D → 3D)
+
+        /// <summary>(X, Y, 0) - XY 平面</summary>
+        public readonly FPVector3 XYO => new(X, Y, FP._0);
+
+        /// <summary>(X, 0, Y) - XZ 平面</summary>
+        public readonly FPVector3 XOY => new(X, FP._0, Y);
+
+        /// <summary>(0, X, Y) - YZ 平面</summary>
+        public readonly FPVector3 OXY => new(FP._0, X, Y);
+
+        #endregion
+
+        #region 属性
+
+        /// <summary>
+        /// 向量长度的平方（不开方，速度快）
+        /// <para>用于比较距离时避免开方</para>
+        /// </summary>
+        public readonly FP SqrMagnitude
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get
+            {
+                // (X*X + Y*Y) / ONE，+32768 实现四舍五入
+                long x2 = (X.RawValue * X.RawValue + 32768) >> 16;
+                long y2 = (Y.RawValue * Y.RawValue + 32768) >> 16;
+                return new FP(x2 + y2);
+            }
+        }
+
+        /// <summary>
+        /// 向量长度
+        /// </summary>
+        public readonly FP Magnitude
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get => FPMath.Sqrt(SqrMagnitude);
+        }
+
+        /// <summary>
+        /// 归一化向量
+        /// <para>零向量返回零向量</para>
+        /// </summary>
+        public readonly FPVector2 Normalized
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get
+            {
+                FP mag = Magnitude;
+                if (mag.RawValue == 0) return Zero;
+                return this / mag;
+            }
+        }
+
+        #endregion
+
+        #region 运算符
+
+        /// <summary>向量加法</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static FPVector2 operator +(FPVector2 a, FPVector2 b)
+            => new(a.X + b.X, a.Y + b.Y);
+
+        /// <summary>向量减法</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static FPVector2 operator -(FPVector2 a, FPVector2 b)
+            => new(a.X - b.X, a.Y - b.Y);
+
+        /// <summary>向量取反</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static FPVector2 operator -(FPVector2 v)
+            => new(-v.X, -v.Y);
+
+        /// <summary>向量 * 标量</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static FPVector2 operator *(FPVector2 v, FP s)
+            => new(v.X * s, v.Y * s);
+
+        /// <summary>标量 * 向量</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static FPVector2 operator *(FP s, FPVector2 v)
+            => v * s;
+
+        /// <summary>向量 / 标量</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static FPVector2 operator /(FPVector2 v, FP s)
+            => new(v.X / s, v.Y / s);
+
+        /// <summary>相等比较</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool operator ==(FPVector2 a, FPVector2 b)
+            => a.X.RawValue == b.X.RawValue && a.Y.RawValue == b.Y.RawValue;
+
+        /// <summary>不等比较</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool operator !=(FPVector2 a, FPVector2 b)
+            => !(a == b);
+
+        #endregion
+
+        #region 静态方法
+
+        /// <summary>
+        /// 点积
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static FP Dot(FPVector2 a, FPVector2 b)
+        {
+            long x = (a.X.RawValue * b.X.RawValue + 32768) >> 16;
+            long y = (a.Y.RawValue * b.Y.RawValue + 32768) >> 16;
+            return new FP(x + y);
+        }
+
+        /// <summary>
+        /// 叉积（2D 叉积返回标量，表示有向面积）
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static FP Cross(FPVector2 a, FPVector2 b)
+        {
+            long x = (a.X.RawValue * b.Y.RawValue + 32768) >> 16;
+            long y = (a.Y.RawValue * b.X.RawValue + 32768) >> 16;
+            return new FP(x - y);
+        }
+
+        /// <summary>
+        /// 两个向量之间的距离
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static FP Distance(FPVector2 a, FPVector2 b)
+            => (a - b).Magnitude;
+
+        /// <summary>
+        /// 两个向量之间的距离平方（更快）
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static FP DistanceSquared(FPVector2 a, FPVector2 b)
+            => (a - b).SqrMagnitude;
+
+        /// <summary>
+        /// 归一化向量（免 Sqrt 算法）
+        /// <para>零向量返回零向量</para>
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
+        public static FPVector2 Normalize(FPVector2 value)
+            => value.Normalized;
+
+        /// <summary>
+        /// 归一化向量，同时输出原始长度
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
+        public static FPVector2 Normalize(FPVector2 value, out FP magnitude)
+        {
+            ulong sqrmag = (ulong)(value.X.RawValue * value.X.RawValue + value.Y.RawValue * value.Y.RawValue);
+            if (sqrmag == 0)
+            {
+                magnitude = FP.Zero;
+                return default;
+            }
+
+            var sqrt = FPMath.GetSqrtDecomp(sqrmag);
+            long rec = 17592186044416L / sqrt.Mantissa;
+
+            long xRaw = value.X.RawValue * rec >> (22 + sqrt.Exponent - 8);
+            long yRaw = value.Y.RawValue * rec >> (22 + sqrt.Exponent - 8);
+            long magRaw = (long)sqrt.Mantissa << sqrt.Exponent >> 14;
+
+            magnitude = new FP(magRaw);
+            return new FPVector2(new FP(xRaw), new FP(yRaw));
+        }
+
+        /// <summary>
+        /// 线性插值（t 限制在 [0,1]）
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static FPVector2 Lerp(FPVector2 a, FPVector2 b, FP t)
+        {
+            t = FPMath.Clamp01(t);
+            return new FPVector2(
+                new FP(a.X.RawValue + ((b.X.RawValue - a.X.RawValue) * t.RawValue + 32768 >> 16)),
+                new FP(a.Y.RawValue + ((b.Y.RawValue - a.Y.RawValue) * t.RawValue + 32768 >> 16))
+            );
+        }
+
+        /// <summary>
+        /// 线性插值（t 不限制）
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static FPVector2 LerpUnclamped(FPVector2 a, FPVector2 b, FP t)
+        {
+            return new FPVector2(
+                new FP(a.X.RawValue + ((b.X.RawValue - a.X.RawValue) * t.RawValue + 32768 >> 16)),
+                new FP(a.Y.RawValue + ((b.Y.RawValue - a.Y.RawValue) * t.RawValue + 32768 >> 16))
+            );
+        }
+
+        /// <summary>
+        /// 限制向量长度
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static FPVector2 ClampMagnitude(FPVector2 vector, FP maxLength)
+        {
+            FP sqrMag = vector.SqrMagnitude;
+            FP maxSqr = maxLength * maxLength;
+            if (sqrMag.RawValue > maxSqr.RawValue)
+                return vector.Normalized * maxLength;
+            return vector;
+        }
+
+        /// <summary>
+        /// 反射向量
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static FPVector2 Reflect(FPVector2 direction, FPVector2 normal)
+        {
+            FP twoDot = Dot(direction, normal) * 2;
+            return direction - normal * twoDot;
+        }
+
+        /// <summary>
+        /// 投影向量到指定法线上
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static FPVector2 Project(FPVector2 vector, FPVector2 onNormal)
+        {
+            FP sqrMag = onNormal.SqrMagnitude;
+            if (sqrMag.RawValue == 0) return Zero;
+            FP dot = Dot(vector, onNormal);
+            return onNormal * (dot / sqrMag);
+        }
+
+        /// <summary>
+        /// 垂直向量（逆时针旋转 90 度）
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static FPVector2 Perpendicular(FPVector2 vector)
+            => new(-vector.Y, vector.X);
+
+        /// <summary>
+        /// 旋转向量（逆时针）
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static FPVector2 Rotate(FPVector2 vector, FP radians)
+        {
+            FP sin = FP.Sin(radians);
+            FP cos = FP.Cos(radians);
+            return Rotate(vector, sin, cos);
+        }
+
+        /// <summary>
+        /// 旋转向量（传入已计算的 sin/cos）
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static FPVector2 Rotate(FPVector2 vector, FP sin, FP cos)
+        {
+            FP x = vector.X * cos - vector.Y * sin;
+            FP y = vector.X * sin + vector.Y * cos;
+            return new FPVector2(x, y);
+        }
+
+        /// <summary>
+        /// 分量逐元素相乘
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static FPVector2 Scale(FPVector2 a, FPVector2 b)
+            => new(a.X * b.X, a.Y * b.Y);
+
+        /// <summary>
+        /// 取各分量的最小值
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static FPVector2 Min(FPVector2 a, FPVector2 b)
+            => new(FPMath.Min(a.X, b.X), FPMath.Min(a.Y, b.Y));
+
+        /// <summary>
+        /// 取各分量的最大值
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static FPVector2 Max(FPVector2 a, FPVector2 b)
+            => new(FPMath.Max(a.X, b.X), FPMath.Max(a.Y, b.Y));
+
+        #endregion
+
+        #region 实例方法
+
+        /// <summary>
+        /// 与另一个向量相等判断
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public readonly bool Equals(FPVector2 other)
+            => this == other;
+
+        /// <summary>
+        /// 与对象相等判断
+        /// </summary>
+        public override readonly bool Equals(object? obj)
+            => obj is FPVector2 other && Equals(other);
+
+        /// <summary>
+        /// 获取哈希码
+        /// </summary>
+        public override readonly int GetHashCode()
+        {
+            int hash = 17;
+            hash = hash * 31 + X.GetHashCode();
+            hash = hash * 31 + Y.GetHashCode();
+            return hash;
+        }
+
+        /// <summary>
+        /// 转换为字符串
+        /// </summary>
+        public override readonly string ToString()
+            => $"({X}, {Y})";
+
+        #endregion
+    }
+}
