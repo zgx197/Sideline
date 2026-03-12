@@ -388,23 +388,25 @@ jobs:
         git config --local user.email "github-actions[bot]@users.noreply.github.com"
         git config --local user.name "github-actions[bot]"
         
-        echo "=== Current Git Status ==="
-        git status --short
+        echo "=== Current Git Status (all files) ==="
+        git status --untracked-files=all
         
-        echo "=== Check if files exist in docs/reports ==="
-        ls -la ./docs/reports/coverage/ | head -10
+        echo "=== Check docs/reports in Git index ==="
+        git ls-tree HEAD docs/reports/ || echo "Not in index yet"
         
-        echo "=== Force add all files ==="
-        git add -A docs/reports/
+        echo "=== Force remove and re-add docs/reports ==="
+        # 强制移除并重新添加，确保 Git 检测到变更
+        git rm -r --cached docs/reports/ 2>/dev/null || true
+        git add docs/reports/
         
-        echo "=== Staged changes ==="
-        git diff --staged --stat
+        echo "=== Staged changes after force add ==="
         git diff --staged --name-status
         
-        # 检查是否有变更（包括新文件、修改、删除）
-        if git diff --staged --quiet && [ -z "$(git status --porcelain docs/reports/)" ]; then
+        # 检查是否有变更
+        if git diff --staged --quiet; then
           echo "❌ No changes to commit!"
-          echo "This means no files were added to docs/reports/"
+          echo "Checking if files exist at all..."
+          ls -la docs/reports/coverage/ 2>/dev/null || echo "No coverage directory"
           exit 1
         else
           echo "=== Committing changes ==="
