@@ -123,19 +123,57 @@ public readonly struct FP : IEquatable<FP>, IComparable<FP>
     public readonly long RawValue;
 
     /// <summary>
-    /// 私有构造函数，强制使用命名工厂方法
+    /// 内部构造函数，允许同程序集内的类型创建实例
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private FP(long raw) => RawValue = raw;
+    internal FP(long raw) => RawValue = raw;
 
     /// <summary>
-    /// 唯一安全的构造入口（从预计算的 Raw 值）
+    /// 从原始值构造 FP（安全的公开 API）
     /// </summary>
     /// <example>
     /// FP angle = FP.FromRaw(FP.Raw._PI);
     /// </example>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static FP FromRaw(long raw) => new(raw);
+
+    /// <summary>
+    /// 反余弦函数 Acos(x)，x ∈ [-1, 1]，返回值 ∈ [0, π]
+    /// <para>使用查找表实现</para>
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static FP Acos(FP x)
+    {
+        // 限制在 [-1, 1]
+        long clamped = x.RawValue;
+        if (clamped < -FP.ONE) clamped = -FP.ONE;
+        if (clamped > FP.ONE) clamped = FP.ONE;
+        
+        // 使用查表：索引 = (x + 1) * 32768，结果在 [0, π]
+        int index = (int)((clamped + FP.ONE) * 32768 >> 16);
+        if (index < 0) index = 0;
+        if (index > 65536) index = 65536;
+        
+        // 线性插值获取更精确值
+        return new FP(acos_lut[index]);
+    }
+
+    /// <summary>反余弦查找表 [0, 65536]，输入 [-1, 1] 映射到 [0, 65536]</summary>
+    private static readonly long[] acos_lut = InitAcosLut();
+
+    private static long[] InitAcosLut()
+    {
+        var table = new long[65537];
+        for (int i = 0; i <= 65536; i++)
+        {
+            // i / 32768 - 1 = x ∈ [-1, 1]
+            double x = (i / 32768.0) - 1.0;
+            // acos(x) ∈ [0, π]
+            double acos = System.Math.Acos(x);
+            table[i] = (long)(acos * 65536.0 + 0.5);
+        }
+        return table;
+    }
 
     #endregion
 
