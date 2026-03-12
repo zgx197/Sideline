@@ -695,4 +695,170 @@ public class RobustnessTests
     }
 
     #endregion
+
+    #region 新修复的健壮性测试
+
+    /// <summary>
+    /// int 转换溢出应该抛出异常
+    /// </summary>
+    [Theory]
+    [InlineData(2147483648)]      // int.MaxValue + 1
+    [InlineData(-2147483649)]     // int.MinValue - 1
+    [InlineData(100000000000)]    // 非常大的正数
+    [InlineData(-100000000000)]   // 非常大的负数
+    public void IntConversion_Overflow_ShouldThrow(long rawValue)
+    {
+        FP fp = FP.FromRaw(rawValue * FP.ONE);
+        Assert.Throws<OverflowException>(() => (int)fp);
+    }
+
+    /// <summary>
+    /// int 转换在安全范围内应该正常工作
+    /// </summary>
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1000)]
+    [InlineData(-1000)]
+    [InlineData(2147483647)]      // int.MaxValue
+    [InlineData(-2147483648)]     // int.MinValue
+    public void IntConversion_InRange_ShouldWork(int value)
+    {
+        FP fp = (FP)value;
+        int result = (int)fp;
+        Assert.Equal(value, result);
+    }
+
+    /// <summary>
+    /// FP 除以 FP 零应该抛出异常
+    /// </summary>
+    [Fact]
+    public void Division_ByZeroFP_ShouldThrow()
+    {
+        FP one = FP._1;
+        FP zero = FP._0;
+        Assert.Throws<DivideByZeroException>(() => one / zero);
+    }
+
+    /// <summary>
+    /// FP 除以 int 零应该抛出异常
+    /// </summary>
+    [Fact]
+    public void Division_ByZeroInt_ShouldThrow()
+    {
+        FP one = FP._1;
+        Assert.Throws<DivideByZeroException>(() => one / 0);
+    }
+
+    /// <summary>
+    /// 除法左移溢出检查
+    /// </summary>
+    [Fact]
+    public void Division_LeftShiftOverflow_ShouldThrow()
+    {
+        // 创建一个超过 MAX_SAFE_DIVIDEND 的值
+        FP huge = FP.FromRaw(long.MaxValue >> 15);  // 超过 >> 16 的安全值
+        FP one = FP._1;
+        
+        Assert.Throws<OverflowException>(() => huge / one);
+    }
+
+    /// <summary>
+    /// Abs 处理 long.MinValue 特殊情况
+    /// </summary>
+    [Fact]
+    public void Abs_LongMinValue_ShouldNotCrash()
+    {
+        // 虽然这个值在正常使用范围外，但应该安全处理
+        FP minValue = FP.FromRaw(long.MinValue);
+        FP abs = FP.Abs(minValue);
+        
+        // 应该返回一个很大的正数
+        Assert.True(abs.RawValue > 0);
+    }
+
+    /// <summary>
+    /// Tan 接近 90 度时的处理
+    /// </summary>
+    [Fact]
+    public void Tan_Near90Degrees_ShouldReturnLargeValue()
+    {
+        FP near90 = FP.FromRaw((long)(1.5707 * FP.ONE));  // 接近 π/2
+        FP tan = FP.Tan(near90);
+        
+        // 应该返回一个很大的值（接近无穷）
+        Assert.True(tan.RawValue > 1000000 || tan.RawValue < -1000000);
+    }
+
+    /// <summary>
+    /// Approximately 默认容差测试
+    /// </summary>
+    [Fact]
+    public void ApproximatelyDefault_ShouldUseCorrectEpsilon()
+    {
+        FP one = FP._1;
+        FP onePlusTiny = FP.FromRaw(FP.ONE + 5);   // 1.0 + 极小值
+        FP onePlusLarge = FP.FromRaw(FP.ONE + 100); // 1.0 + 较大值
+        
+        // 极小差异应该在默认容差内
+        Assert.True(FP.Approximately(one, onePlusTiny));
+        
+        // 较大差异应该超出默认容差
+        Assert.False(FP.Approximately(one, onePlusLarge));
+    }
+
+    /// <summary>
+    /// 乘法 DEBUG 溢出检测（仅在 DEBUG 模式下有效）
+    /// </summary>
+    [Fact]
+    public void Multiplication_OverflowDetection()
+    {
+        // 在 DEBUG 模式下，溢出会触发 Debug.Fail
+        // 这里只验证正常乘法不会误报
+        FP a = FP._100;
+        FP b = FP._100;
+        FP result = a * b;  // 10000，安全
+        
+        Assert.Equal(10000 * FP.ONE, result.RawValue);
+    }
+
+    /// <summary>
+    /// EpsilonDefault 常量正确性
+    /// </summary>
+    [Fact]
+    public void EpsilonDefault_ShouldBe10TimesEpsilon()
+    {
+        long expected = FP.Epsilon.RawValue * 10;
+        Assert.Equal(expected, FP.EpsilonDefault.RawValue);
+    }
+
+    /// <summary>
+    /// ToString 各种边界情况
+    /// </summary>
+    [Theory]
+    [InlineData(0, "0.0000")]
+    [InlineData(65536, "1.0000")]      // 1.0
+    [InlineData(32768, "0.5000")]      // 0.5
+    [InlineData(-65536, "-1.0000")]    // -1.0
+    public void ToString_ShouldFormatCorrectly(long raw, string expectedStart)
+    {
+        FP fp = FP.FromRaw(raw);
+        string result = fp.ToString();
+        Assert.Equal(expectedStart, result);
+    }
+
+    /// <summary>
+    /// ToString 自定义小数位数
+    /// </summary>
+    [Theory]
+    [InlineData(65536, "F2", "1.00")]
+    [InlineData(65536, "F6", "1.000000")]
+    [InlineData(32768, "F2", "0.50")]
+    public void ToString_CustomFormat_ShouldWork(long raw, string format, string expected)
+    {
+        FP fp = FP.FromRaw(raw);
+        string result = fp.ToString(format);
+        Assert.Equal(expected, result);
+    }
+
+    #endregion
 }

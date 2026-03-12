@@ -81,6 +81,154 @@ public class FPBenchmarks
     }
 
     #endregion
+
+    #region 新修复的性能测试
+
+    [Benchmark]
+    public FP FP_Sin() => FP.Sin(a);
+
+    [Benchmark]
+    public FP FP_SinFast() => FP.SinFast(a);
+
+    [Benchmark]
+    public FP FP_Cos() => FP.Cos(a);
+
+    [Benchmark]
+    public FP FP_Tan() => FP.Tan(a);
+
+    [Benchmark]
+    public FP FP_Atan2() => FP.Atan2(a, b);
+
+    [Benchmark]
+    public bool FP_Approximately() => FP.Approximately(a, b);
+
+    [Benchmark]
+    public string FP_ToString() => a.ToString();
+
+    #region 三角函数批量测试（模拟旋转）
+
+    [Benchmark]
+    public FP Trigonometric_BatchSin()
+    {
+        FP sum = FP._0;
+        FP angle = FP._0;
+        FP increment = FP._0_01;  // 0.01
+        
+        for (int i = 0; i < 360; i++)
+        {
+            sum += FP.Sin(angle);
+            angle += increment;
+        }
+        return sum;
+    }
+
+    [Benchmark]
+    public FP Trigonometric_BatchSinFast()
+    {
+        FP sum = FP._0;
+        FP angle = FP._0;
+        FP increment = FP._0_01;  // 0.01
+        
+        for (int i = 0; i < 360; i++)
+        {
+            sum += FP.SinFast(angle);
+            angle += increment;
+        }
+        return sum;
+    }
+
+    #endregion
+
+    #region 与 float 三角函数对比
+
+    [Benchmark]
+    public float Float_Sin()
+    {
+        float sum = 0;
+        float angle = 0;
+        float increment = 0.01f;
+        
+        for (int i = 0; i < 360; i++)
+        {
+            sum += MathF.Sin(angle);
+            angle += increment;
+        }
+        return sum;
+    }
+
+    [Benchmark]
+    public float Float_Cos()
+    {
+        float sum = 0;
+        float angle = 0;
+        float increment = 0.01f;
+        
+        for (int i = 0; i < 360; i++)
+        {
+            sum += MathF.Cos(angle);
+            angle += increment;
+        }
+        return sum;
+    }
+
+    [Benchmark]
+    public float Float_Atan2()
+    {
+        float sum = 0;
+        for (int i = 0; i < 100; i++)
+        {
+            sum += MathF.Atan2(fa, fb);
+        }
+        return sum;
+    }
+
+    #endregion
+
+    #region 运算链性能对比
+
+    [Benchmark(Baseline = true)]
+    public float Float_ComplexChain()
+    {
+        float result = fa;
+        for (int i = 0; i < 1000; i++)
+        {
+            result = (result * fb + 3.14159f) / 2.0f - 1.5f;
+            result = result < -32768 ? -32768 : (result > 32768 ? 32768 : result);
+        }
+        return result;
+    }
+
+    [Benchmark]
+    public FP FP_ComplexChain()
+    {
+        FP result = a;
+        for (int i = 0; i < 1000; i++)
+        {
+            result = (result * b + FP.Pi) / FP._2 - FP._1_50;
+            result = FP.Clamp(result, FP.UseableMin, FP.UseableMax);
+        }
+        return result;
+    }
+
+    #endregion
+
+    #region 内存分配测试
+
+    [Benchmark]
+    public int FP_ToStringAllocations()
+    {
+        int total = 0;
+        for (int i = 0; i < 100; i++)
+        {
+            string s = a.ToString();
+            total += s.Length;
+        }
+        return total;
+    }
+
+    #endregion
+
+    #endregion
 }
 
 /// <summary>
