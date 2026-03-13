@@ -11,7 +11,7 @@ namespace Lattice.Math
 {
     /// <summary>
     /// 定点数数学辅助类
-    /// <para>参考 FrameSyncEngine 设计，提供高性能数学运算</para>
+    /// <para>采用 FrameSyncEngine 纯整数算法，无浮点运算，严格跨平台确定性</para>
     /// </summary>
     public static class FPMath
     {
@@ -34,69 +34,95 @@ namespace Lattice.Math
 
         #endregion
 
-        #region 查找表
+        #region Sqrt 实现（FrameSync 风格纯整数算法）
 
         /// <summary>
-        /// 数学查找表（延迟初始化）
-        /// </summary>
-        public static class Lut
-        {
-            /// <summary>平方根查找表 [0, 65536]，结果格式 Q16.16</summary>
-            public static readonly ushort[] Sqrt = InitSqrtLut();
-
-            private static ushort[] InitSqrtLut()
-            {
-                var table = new ushort[65537];
-                for (int i = 0; i <= 65536; i++)
-                {
-                    // sqrt(i / 65536) * 65536，四舍五入
-                    table[i] = (ushort)(System.Math.Sqrt(i / 65536.0) * 65536.0 + 0.5);
-                }
-                return table;
-            }
-        }
-
-        #endregion
-
-        #region Sqrt 实现（简化版，使用系统 Math.Sqrt 后转换）
-
-        /// <summary>
-        /// 计算平方根
-        /// <para>使用 double 计算后转换（简化实现，后续可优化为纯整数算法）</para>
+        /// 计算平方根 - 纯整数查表法
+        /// <para>FrameSync 风格实现：查表 + 指数分解，无浮点运算</para>
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static FP Sqrt(FP value)
         {
             if (value.RawValue <= 0) return FP.Zero;
-            
-            // 转换为 double 计算，再转回 FP
-            // 注意：这使用了浮点运算，但在初始化/计算时是可接受的
-            // 对于严格的帧同步，应该使用纯整数算法
-            double d = value.RawValue / 65536.0;
-            double sqrt = System.Math.Sqrt(d);
-            return FP.FromRaw((long)(sqrt * 65536.0));
+            return FP.FromRaw(SqrtRaw(value.RawValue));
         }
 
         /// <summary>
-        /// 获取平方根的近似分解（用于免 Sqrt 归一化）
-        /// <para>FrameSync 风格算法</para>
+        /// 计算平方根（原始值）- 纯整数算法
+        /// <para>核心算法来自 FrameSyncEngine:</para>
+        /// <para>1. 小值 (<= 65536): 直接查表，结果右移 6 位</para>
+        /// <para>2. 大值: 分解为 mantissa * 2^exponent，分别处理</para>
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static long SqrtRaw(long x)
+        {
+            if (x <= 65536L)
+            {
+                if (x < 0)
+                {
+                    throw new ArgumentOutOfRangeException(nameof(x), $"平方根输入不能为负数: {x}");
+                }
+                // 小值直接查表，右移 6 位去除额外精度
+                return FPSqrtLut.Table[x] >> FPSqrtLut.AdditionalPrecisionBits;
+            }
+
+            // 大值处理：分解尾数和指数
+            // x = raw * 2^exponent, 其中 raw 在 [0, 65536] 范围内
+            long raw = x;
+            int log2 = 0;
+
+            // 手动计算 log2（找最高有效位）
+            if ((raw >> 32) != 0L) { raw >>= 32; log2 += 32; }
+            if ((raw >> 16) != 0L) { raw >>= 16; log2 += 16; }
+            if ((raw >> 8) != 0L) { raw >>= 8; log2 += 8; }
+            if ((raw >> 4) != 0L) { raw >>= 4; log2 += 4; }
+            if ((raw >> 2) != 0L) { log2 += 2; }
+
+            // 计算指数偏移，使 x >> exponent 落在查找表范围内
+            // log2 - 16: 因为查找表覆盖 16 位小数
+            // + 2: FrameSync 的调整因子
+            int exponent = log2 - 16 + 2;
+            
+            // 查表获取尾数的平方根（带额外精度）
+            int mantissaSqrt = FPSqrtLut.Table[x >> exponent];
+            
+            // 结果 = 尾数平方根 << (exponent / 2)
+            // exponent >> 1 相当于 exponent / 2
+            long result = (long)mantissaSqrt << (exponent >> 1);
+            
+            // 右移 6 位去除额外精度
+            return result >> FPSqrtLut.AdditionalPrecisionBits;
+        }
+
+        /// <summary>
+        /// 获取平方根的指数-尾数分解（用于免 Sqrt 归一化）
+        /// <para>FrameSync 风格算法，纯整数实现</para>
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static SqrtDecomp GetSqrtDecomp(ulong x)
         {
-            // 计算平方根（简化版）
-            double d = x / 65536.0;
-            double sqrt = System.Math.Sqrt(d);
-            long sqrtRaw = (long)(sqrt * 65536.0);
+            if (x <= 65536UL)
+            {
+                return new SqrtDecomp(
+                    exponent: 0,
+                    mantissa: FPSqrtLut.Table[x]);
+            }
+
+            // 计算 log2（找最高有效位）
+            ulong raw = x;
+            int log2 = 0;
             
-            // 分解为 mantissa * 2^exponent
-            int log2 = BitOperations.Log2((ulong)sqrtRaw);
-            int exponent = log2 - 16;
-            if (exponent < 0) exponent = 0;
-            int mantissa = (int)(sqrtRaw >> exponent);
-            if (mantissa < 65536) mantissa = 65536; // 至少为 1.0
+            if ((raw >> 32) != 0UL) { raw >>= 32; log2 += 32; }
+            if ((raw >> 16) != 0UL) { raw >>= 16; log2 += 16; }
+            if ((raw >> 8) != 0UL) { raw >>= 8; log2 += 8; }
+            if ((raw >> 4) != 0UL) { raw >>= 4; log2 += 4; }
+            if ((raw >> 2) != 0UL) { log2 += 2; }
+
+            int exponent = log2 - 16 + 2;
             
-            return new SqrtDecomp(exponent, mantissa);
+            return new SqrtDecomp(
+                exponent: exponent >> 1,
+                mantissa: FPSqrtLut.Table[x >> exponent]);
         }
 
         #endregion

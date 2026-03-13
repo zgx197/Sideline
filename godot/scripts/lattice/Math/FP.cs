@@ -139,7 +139,7 @@ public readonly struct FP : IEquatable<FP>, IComparable<FP>
 
     /// <summary>
     /// 反余弦函数 Acos(x)，x ∈ [-1, 1]，返回值 ∈ [0, π]
-    /// <para>使用查找表实现</para>
+    /// <para>使用预生成查找表，纯整数运算</para>
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static FP Acos(FP x)
@@ -154,25 +154,8 @@ public readonly struct FP : IEquatable<FP>, IComparable<FP>
         if (index < 0) index = 0;
         if (index > 65536) index = 65536;
         
-        // 线性插值获取更精确值
-        return new FP(acos_lut[index]);
-    }
-
-    /// <summary>反余弦查找表 [0, 65536]，输入 [-1, 1] 映射到 [0, 65536]</summary>
-    private static readonly long[] acos_lut = InitAcosLut();
-
-    private static long[] InitAcosLut()
-    {
-        var table = new long[65537];
-        for (int i = 0; i <= 65536; i++)
-        {
-            // i / 32768 - 1 = x ∈ [-1, 1]
-            double x = (i / 32768.0) - 1.0;
-            // acos(x) ∈ [0, π]
-            double acos = System.Math.Acos(x);
-            table[i] = (long)(acos * 65536.0 + 0.5);
-        }
-        return table;
+        // 使用预生成 LUT
+        return new FP(FPAcosLut.Table[index]);
     }
 
     #endregion
@@ -504,7 +487,9 @@ public readonly struct FP : IEquatable<FP>, IComparable<FP>
 #if DEBUG
     [Obsolete("FromString_UNSAFE 内部使用 float.Parse，只能在编辑器使用", true)]
 #endif
+#pragma warning disable RS0030 // 允许 UNSAFE 方法使用被禁止的 API
     public static FP FromString_UNSAFE(string s) => FromFloat_UNSAFE(float.Parse(s));
+#pragma warning restore RS0030
 
     /// <summary>
     /// 调试输出（纯整数实现，确定性）
@@ -816,31 +801,17 @@ public readonly struct FP : IEquatable<FP>, IComparable<FP>
 
     /// <summary>
     /// 计算 atan(x) 当 x ∈ [0, 1]
-    /// <para>使用查表 + 线性插值</para>
+    /// <para>使用预生成查找表 + 线性插值</para>
     /// </summary>
     private static FP AtanSmall(FP x)
     {
-        // 使用预计算的 atan 表
+        // 使用预生成的 atan 表
         // atan(x) for x in [0, 1], result in [0, π/4]
         return AtanTableLookup(x);
     }
 
-    /// <summary>Atan 查找表（输入 [0, 1]，输出 [0, π/4]）</summary>
-    private static readonly long[] AtanTable = InitAtanTable();
-    
+    /// <summary>Atan 表大小常量</summary>
     private const int ATAN_TABLE_SIZE = 256;
-    
-    private static long[] InitAtanTable()
-    {
-        var table = new long[ATAN_TABLE_SIZE + 1];
-        for (int i = 0; i <= ATAN_TABLE_SIZE; i++)
-        {
-            double ratio = (double)i / ATAN_TABLE_SIZE;
-            double angle = System.Math.Atan(ratio);
-            table[i] = (long)(angle * ONE);
-        }
-        return table;
-    }
 
     /// <summary>
     /// 查表 + 线性插值
@@ -850,16 +821,16 @@ public readonly struct FP : IEquatable<FP>, IComparable<FP>
     {
         long r = x.RawValue;
         if (r <= 0) return Zero;
-        if (r >= ONE) return new FP(AtanTable[ATAN_TABLE_SIZE]);
+        if (r >= ONE) return new FP(FPAtanLut.Table[ATAN_TABLE_SIZE]);
         
         // 映射到表索引
         long idxLong = (r * ATAN_TABLE_SIZE) / ONE;
         int idx = (int)idxLong;
-        if (idx >= ATAN_TABLE_SIZE) return new FP(AtanTable[ATAN_TABLE_SIZE]);
+        if (idx >= ATAN_TABLE_SIZE) return new FP(FPAtanLut.Table[ATAN_TABLE_SIZE]);
         
         // 线性插值
-        long lower = AtanTable[idx];
-        long upper = AtanTable[idx + 1];
+        long lower = FPAtanLut.Table[idx];
+        long upper = FPAtanLut.Table[idx + 1];
         long frac = (r * ATAN_TABLE_SIZE) % ONE;
         long interpolated = lower + ((upper - lower) * frac) / ONE;
         

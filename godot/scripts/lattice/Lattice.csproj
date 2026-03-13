@@ -2,15 +2,34 @@
 
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
+    <TargetFrameworkIdentifier>.NETCoreApp</TargetFrameworkIdentifier>
+    <TargetFrameworkVersion>v8.0</TargetFrameworkVersion>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <AssemblyName>Lattice</AssemblyName>
     <RootNamespace>Lattice</RootNamespace>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <GenerateTargetFrameworkAttribute>false</GenerateTargetFrameworkAttribute>
   </PropertyGroup>
 
   <!-- 纯 C# 库，不依赖 Godot -->
   <ItemGroup>
-    <!-- 无外部依赖 -->
+    <!-- 排除工具目录 -->
+    <Compile Remove="Tools\**" />
+    <EmbeddedResource Remove="Tools\**" />
+    <None Remove="Tools\**" />
+  </ItemGroup>
+
+  <!-- LUT 生成目标（可选，取消注释以启用自动 LUT 生成） -->
+  <!-- <Import Project="Lattice.targets" / -->
+
+  <!-- 确定性保护：禁止浮点类型和 Math API -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis.BannedApiAnalyzers" Version="3.3.4">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <AdditionalFiles Include="BannedSymbols.txt" />
   </ItemGroup>
 
 </Project>
