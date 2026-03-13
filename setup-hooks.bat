@@ -6,24 +6,33 @@ echo Setting up Git hooks...
 REM Configure Git to use custom hooks directory
 git config core.hooksPath .githooks
 
-REM Make hook executable (on Windows, this just ensures the file exists)
-if exist .githooks\commit-msg (
-    echo ✓ commit-msg hook configured
-) else (
+REM Check if hooks exist
+set HOOK_OK=true
+
+if not exist .githooks\commit-msg (
     echo ❌ commit-msg hook not found
+    set HOOK_OK=false
+)
+
+if not exist .githooks\pre-commit (
+    echo ❌ pre-commit hook not found
+    set HOOK_OK=false
+)
+
+if "%HOOK_OK%"=="false" (
     exit /b 1
 )
 
+echo ✓ commit-msg hook configured
+echo ✓ pre-commit hook configured
 echo.
 echo Git hooks setup complete!
 echo.
-echo Commit message format will be checked for:
-echo   - Conventional commit format (recommended, not enforced)
-echo   - Supports both Chinese and English
+echo 功能说明：
+echo   1. pre-commit: 提交前自动检查代码格式
+echo   2. commit-msg: 检查提交信息格式（中文）
 echo.
-echo Examples:
-echo   feat(lattice): 添加 SIMD 批处理操作
-echo   fix(ci): 修复 PowerShell 兼容性
-echo   feat(lattice): add SIMD batch operations
+echo 如果格式检查失败，请运行：
+echo   cd godot/scripts/lattice ^&^& dotnet format
 echo.
 pause

@@ -221,6 +221,82 @@ public partial class WindowManager : Node
 
 ---
 
+## 代码格式规范
+
+### 强制要求（AI 必须遵守）
+
+项目配置了严格的代码格式检查（通过 `.editorconfig` 和 CI），**不符合格式的代码会导致 CI 失败**。
+
+#### 格式规则（由 .editorconfig 定义）
+
+| 规则 | 配置 | 说明 |
+|------|------|------|
+| **缩进** | 4 个空格 | 禁止使用 Tab |
+| **换行符** | LF (`\n`) | 统一 Unix 风格换行 |
+| **文件编码** | UTF-8 | 无 BOM |
+| **行尾空格** | 自动移除 | 保持干净 |
+| **文件末尾** | 必须有空行 | 标准 POSIX |
+
+#### 命名规范
+
+| 元素 | 规范 | 示例 |
+|------|------|------|
+| **类名** | PascalCase | `FPLutCacheOptimized`, `WorldPosition` |
+| **方法名** | PascalCase | `AddBatch()`, `ClampBranchless()` |
+| **私有字段** | `_` + camelCase | `_rawValue`, `_sinCosTable` |
+| **常量** | PascalCase | `MulRound`, `CHUNK_SIZE` |
+| **接口** | `I` + PascalCase | `IComponent` |
+| **泛型参数** | `T` + 描述 | `TComponent`, `TSystem` |
+
+#### AI 编码注意事项
+
+1. **缩进必须使用 4 个空格**，不能使用 Tab
+   ```csharp
+   // ✅ 正确
+   public static FP Add(FP a, FP b)
+   {
+       return new FP(a.RawValue + b.RawValue);
+   }
+   
+   // ❌ 错误（Tab 缩进）
+   public static FP Add(FP a, FP b)
+   {
+   	return new FP(a.RawValue + b.RawValue);
+   }
+   ```
+
+2. **花括号必须另起一行**（Allman 风格）
+   ```csharp
+   // ✅ 正确
+   if (condition)
+   {
+       DoSomething();
+   }
+   
+   // ❌ 错误（K&R 风格）
+   if (condition) {
+       DoSomething();
+   }
+   ```
+
+3. **提交前自动格式化**
+   ```bash
+   cd godot/scripts/lattice
+   dotnet format  # AI 应在提交前运行此命令
+   ```
+
+### 格式检查流程
+
+```
+本地开发 ──► dotnet format ──► 提交代码
+                    │
+                    ▼
+              GitHub Actions
+                    │
+              格式检查通过 ──► 继续构建测试
+              格式检查失败 ──► CI 失败，需要修复
+```
+
 ## Git 提交规范
 
 ### 语言要求（⚠️ 严格执行）
