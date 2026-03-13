@@ -85,6 +85,7 @@ jobs:
     # 本地确定性验证（单平台内多次运行一致性）
     - name: Local Determinism Check
       if: matrix.os == 'ubuntu-latest' && matrix.configuration == 'Release'
+      shell: bash
       run: |
         set -e
         cd godot/Lattice.Tests
@@ -171,6 +172,7 @@ jobs:
 
     # 运行确定性测试并捕获输出
     - name: Run Determinism Tests with Checksums
+      shell: bash
       run: |
         cd godot/Lattice.Tests
         
@@ -247,6 +249,7 @@ jobs:
 
     # 检查 SIMD 硬件加速状态
     - name: Check SIMD Hardware Acceleration
+      shell: bash
       run: |
         cd godot/Lattice.Tests
         
@@ -271,6 +274,7 @@ jobs:
 
     # SIMD 与标量结果比较
     - name: SIMD vs Scalar Comparison
+      shell: bash
       run: |
         cd godot/Lattice.Tests
         
@@ -331,6 +335,7 @@ jobs:
 
     # 运行 Unsafe 相关测试
     - name: Run Unsafe Tests
+      shell: bash
       run: |
         cd godot/Lattice.Tests
         dotnet test --no-build --configuration ${{ matrix.configuration }} \
@@ -401,6 +406,7 @@ jobs:
         dotnet build --configuration Release
 
     - name: Test with Coverage
+      shell: bash
       run: |
         cd godot/Lattice.Tests
         dotnet test --configuration Release \
@@ -413,6 +419,7 @@ jobs:
       run: dotnet tool install --global dotnet-reportgenerator-globaltool
 
     - name: Generate HTML Report
+      shell: bash
       run: |
         cd godot/Lattice.Tests
         reportgenerator \
@@ -641,6 +648,7 @@ jobs:
         git diff --staged --stat
     
     - name: Commit and Push
+      shell: bash
       run: |
         set -x
         

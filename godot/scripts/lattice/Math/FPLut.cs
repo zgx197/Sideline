@@ -226,7 +226,9 @@ namespace Lattice.Math
             for (int i = 0; i < 4096; i++)
             {
                 double angle = i * System.Math.PI * 2 / 4096;
+#pragma warning disable RS0030 // LUT 生成是确定性的，允许使用 Math 函数
                 table[i] = (long)(System.Math.Tan(angle) * ONE);
+#pragma warning restore RS0030
             }
             return table;
         }
@@ -240,7 +242,9 @@ namespace Lattice.Math
                 double x = (i - 32768) / 32768.0; // [-1, 1]
                 if (x < -1) x = -1;
                 if (x > 1) x = 1;
+#pragma warning disable RS0030 // LUT 生成是确定性的，允许使用 Math 函数
                 table[i] = (long)(System.Math.Asin(x) * ONE);
+#pragma warning restore RS0030
             }
             return table;
         }
