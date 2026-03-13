@@ -113,6 +113,15 @@ public readonly struct FP : IEquatable<FP>, IComparable<FP>
         public const long _PI = 205887;
         public const long _2Pi = 411774;
         public const long _PiHalf = 102943;
+        
+        // 角度转换常量
+        public const long _Deg2Rad = 1144;      // π/180 ≈ 0.0174533
+        public const long _Rad2Deg = 3754936;   // 180/π ≈ 57.2958
+        
+        // 极值常量
+        public const long _MaxValue = 3037000499L;  // UseableMax
+        public const long _MinValue = -3037000499L; // UseableMin
+        public const long _Epsilon = 1;             // 最小精度
     }
 
     #endregion
