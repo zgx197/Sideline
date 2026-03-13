@@ -223,20 +223,38 @@ public partial class WindowManager : Node
 
 ## Git 提交规范
 
-### 语言要求
+### 语言要求（⚠️ 严格执行）
 
-**AI 助手生成 Commit Message 时优先使用中文**，以便开发者（中文母语）理解。英文非必须，清晰表达即可。
+**AI 助手生成 Commit Message 时必须使用中文**，尽量少用或不用英文。类型关键字（feat/fix/docs等）可保留英文，描述部分必须用中文。
 
 ```bash
-# ✅ 推荐示例（中文）
+# ✅ 正确示例（纯中文或中文为主）
 feat(lattice): 添加 SIMD 整数批处理操作
 fix(ci): 修复 PowerShell 兼容性问题
 docs: 更新 README 性能基准测试
+refactor: 重构 FP 乘法运算逻辑
 
-# ✅ 也可接受（英文）
+# ⚠️ 避免（英文过多）
 feat(lattice): add SIMD integer batch operations
 fix(ci): resolve PowerShell compatibility issues
+
+# ❌ 禁止（纯英文）
+feat(lattice): implement SIMD batch processing with hardware acceleration
 ```
+
+### 类型关键字（保留英文）
+
+| 关键字 | 中文含义 | 使用场景 |
+|--------|----------|----------|
+| `feat` | 新功能 | 添加新功能、新模块 |
+| `fix` | 修复 | 修复 Bug、问题 |
+| `docs` | 文档 | 更新文档、注释 |
+| `style` | 格式 | 代码格式化、样式调整 |
+| `refactor` | 重构 | 重构代码，不修改功能 |
+| `perf` | 性能 | 性能优化 |
+| `test` | 测试 | 添加或修改测试 |
+| `ci` | 持续集成 | CI/CD 配置修改 |
+| `chore` | 构建 | 构建工具、依赖更新 |
 
 ### Commit Message 格式
 
@@ -271,17 +289,33 @@ fix(ci): resolve PowerShell compatibility issues
 - 不超过 72 字符
 - 不加句号
 
-### 完整示例（中文）
+### 完整示例（纯中文）
 
 ```bash
 feat(lattice): 添加 WorldPosition 无限世界坐标系统
 
-- 实现基于 Chunk 的坐标系统（CHUNK_SIZE = 1024）
+- 实现基于 Chunk 的坐标系统（块大小 = 1024）
 - 使用位运算实现无分支溢出处理
-- 包含 45 个跨 Chunk 场景的单元测试
+- 包含 45 个跨块场景的单元测试
+- 支持负坐标和超大世界
 
-Refs: #45
+关联需求: #45
 ```
+
+### 常用中文描述词汇
+
+| 中文 | 使用场景 |
+|------|----------|
+| 添加/新增 | 新功能、新文件 |
+| 修复 | Bug 修复 |
+| 更新 | 文档、配置修改 |
+| 重构 | 代码重构 |
+| 优化 | 性能、逻辑改进 |
+| 删除/移除 | 删除代码、文件 |
+| 调整 | 参数、配置微调 |
+| 实现 | 完成功能开发 |
+| 引入 | 引入新依赖、新机制 |
+| 支持 | 添加新特性支持 |
 
 ---
 

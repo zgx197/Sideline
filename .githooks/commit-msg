@@ -1,7 +1,7 @@
 #!/bin/bash
 #
 # Git commit-msg hook
-# 检查提交信息格式（允许中文或英文）
+# 检查提交信息格式（中文优先）
 #
 
 # 获取提交信息文件路径
@@ -20,26 +20,28 @@ if echo "$COMMIT_MSG" | grep -E "^(fixup|squash)!" > /dev/null; then
     exit 0
 fi
 
-# 检查提交信息格式（可选警告）
-# 格式: type(scope): subject
+# 检查提交信息格式
 if ! echo "$COMMIT_MSG" | grep -E '^(feat|fix|docs|style|refactor|perf|test|ci|chore|revert)(\([a-z-]+\))?: .+' > /dev/null; then
     echo "⚠️  提示: Commit message 格式建议遵循约定"
     echo ""
-    echo "推荐格式: <type>(<scope>): <subject>"
+    echo "推荐格式: <类型>(<范围>): <中文描述>"
     echo ""
-    echo "Valid types: feat, fix, docs, style, refactor, perf, test, ci, chore, revert"
+    echo "类型说明:"
+    echo "  feat     - 新功能"
+    echo "  fix      - 修复"
+    echo "  docs     - 文档"
+    echo "  refactor - 重构"
+    echo "  perf     - 性能优化"
+    echo "  test     - 测试"
+    echo "  ci       - 持续集成"
+    echo "  chore    - 构建/工具"
     echo ""
-    echo "中文示例:"
+    echo "✅ 推荐示例:"
     echo "  feat(lattice): 添加 SIMD 批处理操作"
     echo "  fix(ci): 修复 PowerShell 兼容性"
     echo "  docs: 更新 README 基准测试"
+    echo "  refactor: 重构 FP 乘法逻辑"
     echo ""
-    echo "英文示例:"
-    echo "  feat(lattice): add SIMD batch operations"
-    echo "  fix(ci): resolve PowerShell compatibility"
-    echo ""
-    # 不阻止提交，只提供建议
 fi
 
-echo "✓ Commit message check passed."
 exit 0
