@@ -32,4 +32,13 @@
     <AdditionalFiles Include="BannedSymbols.txt" />
   </ItemGroup>
 
+  <!-- Swizzle Source Generator -->
+  <ItemGroup>
+    <ProjectReference 
+      Include="Tools\SwizzleGenerator\SwizzleGenerator.csproj" 
+      OutputItemType="Analyzer"
+      ReferenceOutputAssembly="false" />
+    <Compile Include="Tools\SwizzleGenerator\GenerateSwizzleAttribute.cs" />
+  </ItemGroup>
+
 </Project>

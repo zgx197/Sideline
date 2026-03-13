@@ -5,6 +5,7 @@
 
 using System;
 using System.Runtime.CompilerServices;
+using Lattice.Generators;
 
 namespace Lattice.Math
 {
@@ -12,7 +13,8 @@ namespace Lattice.Math
     /// 2D 定点数向量
     /// <para>参考 FrameSyncEngine 设计，高性能实现</para>
     /// </summary>
-    public readonly struct FPVector2 : IEquatable<FPVector2>
+    [GenerateSwizzle(MaxDimension = 3, IncludeZero = true)]
+    public readonly partial struct FPVector2 : IEquatable<FPVector2>
     {
         #region 字段
 
@@ -86,34 +88,8 @@ namespace Lattice.Math
 
         #endregion
 
-        #region Swizzle (2D → 2D)
-
-        /// <summary>(X, X)</summary>
-        public readonly FPVector2 XX => new(X, X);
-
-        /// <summary>(X, Y) - 自身</summary>
-        public readonly FPVector2 XY => this;
-
-        /// <summary>(Y, X) - 交换</summary>
-        public readonly FPVector2 YX => new(Y, X);
-
-        /// <summary>(Y, Y)</summary>
-        public readonly FPVector2 YY => new(Y, Y);
-
-        #endregion
-
-        #region Swizzle (2D → 3D)
-
-        /// <summary>(X, Y, 0) - XY 平面</summary>
-        public readonly FPVector3 XYO => new(X, Y, FP._0);
-
-        /// <summary>(X, 0, Y) - XZ 平面</summary>
-        public readonly FPVector3 XOY => new(X, FP._0, Y);
-
-        /// <summary>(0, X, Y) - YZ 平面</summary>
-        public readonly FPVector3 OXY => new(FP._0, X, Y);
-
-        #endregion
+        // Swizzle 属性由 Source Generator 自动生成
+        // 参见 Tools/SwizzleGenerator
 
         #region 属性
 

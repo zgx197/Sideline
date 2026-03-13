@@ -5,6 +5,7 @@
 
 using System;
 using System.Runtime.CompilerServices;
+using Lattice.Generators;
 
 namespace Lattice.Math
 {
@@ -12,7 +13,8 @@ namespace Lattice.Math
     /// 3D 定点数向量
     /// <para>参考 FrameSyncEngine 设计，高性能实现</para>
     /// </summary>
-    public readonly struct FPVector3 : IEquatable<FPVector3>
+    [GenerateSwizzle(MaxDimension = 4, IncludeZero = true)]
+    public readonly partial struct FPVector3 : IEquatable<FPVector3>
     {
         #region 字段
 
@@ -109,129 +111,8 @@ namespace Lattice.Math
 
         #endregion
 
-        #region Swizzle (3D → 2D) - 9个
-
-        /// <summary>(X, X)</summary>
-        public readonly FPVector2 XX => new(X, X);
-
-        /// <summary>(X, Y)</summary>
-        public readonly FPVector2 XY => new(X, Y);
-
-        /// <summary>(X, Z)</summary>
-        public readonly FPVector2 XZ => new(X, Z);
-
-        /// <summary>(Y, X)</summary>
-        public readonly FPVector2 YX => new(Y, X);
-
-        /// <summary>(Y, Y)</summary>
-        public readonly FPVector2 YY => new(Y, Y);
-
-        /// <summary>(Y, Z)</summary>
-        public readonly FPVector2 YZ => new(Y, Z);
-
-        /// <summary>(Z, X)</summary>
-        public readonly FPVector2 ZX => new(Z, X);
-
-        /// <summary>(Z, Y)</summary>
-        public readonly FPVector2 ZY => new(Z, Y);
-
-        /// <summary>(Z, Z)</summary>
-        public readonly FPVector2 ZZ => new(Z, Z);
-
-        #endregion
-
-        #region Swizzle (3D → 3D) - X开头 (9个)
-
-        /// <summary>(X, X, X)</summary>
-        public readonly FPVector3 XXX => new(X, X, X);
-
-        /// <summary>(X, X, Y)</summary>
-        public readonly FPVector3 XXY => new(X, X, Y);
-
-        /// <summary>(X, X, Z)</summary>
-        public readonly FPVector3 XXZ => new(X, X, Z);
-
-        /// <summary>(X, Y, X)</summary>
-        public readonly FPVector3 XYX => new(X, Y, X);
-
-        /// <summary>(X, Y, Y)</summary>
-        public readonly FPVector3 XYY => new(X, Y, Y);
-
-        /// <summary>(X, Y, Z) - 自身</summary>
-        public readonly FPVector3 XYZ => this;
-
-        /// <summary>(X, Z, X)</summary>
-        public readonly FPVector3 XZX => new(X, Z, X);
-
-        /// <summary>(X, Z, Y)</summary>
-        public readonly FPVector3 XZY => new(X, Z, Y);
-
-        /// <summary>(X, Z, Z)</summary>
-        public readonly FPVector3 XZZ => new(X, Z, Z);
-
-        #endregion
-
-        #region Swizzle (3D → 3D) - Y开头 (9个)
-
-        /// <summary>(Y, X, X)</summary>
-        public readonly FPVector3 YXX => new(Y, X, X);
-
-        /// <summary>(Y, X, Y)</summary>
-        public readonly FPVector3 YXY => new(Y, X, Y);
-
-        /// <summary>(Y, X, Z)</summary>
-        public readonly FPVector3 YXZ => new(Y, X, Z);
-
-        /// <summary>(Y, Y, X)</summary>
-        public readonly FPVector3 YYX => new(Y, Y, X);
-
-        /// <summary>(Y, Y, Y)</summary>
-        public readonly FPVector3 YYY => new(Y, Y, Y);
-
-        /// <summary>(Y, Y, Z)</summary>
-        public readonly FPVector3 YYZ => new(Y, Y, Z);
-
-        /// <summary>(Y, Z, X)</summary>
-        public readonly FPVector3 YZX => new(Y, Z, X);
-
-        /// <summary>(Y, Z, Y)</summary>
-        public readonly FPVector3 YZY => new(Y, Z, Y);
-
-        /// <summary>(Y, Z, Z)</summary>
-        public readonly FPVector3 YZZ => new(Y, Z, Z);
-
-        #endregion
-
-        #region Swizzle (3D → 3D) - Z开头 (9个)
-
-        /// <summary>(Z, X, X)</summary>
-        public readonly FPVector3 ZXX => new(Z, X, X);
-
-        /// <summary>(Z, X, Y)</summary>
-        public readonly FPVector3 ZXY => new(Z, X, Y);
-
-        /// <summary>(Z, X, Z)</summary>
-        public readonly FPVector3 ZXZ => new(Z, X, Z);
-
-        /// <summary>(Z, Y, X)</summary>
-        public readonly FPVector3 ZYX => new(Z, Y, X);
-
-        /// <summary>(Z, Y, Y)</summary>
-        public readonly FPVector3 ZYY => new(Z, Y, Y);
-
-        /// <summary>(Z, Y, Z)</summary>
-        public readonly FPVector3 ZYZ => new(Z, Y, Z);
-
-        /// <summary>(Z, Z, X)</summary>
-        public readonly FPVector3 ZZX => new(Z, Z, X);
-
-        /// <summary>(Z, Z, Y)</summary>
-        public readonly FPVector3 ZZY => new(Z, Z, Y);
-
-        /// <summary>(Z, Z, Z)</summary>
-        public readonly FPVector3 ZZZ => new(Z, Z, Z);
-
-        #endregion
+        // Swizzle 属性由 Source Generator 自动生成
+        // 参见 Tools/SwizzleGenerator
 
         #region 属性
 
