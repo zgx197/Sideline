@@ -1,0 +1,6 @@
+- name: 性能优化指南
+  href: performance.md
+- name: 确定性编程技巧
+  href: determinism.md
+- name: LUT 系统说明
+  href: lut-system.md

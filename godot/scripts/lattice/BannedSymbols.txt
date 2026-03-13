@@ -1,0 +1,44 @@
+# Lattice 禁止使用的 API 列表
+# 格式: 文档ID; 禁止原因
+
+# 禁止浮点类型
+T:System.Single; 禁止使用 float 类型，请使用 FP 替代
+T:System.Double; 禁止使用 double 类型，请使用 FP 替代
+
+# 禁止 Math 类方法（使用 FPMath 替代）
+M:System.Math.Abs(System.Double); 使用 FPMath.Abs
+M:System.Math.Acos(System.Double); 使用 FP.Acos
+M:System.Math.Asin(System.Double); 使用 FP.Asin
+M:System.Math.Atan(System.Double); 使用 FP.Atan
+M:System.Math.Atan2(System.Double,System.Double); 使用 FP.Atan2
+M:System.Math.Ceiling(System.Double); 使用 FPMath.Ceiling
+M:System.Math.Cos(System.Double); 使用 FP.Cos
+M:System.Math.Exp(System.Double); 使用 FP.Exp
+M:System.Math.Floor(System.Double); 使用 FPMath.Floor
+M:System.Math.Log(System.Double); 使用 FP.Log
+M:System.Math.Log10(System.Double); 使用 FP.Log
+M:System.Math.Max(System.Double,System.Double); 使用 FPMath.Max
+M:System.Math.Min(System.Double,System.Double); 使用 FPMath.Min
+M:System.Math.Pow(System.Double,System.Double); 使用 FP.Pow
+M:System.Math.Round(System.Double); 使用 FPMath.Round
+M:System.Math.Sin(System.Double); 使用 FP.Sin
+M:System.Math.Sqrt(System.Double); 使用 FPMath.Sqrt
+M:System.Math.Tan(System.Double); 使用 FP.Tan
+M:System.Math.Truncate(System.Double); 使用 FPMath 截断方法
+
+# 禁止 MathF 类方法（.NET Core/.NET 5+）
+T:System.MathF; 禁止使用 MathF，请使用 FPMath 或 FP
+
+# 禁止 float/double 的 Parse 和 TryParse
+M:System.Single.Parse(System.String); 使用 FP.FromString_UNSAFE（仅在编辑器）或预计算 Raw 值
+M:System.Double.Parse(System.String); 使用 FP.FromString_UNSAFE（仅在编辑器）或预计算 Raw 值
+M:System.Single.TryParse(System.String,System.Single@); 禁止使用
+M:System.Double.TryParse(System.String,System.Double@); 禁止使用
+
+# 禁止 float/double 的 ToString（使用 FP.ToString）
+M:System.Single.ToString; 使用 FP.ToString
+M:System.Double.ToString; 使用 FP.ToString
+
+# 禁止 Convert 类的浮点转换
+M:System.Convert.ToSingle(System.Object); 禁止使用
+M:System.Convert.ToDouble(System.Object); 禁止使用

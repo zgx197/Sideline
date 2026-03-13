@@ -1,0 +1,39 @@
+#!/bin/bash
+#
+# Git pre-commit hook
+# 在提交前自动检查代码格式
+#
+
+echo "=== 代码格式检查 ==="
+
+# 检查是否在正确的目录
+if [ ! -f "godot/scripts/lattice/Lattice.csproj" ]; then
+    echo "❌ 错误：请在项目根目录运行"
+    exit 1
+fi
+
+# 检查 dotnet 是否可用
+if ! command -v dotnet &> /dev/null; then
+    echo "❌ 错误：未找到 dotnet 命令"
+    exit 1
+fi
+
+# 运行格式检查
+cd godot/scripts/lattice
+
+if dotnet format --verify-no-changes --verbosity quiet; then
+    echo "✅ 代码格式检查通过"
+    exit 0
+else
+    echo ""
+    echo "❌ 代码格式检查失败！"
+    echo ""
+    echo "请运行以下命令修复格式："
+    echo ""
+    echo "  cd godot/scripts/lattice"
+    echo "  dotnet format"
+    echo ""
+    echo "然后重新提交。"
+    echo ""
+    exit 1
+fi
