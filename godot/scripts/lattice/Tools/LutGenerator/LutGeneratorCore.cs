@@ -17,7 +17,7 @@ namespace Lattice.Tools
         public const int SQRT_TABLE_SIZE = 65537;    // [0, 65536]
         public const int ACOS_TABLE_SIZE = 65537;    // [-1, 1] 映射到 [0, 65536]
         public const int ATAN_TABLE_SIZE = 256;      // [0, 1] -> [0, π/4]
-        public const int SINCOS_TABLE_SIZE = 1024;   // [0, 2π)
+        public const int SINCOS_TABLE_SIZE = 4096;   // [0, 2π) - FrameSync 风格高精度
         public const int TAN_TABLE_SIZE = 1024;      // [0, 2π)
         
         // FrameSync 风格额外精度

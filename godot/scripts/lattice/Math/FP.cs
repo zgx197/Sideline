@@ -575,7 +575,7 @@ public readonly struct FP : IEquatable<FP>, IComparable<FP>
     #region 三角函数（查找表实现，帧同步必需）
 
     /// <summary>三角函数查找表大小（2的幂次，便于位运算取模）</summary>
-    private const int SIN_TABLE_SIZE = 1024;
+    private const int SIN_TABLE_SIZE = 4096;  // FrameSync 风格高精度表
     
     /// <summary>2π 对应的 RawValue</summary>
     private static readonly long TWO_PI_RAW = Pi2.RawValue;
