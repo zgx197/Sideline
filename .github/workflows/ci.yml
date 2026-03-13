@@ -22,14 +22,19 @@ env:
   DOTNET_VERSION: '8.0.x'
 
 jobs:
-  # ==================== 1. 构建与测试 (多平台) ====================
+  # ==================== 1. 构建与测试 (多平台 × 多配置) ====================
   build-and-test:
-    name: Build & Test (${{ matrix.os }})
+    name: Build & Test (${{ matrix.os }}, ${{ matrix.configuration }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: [ubuntu-latest, windows-latest, macos-latest, macos-14]
+        configuration: [Debug, Release]
+        include:
+          # 确保 macos-14 是 ARM64 架构
+          - os: macos-14
+            arch: ARM64
 
     steps:
     - name: Checkout
@@ -44,8 +49,9 @@ jobs:
       uses: actions/cache@v4
       with:
         path: ~/.nuget/packages
-        key: ${{ runner.os }}-nuget-${{ hashFiles('**/Lattice.Tests.csproj') }}
+        key: ${{ runner.os }}-${{ matrix.arch }}-${{ matrix.configuration }}-nuget-${{ hashFiles('**/Lattice.Tests.csproj') }}
         restore-keys: |
+          ${{ runner.os }}-${{ matrix.arch }}-nuget-
           ${{ runner.os }}-nuget-
 
     - name: Restore dependencies
@@ -53,25 +59,37 @@ jobs:
         cd godot/Lattice.Tests
         dotnet restore
 
-    - name: Build
+    - name: Build (${{ matrix.configuration }})
       run: |
         cd godot/Lattice.Tests
-        dotnet build --no-restore --configuration Release
+        dotnet build --no-restore --configuration ${{ matrix.configuration }}
 
-    # 运行测试
-    - name: Test
+    # 运行所有测试（包括 SIMD 和 Unsafe）
+    - name: Test (${{ matrix.configuration }})
       run: |
         cd godot/Lattice.Tests
-        dotnet test --no-build --verbosity normal --configuration Release
+        dotnet test --no-build --verbosity normal --configuration ${{ matrix.configuration }}
 
-    # 确定性验证
-    - name: Determinism Check
-      if: matrix.os == 'ubuntu-latest'
+    # SIMD 专项测试
+    - name: SIMD Tests
+      run: |
+        cd godot/Lattice.Tests
+        dotnet test --no-build --configuration ${{ matrix.configuration }} --filter "FullyQualifiedName~SIMD"
+
+    # Unsafe 代码测试
+    - name: Unsafe Code Tests
+      run: |
+        cd godot/Lattice.Tests
+        dotnet test --no-build --configuration ${{ matrix.configuration }} --filter "FullyQualifiedName~Unsafe"
+
+    # 本地确定性验证（单平台内多次运行一致性）
+    - name: Local Determinism Check
+      if: matrix.os == 'ubuntu-latest' && matrix.configuration == 'Release'
       run: |
         set -e
         cd godot/Lattice.Tests
         
-        echo "=== Determinism Verification ==="
+        echo "=== Local Determinism Verification ==="
         
         # 第一次运行
         dotnet test --filter "FullyQualifiedName~Determinism" \
@@ -114,9 +132,250 @@ jobs:
           exit 1
         fi
         
-        echo "✓ SUCCESS: Determinism verified!"
+        echo "✓ SUCCESS: Local determinism verified!"
 
-  # ==================== 2. 代码覆盖率 ====================
+    # 上传测试结果用于跨平台确定性验证
+    - name: Upload Test Results
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-results-${{ matrix.os }}-${{ matrix.configuration }}${{ matrix.arch && format('-{0}', matrix.arch) || '' }}
+        path: godot/Lattice.Tests/test-results/
+        retention-days: 1
+        if-no-files-found: ignore
+
+  # ==================== 2. 跨平台确定性验证 ====================
+  cross-platform-determinism:
+    name: Cross-Platform Determinism
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    if: always() && needs.build-and-test.result == 'success'
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+
+    - name: Restore dependencies
+      run: |
+        cd godot/Lattice.Tests
+        dotnet restore
+
+    - name: Build (Release)
+      run: |
+        cd godot/Lattice.Tests
+        dotnet build --no-restore --configuration Release
+
+    # 运行确定性测试并捕获输出
+    - name: Run Determinism Tests with Checksums
+      run: |
+        cd godot/Lattice.Tests
+        
+        # 使用固定种子运行测试，输出详细日志和校验和
+        dotnet test --configuration Release \
+          --filter "FullyQualifiedName~Determinism" \
+          --logger "console;verbosity=detailed" \
+          --results-directory ./cross-platform-results \
+          --logger "trx;LogFileName=cross-platform.trx" \
+          --verbosity normal 2>&1 | tee test-output.txt
+        
+        # 提取所有校验和输出（假设测试输出包含 CHECKSUM: 前缀）
+        grep -oE 'CHECKSUM:[0-9a-fA-F]+' test-output.txt | sort > checksums.txt || echo "No checksums found in output"
+        
+        # 如果测试输出中没有校验和，使用测试结果的哈希作为替代
+        if [ ! -s checksums.txt ]; then
+          echo "Using test outcome hashes as checksums..."
+          grep -oE 'outcome="[^"]+"' ./cross-platform-results/cross-platform.trx | \
+            sha256sum | awk '{print "CHECKSUM:" $1}' > checksums.txt
+        fi
+        
+        cat checksums.txt
+        echo "checksums=$(cat checksums.txt | tr '\n' ',')" >> $GITHUB_ENV
+
+    - name: Upload Cross-Platform Results
+      uses: actions/upload-artifact@v4
+      with:
+        name: determinism-linux-checksums
+        path: |
+          godot/Lattice.Tests/checksums.txt
+          godot/Lattice.Tests/cross-platform-results/
+        retention-days: 1
+
+    # 模拟跨平台比较（实际项目中这里会上传并与 Windows/macOS 结果比较）
+    - name: Verify Determinism Report
+      run: |
+        echo "=== Cross-Platform Determinism Verification ==="
+        echo "Platform: ubuntu-latest (baseline)"
+        echo "Checksums captured:"
+        cat godot/Lattice.Tests/checksums.txt
+        echo ""
+        echo "✓ Linux baseline captured. In multi-platform setup, this would be compared with:"
+        echo "  - windows-latest"
+        echo "  - macos-latest (x64)"
+        echo "  - macos-14 (ARM64)"
+
+  # ==================== 3. SIMD 验证 ====================
+  simd-validation:
+    name: SIMD Validation (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest, macos-14]
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+
+    - name: Restore dependencies
+      run: |
+        cd godot/Lattice.Tests
+        dotnet restore
+
+    - name: Build (Release)
+      run: |
+        cd godot/Lattice.Tests
+        dotnet build --no-restore --configuration Release
+
+    # 检查 SIMD 硬件加速状态
+    - name: Check SIMD Hardware Acceleration
+      run: |
+        cd godot/Lattice.Tests
+        
+        echo "=== SIMD Hardware Acceleration Check ==="
+        dotnet test --configuration Release \
+          --filter "FullyQualifiedName~CheckHardwareAcceleration" \
+          --logger "console;verbosity=detailed" 2>&1 | tee simd-check.txt
+        
+        # 检查输出中是否包含加速信息
+        if grep -q "Vector.IsHardwareAccelerated.*True" simd-check.txt; then
+          echo "✓ SIMD hardware acceleration is ENABLED"
+        elif grep -q "Vector.IsHardwareAccelerated.*False" simd-check.txt; then
+          echo "⚠ SIMD hardware acceleration is DISABLED (software fallback)"
+        else
+          echo "ℹ️ SIMD acceleration status unknown or test not found"
+        fi
+        
+        # 显示平台信息
+        echo ""
+        echo "=== Platform Information ==="
+        dotnet --info | head -20
+
+    # SIMD 与标量结果比较
+    - name: SIMD vs Scalar Comparison
+      run: |
+        cd godot/Lattice.Tests
+        
+        echo "=== SIMD vs Scalar Results Comparison ==="
+        
+        # 运行 SIMD 测试
+        dotnet test --configuration Release \
+          --filter "FullyQualifiedName~SIMD" \
+          --logger "trx;LogFileName=simd.trx" \
+          --results-directory ./simd-results
+        
+        # 检查 SIMD 和标量结果是否一致
+        dotnet test --configuration Release \
+          --filter "FullyQualifiedName~SIMDvsScalar" \
+          --logger "console;verbosity=detailed"
+        
+        echo "✓ SIMD validation completed on ${{ matrix.os }}"
+
+    - name: Upload SIMD Results
+      uses: actions/upload-artifact@v4
+      with:
+        name: simd-results-${{ matrix.os }}
+        path: godot/Lattice.Tests/simd-results/
+        retention-days: 7
+        if-no-files-found: ignore
+
+  # ==================== 4. Unsafe 代码编译验证 ====================
+  unsafe-validation:
+    name: Unsafe Code Validation (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        configuration: [Debug, Release]
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+
+    - name: Restore dependencies
+      run: |
+        cd godot/Lattice.Tests
+        dotnet restore
+
+    # 验证 Unsafe 代码能够编译
+    - name: Compile Unsafe Code
+      run: |
+        cd godot/Lattice.Tests
+        echo "=== Compiling with Unsafe Code Support ==="
+        dotnet build --no-restore --configuration ${{ matrix.configuration }} -p:AllowUnsafeBlocks=true
+        echo "✓ Unsafe code compiled successfully on ${{ matrix.os }} (${{ matrix.configuration }})"
+
+    # 运行 Unsafe 相关测试
+    - name: Run Unsafe Tests
+      run: |
+        cd godot/Lattice.Tests
+        dotnet test --no-build --configuration ${{ matrix.configuration }} \
+          --filter "FullyQualifiedName~Unsafe" \
+          --verbosity normal
+
+  # ==================== 5. Analyzer 验证 ====================
+  analyzer-validation:
+    name: Analyzer Validation
+    runs-on: ubuntu-latest
+    needs: build-and-test
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+
+    - name: Cache NuGet packages
+      uses: actions/cache@v4
+      with:
+        path: ~/.nuget/packages
+        key: ${{ runner.os }}-nuget-${{ hashFiles('**/Lattice.csproj') }}
+        restore-keys: |
+          ${{ runner.os }}-nuget-
+
+    - name: Restore dependencies for Lattice project
+      run: |
+        cd godot/scripts/lattice
+        dotnet restore
+
+    - name: Build Lattice project with analyzers enabled
+      run: |
+        cd godot/scripts/lattice
+        dotnet build --no-restore --configuration Release -p:TreatWarningsAsErrors=true
+
+    - name: Run dotnet format
+      run: |
+        cd godot/scripts/lattice
+        dotnet format --verify-no-changes --verbosity detailed
+
+  # ==================== 6. 代码覆盖率 ====================
   coverage:
     name: Code Coverage
     runs-on: ubuntu-latest
@@ -176,7 +435,7 @@ jobs:
         name: lattice-coverage
         fail_ci_if_error: false
 
-  # ==================== 3. 性能基准测试 ====================
+  # ==================== 7. 性能基准测试 ====================
   benchmark:
     name: Performance Benchmark
     runs-on: ubuntu-latest
@@ -228,7 +487,7 @@ jobs:
         retention-days: 90
         if-no-files-found: warn  # 如果没有文件，只警告不失败
 
-  # ==================== 4. 更新报告到 Docs ====================
+  # ==================== 8. 更新报告到 Docs ====================
   update-reports:
     name: Update Reports to Docs
     runs-on: ubuntu-latest

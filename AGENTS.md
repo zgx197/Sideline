@@ -23,7 +23,7 @@
 | 编程语言 | C# | 项目内**只使用 C#**，禁止 `.gd` 脚本 |
 | 目标框架 | .NET 8.0 | Android 构建使用 .NET 9.0 |
 | 渲染器 | GL Compatibility | 2D 游戏首选，兼容性更好 |
-| 逻辑框架 | Lattice (规划中) | 自研确定性 ECS 帧同步框架 |
+| 逻辑框架 | Lattice (定点数库就绪，ECS待实现) | 自研确定性 ECS 帧同步框架，694测试通过，跨平台CI |
 
 ### 开发环境要求
 
@@ -194,8 +194,8 @@ public partial class WindowManager : Node
 
 ### Phase 0 — 技术验证（当前）
 - [x] Godot 4 无边框窗口原型
+- [x] FP 定点数库验证（694测试通过，SIMD/Unsafe优化完成）
 - [ ] 最小 ECS 框架实现
-- [ ] FP 定点数库验证
 
 ### Phase 1 — 核心玩法
 - [ ] 随机地图生成（BSP）

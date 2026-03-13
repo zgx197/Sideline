@@ -1,0 +1,72 @@
+# Copyright (c) 2026 Sideline Authors. All rights reserved.
+# Licensed under GPL-3.0.
+
+name: Documentation
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'godot/scripts/lattice/**'
+      - 'godot/scripts/lattice/docs/**'
+  workflow_dispatch:
+
+env:
+  DOTNET_VERSION: '8.0.x'
+
+jobs:
+  build-docs:
+    name: Build Documentation
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+
+    - name: Install DocFX
+      run: dotnet tool install -g docfx
+
+    - name: Build Project
+      run: dotnet build godot/scripts/lattice/Lattice.csproj -c Release
+
+    - name: Generate Metadata
+      run: |
+        cd godot/scripts/lattice/docs
+        docfx metadata
+
+    - name: Build Site
+      run: |
+        cd godot/scripts/lattice/docs
+        docfx build
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: docs-site
+        path: godot/scripts/lattice/docs/_site/
+
+  deploy-docs:
+    name: Deploy to GitHub Pages
+    runs-on: ubuntu-latest
+    needs: build-docs
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+    - name: Download artifacts
+      uses: actions/download-artifact@v3
+      with:
+        name: docs-site
+        path: _site/
+
+    - name: Deploy to GitHub Pages
+      id: deployment
+      uses: actions/deploy-pages@v2

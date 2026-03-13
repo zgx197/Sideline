@@ -1,0 +1,3561 @@
+<?xml version="1.0"?>
+<doc>
+    <assembly>
+        <name>Lattice</name>
+    </assembly>
+    <members>
+        <member name="T:Lattice.Math.FP">
+            <summary>
+            定点数 (Q48.16)：48位整数 + 16位小数
+            </summary>
+            <remarks>
+            <para>Lattice 定点数系统使用 64 位有符号整数存储，其中：</para>
+            <list type="bullet">
+              <item>48 位：整数部分（范围约 ±140万亿）</item>
+              <item>16 位：小数部分（精度约 0.000015）</item>
+            </list>
+            <para>安全乘法范围：±32,768（两个操作数都需在此范围内）</para>
+            <para>参考：FrameSyncEngine / Photon Quantum 设计</para>
+            <para>用途：确定性帧同步，完全替代 float/double</para>
+            </remarks>
+            <example>
+            基本使用：
+            <code>
+            // 初始化 LUT（游戏启动时）
+            FPLut.InitializeBuiltIn();
+            
+            // 创建定点数
+            FP a = 3.5;                    // 隐式转换
+            FP b = FP.FromRaw(FP.Raw._1_50);  // 使用原始常量
+            
+            // 数学运算
+            FP c = a * b;                // 乘法（四舍五入）
+            FP d = FP.Sqrt(c);           // 平方根
+            FP e = FP.Sin(a);            // 正弦
+            </code>
+            </example>
+            <summary>
+            FP 反三角函数部分 - 使用 LUT 实现确定性计算
+            </summary>
+            <summary>
+            FP 数学工具方法（部分类分离）
+            <para>包含 Abs、Min、Max、Clamp、Lerp、Approximately 等常用数学函数</para>
+            <para>提供分支版本和无分支版本（Branchless），适用于不同性能场景</para>
+            </summary>
+            <remarks>
+            <para><b>分支版本 vs 无分支版本：</b></para>
+            <list type="bullet">
+              <item><b>分支版本（如 <see cref="M:Lattice.Math.FP.Abs(Lattice.Math.FP)"/>）：</b>使用条件语句实现，代码可读性好。当数据分布可预测时（如大部分值为正），现代 CPU 的分支预测能提供良好性能。</item>
+              <item><b>无分支版本（如 <see cref="M:Lattice.Math.FP.AbsBranchless(Lattice.Math.FP)"/>）：</b>使用位运算实现，避免分支预测失败惩罚。适合数据分布随机、不可预测的热点代码路径。</item>
+            </list>
+            <para>性能建议：在性能敏感场景进行基准测试后选择合适版本。</para>
+            </remarks>
+            <summary>
+            定点数字符串解析与格式化（部分类）
+            </summary>
+            <remarks>
+            <para>本文件包含 FP 结构体的字符串相关方法：</para>
+            <list type="bullet">
+              <item>FromString - 确定性解析（安全，可用于运行时）</item>
+              <item>FromString_UNSAFE - 基于 float.Parse（仅编辑器使用）</item>
+              <item>ToString - 格式化输出（纯整数实现）</item>
+            </list>
+            </remarks>
+            <summary>
+            FP 三角函数部分 - 使用 LUT 实现确定性计算
+            </summary>
+        </member>
+        <member name="F:Lattice.Math.FP.FRACTIONAL_BITS">
+            <summary>小数位数量</summary>
+        </member>
+        <member name="F:Lattice.Math.FP.ONE">
+            <summary>比例因子 = 2^16 = 65536</summary>
+        </member>
+        <member name="F:Lattice.Math.FP.MulRound">
+            <summary>乘法舍入常量：0.5 LSB = 2^15</summary>
+            <remarks>
+            用于乘法四舍五入：(a * b + MulRound) >> 16
+            相比截断，精度误差减半
+            </remarks>
+        </member>
+        <member name="F:Lattice.Math.FP.UseableMax">
+            <summary>
+            安全乘法上限：sqrt(long.MaxValue) ≈ 3,037,000,499
+            对应真实值约 46,340
+            <para>两个 FP 都 ≤ UseableMax 时，乘法不会溢出 long</para>
+            </summary>
+        </member>
+        <member name="F:Lattice.Math.FP.UseableMin">
+            <summary>安全乘法下限（对应真实值约 -46,340）</summary>
+        </member>
+        <member name="F:Lattice.Math.FP.Epsilon">
+            <summary>
+            最小精度：1/65536 ≈ 0.000015
+            <para>注意：这是 Q48.16 能表示的最小单位，不是 float.Epsilon 的概念</para>
+            </summary>
+        </member>
+        <member name="F:Lattice.Math.FP.EpsilonDefault">
+            <summary>
+            默认近似比较容差（10倍精度，约 0.00015）
+            <para>用于 Approximately 的默认参数</para>
+            </summary>
+        </member>
+        <member name="P:Lattice.Math.FP.Zero">
+            <summary>零</summary>
+        </member>
+        <member name="P:Lattice.Math.FP.One">
+            <summary>一</summary>
+        </member>
+        <member name="P:Lattice.Math.FP.Two">
+            <summary>二</summary>
+        </member>
+        <member name="P:Lattice.Math.FP.Half">
+            <summary>一半 (0.5)</summary>
+        </member>
+        <member name="P:Lattice.Math.FP.Pi">
+            <summary>π (3.14159...)</summary>
+        </member>
+        <member name="P:Lattice.Math.FP.Pi2">
+            <summary>2π</summary>
+        </member>
+        <member name="P:Lattice.Math.FP.PiHalf">
+            <summary>π/2</summary>
+        </member>
+        <member name="T:Lattice.Math.FP.Raw">
+            <summary>
+            Raw 常量：用于编译期确定的场景
+            <para>命名规范：_整数 或 _整数_小数</para>
+            </summary>
+        </member>
+        <member name="F:Lattice.Math.FP.RawValue">
+            <summary>内部原始值 (Q48.16 格式)</summary>
+        </member>
+        <member name="M:Lattice.Math.FP.#ctor(System.Int64)">
+            <summary>
+            内部构造函数，允许同程序集内的类型创建实例
+            </summary>
+        </member>
+        <member name="M:Lattice.Math.FP.FromRaw(System.Int64)">
+            <summary>
+            从原始值构造 FP（安全的公开 API）
+            </summary>
+            <example>
+            FP angle = FP.FromRaw(FP.Raw._PI);
+            </example>
+        </member>
+        <member name="M:Lattice.Math.FP.op_Explicit(Lattice.Math.FP)~System.Int32">
+            <summary>
+            转换为 int（截断小数部分）
+            <para>如果值超出 int 范围（±2,147,483,647），将抛出 OverflowException</para>
+            </summary>
+            <exception cref="T:System.OverflowException">当值超出 int 范围时抛出</exception>
+        </member>
+        <member name="M:Lattice.Math.FP.op_Multiply(Lattice.Math.FP,Lattice.Math.FP)">
+            <summary>
+            定点数乘法 (a * b / 65536)
+            使用四舍五入，精度更高
+            </summary>
+            <remarks>
+            相比截断版本，精度误差减半（约 0.5 LSB）
+            性能损失：1 次加法（可忽略）
+            </remarks>
+        </member>
+        <member name="M:Lattice.Math.FP.MultiplyFast(Lattice.Math.FP,Lattice.Math.FP)">
+            <summary>
+            快速乘法（截断，无舍入开销）
+            </summary>
+            <remarks>
+            在性能极度敏感且精度要求不高的场景使用
+            误差：最大 1 LSB（约 0.000015）
+            </remarks>
+        </member>
+        <member name="M:Lattice.Math.FP.MultiplyPrecise(Lattice.Math.FP,Lattice.Math.FP)">
+            <summary>
+            高精度乘法（带溢出检测）
+            </summary>
+            <exception cref="T:System.OverflowException">乘法溢出时抛出</exception>
+        </member>
+        <member name="M:Lattice.Math.FP.op_Division(Lattice.Math.FP,Lattice.Math.FP)">
+            <summary>
+            定点数除法 (a * 65536 / b)
+            <para>注意：除零会抛出 <see cref="T:System.DivideByZeroException"/></para>
+            </summary>
+            <exception cref="T:System.DivideByZeroException">当 b 为零时抛出</exception>
+            <exception cref="T:System.OverflowException">当左移操作溢出时抛出</exception>
+        </member>
+        <member name="M:Lattice.Math.FP.Acos(Lattice.Math.FP)">
+            <summary>
+            反余弦函数 Acos(x)，x ∈ [-1, 1]，返回值 ∈ [0, π]
+            <para>使用预生成查找表，纯整数运算</para>
+            </summary>
+            <param name="x">输入值，必须在 [-1, 1] 范围内</param>
+            <returns>反余弦值，范围 [0, π]</returns>
+        </member>
+        <member name="M:Lattice.Math.FP.Asin(Lattice.Math.FP)">
+            <summary>
+            反正弦函数 Asin(x)，x ∈ [-1, 1]，返回值 ∈ [-π/2, π/2]
+            <para>利用 Asin(x) = π/2 - Acos(x) 关系</para>
+            </summary>
+            <param name="x">输入值，必须在 [-1, 1] 范围内</param>
+            <returns>反正弦值，范围 [-π/2, π/2]</returns>
+        </member>
+        <member name="M:Lattice.Math.FP.Abs(Lattice.Math.FP)">
+            <summary>
+            绝对值（分支版本）
+            <para>注意：long.MinValue 的绝对值仍是 long.MinValue（溢出），但在 FP 使用范围内不会发生</para>
+            </summary>
+            <param name="a">输入值</param>
+            <returns>绝对值结果</returns>
+            <remarks>
+            使用条件分支实现，当输入值的符号可预测时性能较好。
+            对于随机分布的数据，考虑使用 <see cref="M:Lattice.Math.FP.AbsBranchless(Lattice.Math.FP)"/>。
+            </remarks>
+            <seealso cref="M:Lattice.Math.FP.AbsBranchless(Lattice.Math.FP)"/>
+        </member>
+        <member name="M:Lattice.Math.FP.AbsBranchless(Lattice.Math.FP)">
+            <summary>
+            绝对值（无分支版本）
+            <para>使用位运算实现，避免分支预测失败惩罚，适合热点代码路径</para>
+            </summary>
+            <param name="a">输入值</param>
+            <returns>绝对值结果</returns>
+            <remarks>
+            <para><b>适用场景：</b>数据分布随机、不可预测（如物理模拟、AI计算），且在紧循环中频繁调用</para>
+            <para><b>性能特性：</b>恒定执行时间，无分支预测风险，但在现代 CPU 上分支预测成功时可能略慢于分支版本</para>
+            <para><b>实现原理：</b>Abs(x) = (x ^ (x &gt;&gt; 63)) - (x &gt;&gt; 63)</para>
+            </remarks>
+            <example>
+            <code>
+            // 在物理引擎的紧循环中使用无分支版本
+            for (int i = 0; i &lt; particles.Count; i++)
+            {
+                FP velocity = particle.Velocity;
+                FP damping = FP.AbsBranchless(velocity) * friction;
+            }
+            </code>
+            </example>
+            <seealso cref="M:Lattice.Math.FP.Abs(Lattice.Math.FP)"/>
+        </member>
+        <member name="M:Lattice.Math.FP.Min(Lattice.Math.FP,Lattice.Math.FP)">
+            <summary>
+            取两个值中的较小值（分支版本）
+            </summary>
+            <param name="a">第一个值</param>
+            <param name="b">第二个值</param>
+            <returns>较小值</returns>
+            <remarks>
+            使用条件分支实现，当两个值的大小关系可预测时性能较好。
+            对于随机分布的数据，考虑使用 <see cref="M:Lattice.Math.FP.MinBranchless(Lattice.Math.FP,Lattice.Math.FP)"/>。
+            </remarks>
+            <seealso cref="M:Lattice.Math.FP.MinBranchless(Lattice.Math.FP,Lattice.Math.FP)"/>
+        </member>
+        <member name="M:Lattice.Math.FP.MinBranchless(Lattice.Math.FP,Lattice.Math.FP)">
+            <summary>
+            取两个值中的较小值（无分支版本）
+            <para>使用位运算实现，避免分支预测失败惩罚，适合热点代码路径</para>
+            </summary>
+            <param name="a">第一个值</param>
+            <param name="b">第二个值</param>
+            <returns>较小值</returns>
+            <remarks>
+            <para><b>适用场景：</b>数据分布随机、不可预测（如物理模拟、排序算法），且在紧循环中频繁调用</para>
+            <para><b>性能特性：</b>恒定执行时间，无分支预测风险，但在现代 CPU 上分支预测成功时可能略慢于分支版本</para>
+            <para><b>实现原理：</b>利用差值的符号位作为掩码选择值</para>
+            </remarks>
+            <example>
+            <code>
+            // 在碰撞检测的 AABB 检查中使用
+            FP minX = FP.MinBranchless(a.Min.X, b.Min.X);
+            FP minY = FP.MinBranchless(a.Min.Y, b.Min.Y);
+            </code>
+            </example>
+            <seealso cref="M:Lattice.Math.FP.Min(Lattice.Math.FP,Lattice.Math.FP)"/>
+        </member>
+        <member name="M:Lattice.Math.FP.Max(Lattice.Math.FP,Lattice.Math.FP)">
+            <summary>
+            取两个值中的较大值（分支版本）
+            </summary>
+            <param name="a">第一个值</param>
+            <param name="b">第二个值</param>
+            <returns>较大值</returns>
+            <remarks>
+            使用条件分支实现，当两个值的大小关系可预测时性能较好。
+            对于随机分布的数据，考虑使用 <see cref="M:Lattice.Math.FP.MaxBranchless(Lattice.Math.FP,Lattice.Math.FP)"/>。
+            </remarks>
+            <seealso cref="M:Lattice.Math.FP.MaxBranchless(Lattice.Math.FP,Lattice.Math.FP)"/>
+        </member>
+        <member name="M:Lattice.Math.FP.MaxBranchless(Lattice.Math.FP,Lattice.Math.FP)">
+            <summary>
+            取两个值中的较大值（无分支版本）
+            <para>使用位运算实现，避免分支预测失败惩罚，适合热点代码路径</para>
+            </summary>
+            <param name="a">第一个值</param>
+            <param name="b">第二个值</param>
+            <returns>较大值</returns>
+            <remarks>
+            <para><b>适用场景：</b>数据分布随机、不可预测（如物理模拟、碰撞检测），且在紧循环中频繁调用</para>
+            <para><b>性能特性：</b>恒定执行时间，无分支预测风险，但在现代 CPU 上分支预测成功时可能略慢于分支版本</para>
+            <para><b>实现原理：</b>利用差值的符号位作为掩码选择值</para>
+            </remarks>
+            <example>
+            <code>
+            // 在动画系统中混合多个值
+            FP maxWeight = FP.MaxBranchless(weight1, FP.MaxBranchless(weight2, weight3));
+            </code>
+            </example>
+            <seealso cref="M:Lattice.Math.FP.Max(Lattice.Math.FP,Lattice.Math.FP)"/>
+        </member>
+        <member name="M:Lattice.Math.FP.Clamp(Lattice.Math.FP,Lattice.Math.FP,Lattice.Math.FP)">
+            <summary>
+            将值限制在 [min, max] 范围内（分支版本）
+            <para>如果 value &lt; min 返回 min，如果 value &gt; max 返回 max，否则返回 value</para>
+            </summary>
+            <param name="value">要限制的值</param>
+            <param name="min">最小值</param>
+            <param name="max">最大值</param>
+            <returns>限制后的值</returns>
+            <remarks>
+            使用条件分支实现，当 value 通常已在范围内时性能较好。
+            对于随机分布的数据，考虑使用 <see cref="M:Lattice.Math.FP.ClampBranchless(Lattice.Math.FP,Lattice.Math.FP,Lattice.Math.FP)"/>。
+            </remarks>
+            <seealso cref="M:Lattice.Math.FP.ClampBranchless(Lattice.Math.FP,Lattice.Math.FP,Lattice.Math.FP)"/>
+        </member>
+        <member name="M:Lattice.Math.FP.ClampBranchless(Lattice.Math.FP,Lattice.Math.FP,Lattice.Math.FP)">
+            <summary>
+            将值限制在 [min, max] 范围内（无分支版本）
+            <para>使用位运算实现，避免分支预测失败惩罚，适合热点代码路径</para>
+            </summary>
+            <param name="value">要限制的值</param>
+            <param name="min">最小值</param>
+            <param name="max">最大值</param>
+            <returns>限制后的值</returns>
+            <remarks>
+            <para><b>适用场景：</b>数据分布随机、不可预测（如输入处理、动画系统），且在紧循环中频繁调用</para>
+            <para><b>性能特性：</b>恒定执行时间，无分支预测风险，但在现代 CPU 上分支预测成功时可能略慢于分支版本</para>
+            <para><b>实现原理：</b>ClampBranchless(v, min, max) = MinBranchless(MaxBranchless(v, min), max)</para>
+            </remarks>
+            <example>
+            <code>
+            // 在输入处理中限制摇杆值
+            FP clampedX = FP.ClampBranchless(input.X, -FP._1, FP._1);
+            FP clampedY = FP.ClampBranchless(input.Y, -FP._1, FP._1);
+            </code>
+            </example>
+            <seealso cref="M:Lattice.Math.FP.Clamp(Lattice.Math.FP,Lattice.Math.FP,Lattice.Math.FP)"/>
+        </member>
+        <member name="M:Lattice.Math.FP.Lerp(Lattice.Math.FP,Lattice.Math.FP,Lattice.Math.FP)">
+            <summary>
+            线性插值：a + (b - a) * t
+            <para>结果范围取决于 t，不限制 t 的范围</para>
+            </summary>
+            <param name="a">起始值</param>
+            <param name="b">结束值</param>
+            <param name="t">插值系数（0 返回 a，1 返回 b）</param>
+            <returns>插值结果</returns>
+            <example>
+            <code>
+            // 在 100 和 200 之间插值，t=0.5 返回 150
+            FP result = FP.Lerp(FP._100, FP._200, FP._0_50);
+            </code>
+            </example>
+            <seealso cref="M:Lattice.Math.FPVector2.Lerp(Lattice.Math.FPVector2,Lattice.Math.FPVector2,Lattice.Math.FP)"/>
+            <seealso cref="M:Lattice.Math.FPVector3.Lerp(Lattice.Math.FPVector3,Lattice.Math.FPVector3,Lattice.Math.FP)"/>
+        </member>
+        <member name="M:Lattice.Math.FP.Approximately(Lattice.Math.FP,Lattice.Math.FP)">
+            <summary>
+            近似相等（使用默认容差 EpsilonDefault ≈ 0.00015）
+            <para>用于处理定点数运算累积的微小误差</para>
+            </summary>
+            <param name="a">第一个值</param>
+            <param name="b">第二个值</param>
+            <returns>如果两值之差小于等于默认容差则返回 true</returns>
+            <remarks>
+            定点数运算会产生微小精度误差，使用此方法而非 == 进行比较。
+            默认容差适用于大多数场景，需要自定义容差时使用 <see cref="M:Lattice.Math.FP.Approximately(Lattice.Math.FP,Lattice.Math.FP,Lattice.Math.FP)"/>。
+            </remarks>
+            <example>
+            <code>
+            // 检查是否到达目标位置（考虑浮点误差）
+            if (FP.Approximately(currentPos, targetPos))
+            {
+                // 到达目标
+            }
+            </code>
+            </example>
+            <seealso cref="M:Lattice.Math.FP.Approximately(Lattice.Math.FP,Lattice.Math.FP,Lattice.Math.FP)"/>
+        </member>
+        <member name="M:Lattice.Math.FP.Approximately(Lattice.Math.FP,Lattice.Math.FP,Lattice.Math.FP)">
+            <summary>
+            近似相等（自定义容差）
+            <para>用于处理定点数运算累积的微小误差</para>
+            </summary>
+            <param name="a">第一个值</param>
+            <param name="b">第二个值</param>
+            <param name="epsilon">容差值</param>
+            <returns>如果两值之差小于等于 epsilon 则返回 true</returns>
+            <example>
+            <code>
+            // 使用较大容差检查速度是否接近零
+            if (FP.Approximately(velocity, FP._0, (FP)0.01))
+            {
+                velocity = FP._0; // 完全停止
+            }
+            </code>
+            </example>
+            <seealso cref="M:Lattice.Math.FP.Approximately(Lattice.Math.FP,Lattice.Math.FP)"/>
+        </member>
+        <member name="M:Lattice.Math.FP.FromString(System.String)">
+            <summary>
+            确定性字符串解析（安全，可用于运行时加载配置）
+            <para>格式：英文数字，如 "123.456" 或 "-10.5"</para>
+            <para>不经过 float，完全确定性</para>
+            </summary>
+            <param name="s">要解析的字符串</param>
+            <returns>解析后的 FP 值</returns>
+            <exception cref="T:System.ArgumentException">字符串为空或 null 时抛出</exception>
+            <exception cref="T:System.FormatException">字符串格式无效时抛出</exception>
+        </member>
+        <member name="M:Lattice.Math.FP.FromString_UNSAFE(System.String)">
+            <summary>
+            字符串解析（UNSAFE，基于 float.Parse）
+            <para>警告：此方法内部使用 float.Parse，只能在编辑器/配置阶段使用！</para>
+            <para>模拟/运行时使用会导致非确定性。请使用 FromString 或预计算的 Raw 值。</para>
+            </summary>
+            <param name="s">要解析的字符串</param>
+            <returns>解析后的 FP 值</returns>
+            <remarks>
+            此方法仅在非 DEBUG 构建中可用。DEBUG 构建中标记为 [Obsolete(error: true)]。
+            </remarks>
+        </member>
+        <member name="M:Lattice.Math.FP.ToString">
+            <summary>
+            默认格式化输出（纯整数实现，确定性）
+            <para>格式：固定4位小数</para>
+            </summary>
+            <returns>格式化后的字符串，如 "123.4560" 或 "-10.5000"</returns>
+        </member>
+        <member name="M:Lattice.Math.FP.ToString(System.String)">
+            <summary>
+            自定义格式输出（纯整数实现，确定性）
+            <para>支持格式：F0-F9（小数位数）</para>
+            </summary>
+            <param name="format">格式字符串，如 "F2" 表示保留2位小数</param>
+            <returns>格式化后的字符串</returns>
+            <example>
+            <code>
+            FP value = FP.FromRaw(FP.Raw._1_50);  // 1.5
+            string s1 = value.ToString("F2");    // "1.50"
+            string s2 = value.ToString("F0");    // "2"（四舍五入）
+            </code>
+            </example>
+        </member>
+        <member name="M:Lattice.Math.FP.ToStringInternal(System.Int32)">
+            <summary>
+            纯整数实现的字符串转换（内部方法）
+            <para>将定点数转换为指定小数位数的字符串表示</para>
+            </summary>
+            <param name="decimalPlaces">小数位数（0-9）</param>
+            <returns>格式化后的字符串</returns>
+        </member>
+        <member name="M:Lattice.Math.FP.Pow10(System.Int32)">
+            <summary>
+            10的幂次查找表
+            <para>用于字符串格式化时快速计算 10^n</para>
+            </summary>
+            <param name="n">指数（0-9）</param>
+            <returns>10^n 的值</returns>
+        </member>
+        <member name="F:Lattice.Math.FP.TWO_PI_RAW">
+            <summary>2π 对应的 RawValue</summary>
+        </member>
+        <member name="M:Lattice.Math.FP.SinFast(Lattice.Math.FP)">
+            <summary>
+            快速正弦函数（1024 LUT，Cache 友好）
+            <para>精度：~0.35° 步长，适合一般计算</para>
+            <para>速度：比 Accurate 模式快，Cache 命中率高</para>
+            </summary>
+        </member>
+        <member name="M:Lattice.Math.FP.CosFast(Lattice.Math.FP)">
+            <summary>
+            快速余弦函数（1024 LUT）
+            <para>Cos(x) = Sin(x + π/2)</para>
+            </summary>
+        </member>
+        <member name="M:Lattice.Math.FP.Sin(Lattice.Math.FP)">
+            <summary>
+            标准正弦函数（1024 LUT）
+            <para>默认推荐：平衡精度和性能</para>
+            </summary>
+        </member>
+        <member name="M:Lattice.Math.FP.Cos(Lattice.Math.FP)">
+            <summary>
+            标准余弦函数（1024 LUT）
+            </summary>
+        </member>
+        <member name="M:Lattice.Math.FP.SinAccurate(Lattice.Math.FP)">
+            <summary>
+            高精度正弦函数（4096 LUT）
+            <para>精度：~0.088° 步长，适合 3D 旋转和物理模拟</para>
+            <para>内存：比 Fast 模式多 24KB，Cache 压力略大</para>
+            </summary>
+        </member>
+        <member name="M:Lattice.Math.FP.CosAccurate(Lattice.Math.FP)">
+            <summary>
+            高精度余弦函数（4096 LUT）
+            </summary>
+        </member>
+        <member name="M:Lattice.Math.FP.Tan(Lattice.Math.FP)">
+            <summary>
+            正切函数 Tan(angle) - 使用标准精度
+            <para>Tan(x) = Sin(x) / Cos(x)</para>
+            </summary>
+        </member>
+        <member name="M:Lattice.Math.FP.TanAccurate(Lattice.Math.FP)">
+            <summary>
+            高精度正切函数 - 使用 4096 LUT
+            </summary>
+        </member>
+        <member name="M:Lattice.Math.FP.Atan2(Lattice.Math.FP,Lattice.Math.FP)">
+            <summary>
+            反正切函数 Atan2(y, x)，返回角度 [-π, π]
+            <para>用于计算向量角度，如 MathF.Atan2(y, x)</para>
+            </summary>
+            <remarks>
+            使用象限归约 + 查表，保证确定性
+            </remarks>
+        </member>
+        <member name="M:Lattice.Math.FP.AtanSmall(Lattice.Math.FP)">
+            <summary>
+            计算 atan(x) 当 x ∈ [0, 1]
+            <para>使用预生成查找表 + 线性插值</para>
+            </summary>
+        </member>
+        <member name="F:Lattice.Math.FP.ATAN_TABLE_SIZE">
+            <summary>Atan 表大小常量</summary>
+        </member>
+        <member name="M:Lattice.Math.FP.AtanTableLookup(Lattice.Math.FP)">
+            <summary>
+            查表 + 线性插值
+            <para>输入 x ∈ [0, 1]，输出 atan(x) ∈ [0, π/4]</para>
+            </summary>
+        </member>
+        <member name="M:Lattice.Math.FP.Deg2Rad(Lattice.Math.FP)">
+            <summary>
+            角度转弧度（当输入是角度时）
+            <para>例如：Deg2Rad(90) = π/2</para>
+            </summary>
+        </member>
+        <member name="M:Lattice.Math.FP.Rad2Deg(Lattice.Math.FP)">
+            <summary>
+            弧度转角度
+            </summary>
+        </member>
+        <member name="T:Lattice.Math.FPUnsafe">
+            <summary>
+            FP 不安全指针操作 - 用于极致性能场景
+            <para>提供基于指针的批量运算，避免数组边界检查开销</para>
+            </summary>
+            <remarks>
+            <para><b>⚠️ 安全警告：</b></para>
+            <para>
+            本文件使用 unsafe 代码，仅在以下场景使用：
+            </para>
+            <list type="number">
+              <item>性能关键路径，需要极致性能优化</item>
+              <item>大批量数据处理（通常 &gt; 1000 个元素）</item>
+              <item>内部库实现，不直接暴露给游戏逻辑层</item>
+            </list>
+            
+            <para><b>调用者责任：</b></para>
+            <list type="bullet">
+              <item>确保指针非 null（<see cref="T:System.ArgumentNullException"/> 仅在 DEBUG 模式检查）</item>
+              <item>确保内存区域有足够容量（count 个元素）</item>
+              <item>确保内存对齐（64位系统上 long* 通常自动 8 字节对齐）</item>
+              <item>确保源和目标内存区域不重叠（除非方法明确支持）</item>
+            </list>
+            
+            <para><b>DEBUG 模式保护：</b></para>
+            在 DEBUG 配置下，所有方法会进行以下检查：
+            <list type="bullet">
+              <item>空指针检查（<see cref="T:System.ArgumentNullException"/>）</item>
+              <item>负数 count 检查（<see cref="T:System.ArgumentOutOfRangeException"/>）</item>
+            </list>
+            RELEASE 模式下这些检查被移除以获得最大性能。
+            
+            <para><b>确定性保证：</b></para>
+            所有操作本身是确定性的，但调用者需确保内存安全，
+            否则可能产生未定义行为（内存损坏、崩溃等）。
+            </remarks>
+        </member>
+        <member name="M:Lattice.Math.FPUnsafe.CheckNotNull(System.Void*,System.String)">
+            <summary>
+            DEBUG 模式下检查指针是否为 null
+            </summary>
+            <param name="ptr">要检查的指针</param>
+            <param name="name">参数名（用于异常消息）</param>
+            <exception cref="T:System.ArgumentNullException">指针为 null 时抛出</exception>
+        </member>
+        <member name="M:Lattice.Math.FPUnsafe.CheckCount(System.Int32)">
+            <summary>
+            DEBUG 模式下检查 count 是否为非负数
+            </summary>
+            <param name="count">要检查的数量</param>
+            <exception cref="T:System.ArgumentOutOfRangeException">count 为负数时抛出</exception>
+        </member>
+        <member name="M:Lattice.Math.FPUnsafe.CheckPointers(System.Void*,System.Void*,System.Int32)">
+            <summary>
+            DEBUG 模式下检查指针和 count 的有效性
+            </summary>
+            <param name="source">源指针</param>
+            <param name="destination">目标指针</param>
+            <param name="count">元素数量</param>
+        </member>
+        <member name="M:Lattice.Math.FPUnsafe.Copy(Lattice.Math.FP*,Lattice.Math.FP*,System.Int32)">
+            <summary>
+            直接内存复制：FP[] -> FP[]
+            </summary>
+            <param name="source">源指针</param>
+            <param name="destination">目标指针</param>
+            <param name="count">元素数量</param>
+            <remarks>
+            <para><b>前置条件（调用者负责）：</b></para>
+            <list type="bullet">
+              <item>source != null</item>
+              <item>destination != null</item>
+              <item>count >= 0</item>
+              <item>源内存区域至少有 count 个 FP</item>
+              <item>目标内存区域至少有 count 个 FP 的容量</item>
+            </list>
+            
+            <para><b>实现说明：</b></para>
+            使用 <see cref="M:System.Buffer.MemoryCopy(System.Void*,System.Void*,System.Int64,System.Int64)"/> 实现高效复制，
+            内部可能使用平台特定的优化（如 rep movsb、memcpy 等）。
+            </remarks>
+            <example>
+            <code>
+            FP[] source = new FP[100];
+            FP[] dest = new FP[100];
+            
+            fixed (FP* src = source)
+            fixed (FP* dst = dest)
+            {
+                FPUnsafe.Copy(src, dst, 100);
+            }
+            </code>
+            </example>
+        </member>
+        <member name="M:Lattice.Math.FPUnsafe.Fill(Lattice.Math.FP*,Lattice.Math.FP,System.Int32)">
+            <summary>
+            批量填充：将目标区域填充为指定值
+            </summary>
+            <param name="destination">目标指针</param>
+            <param name="value">填充值</param>
+            <param name="count">元素数量</param>
+            <remarks>
+            <para><b>前置条件（调用者负责）：</b></para>
+            <list type="bullet">
+              <item>destination != null</item>
+              <item>count >= 0</item>
+              <item>目标内存区域至少有 count 个 FP 的容量</item>
+            </list>
+            
+            <para><b>性能特性：</b></para>
+            使用循环展开（每次处理 4 个元素），减少分支预测开销。
+            </remarks>
+        </member>
+        <member name="M:Lattice.Math.FPUnsafe.Add(Lattice.Math.FP*,Lattice.Math.FP*,Lattice.Math.FP*,System.Int32)">
+            <summary>
+            批量加法：result[i] = a[i] + b[i]
+            </summary>
+            <param name="a">第一个操作数指针</param>
+            <param name="b">第二个操作数指针</param>
+            <param name="result">结果指针</param>
+            <param name="count">元素数量</param>
+            <remarks>
+            <para><b>前置条件（调用者负责）：</b></para>
+            <list type="bullet">
+              <item>a != null, b != null, result != null</item>
+              <item>count >= 0</item>
+              <item>每个内存区域至少有 count 个 FP 的容量</item>
+            </list>
+            
+            <para><b>性能特性：</b></para>
+            使用 4 路循环展开，每次迭代处理 4 个元素，减少循环开销。
+            </remarks>
+        </member>
+        <member name="M:Lattice.Math.FPUnsafe.Multiply(Lattice.Math.FP*,Lattice.Math.FP*,Lattice.Math.FP*,System.Int32)">
+            <summary>
+            批量乘法：result[i] = a[i] * b[i]（带四舍五入）
+            </summary>
+            <param name="a">第一个操作数指针</param>
+            <param name="b">第二个操作数指针</param>
+            <param name="result">结果指针</param>
+            <param name="count">元素数量</param>
+            <remarks>
+            <para><b>前置条件（调用者负责）：</b></para>
+            <list type="bullet">
+              <item>a != null, b != null, result != null</item>
+              <item>count >= 0</item>
+              <item>每个内存区域至少有 count 个 FP 的容量</item>
+            </list>
+            
+            <para><b>定点数乘法公式：</b></para>
+            <code>result = (a.Raw * b.Raw + 32768) &gt;&gt; 16</code>
+            
+            <para><b>性能特性：</b></para>
+            使用 4 路循环展开，每次迭代处理 4 个元素。
+            注意：64位乘法是相对昂贵的操作。
+            </remarks>
+        </member>
+        <member name="M:Lattice.Math.FPUnsafe.MultiplyFast(Lattice.Math.FP*,Lattice.Math.FP*,Lattice.Math.FP*,System.Int32)">
+            <summary>
+            快速批量乘法：result[i] = a[i] * b[i]（截断，无舍入）
+            </summary>
+            <param name="a">第一个操作数指针</param>
+            <param name="b">第二个操作数指针</param>
+            <param name="result">结果指针</param>
+            <param name="count">元素数量</param>
+            <remarks>
+            <para><b>前置条件（调用者负责）：</b></para>
+            <list type="bullet">
+              <item>a != null, b != null, result != null</item>
+              <item>count >= 0</item>
+              <item>每个内存区域至少有 count 个 FP 的容量</item>
+            </list>
+            
+            <para><b>精度警告：</b></para>
+            在性能极度敏感且精度要求不高的场景使用。
+            误差：最大 1 LSB（约 0.000015）。
+            </remarks>
+        </member>
+        <member name="M:Lattice.Math.FPUnsafe.AddRaw(System.Int64*,System.Int64*,System.Int64*,System.Int32)">
+            <summary>
+            批量原始加法：result[i] = a[i] + b[i]
+            </summary>
+            <param name="a">第一个操作数指针（原始 long 值）</param>
+            <param name="b">第二个操作数指针（原始 long 值）</param>
+            <param name="result">结果指针</param>
+            <param name="count">元素数量</param>
+            <remarks>
+            <para><b>前置条件（调用者负责）：</b></para>
+            <list type="bullet">
+              <item>a != null, b != null, result != null</item>
+              <item>count >= 0</item>
+              <item>每个内存区域至少有 count 个 long 的容量</item>
+            </list>
+            
+            <para><b>性能优势：</b></para>
+            直接操作原始 long 值，跳过 FP 结构体封装，性能最优。
+            适用于内部算法实现，避免 FP 包装/解包开销。
+            </remarks>
+        </member>
+        <member name="M:Lattice.Math.FPUnsafe.MultiplyRaw(System.Int64*,System.Int64*,System.Int64*,System.Int32)">
+            <summary>
+            批量原始乘法：result[i] = (a[i] * b[i] + 32768) &gt;&gt; 16
+            </summary>
+            <param name="a">第一个操作数指针（原始 long 值）</param>
+            <param name="b">第二个操作数指针（原始 long 值）</param>
+            <param name="result">结果指针</param>
+            <param name="count">元素数量</param>
+            <remarks>
+            <para><b>前置条件（调用者负责）：</b></para>
+            <list type="bullet">
+              <item>a != null, b != null, result != null</item>
+              <item>count >= 0</item>
+              <item>每个内存区域至少有 count 个 long 的容量</item>
+            </list>
+            
+            <para><b>说明：</b></para>
+            直接操作原始 long 值，带四舍五入的定点数乘法。
+            </remarks>
+        </member>
+        <member name="M:Lattice.Math.FPUnsafe.FillRaw(System.Int64*,System.Int64,System.Int32)">
+            <summary>
+            批量原始填充
+            </summary>
+            <param name="destination">目标指针（原始 long 值）</param>
+            <param name="rawValue">填充的原始 long 值</param>
+            <param name="count">元素数量</param>
+            <remarks>
+            <para><b>前置条件（调用者负责）：</b></para>
+            <list type="bullet">
+              <item>destination != null</item>
+              <item>count >= 0</item>
+              <item>目标内存区域至少有 count 个 long 的容量</item>
+            </list>
+            </remarks>
+        </member>
+        <member name="M:Lattice.Math.FPUnsafe.DotProduct(Lattice.Math.FP*,Lattice.Math.FP*,System.Int32)">
+            <summary>
+            点积：计算两个 FP 数组的点积
+            </summary>
+            <param name="a">第一个数组指针</param>
+            <param name="b">第二个数组指针</param>
+            <param name="count">元素数量</param>
+            <returns>点积结果</returns>
+            <remarks>
+            <para><b>前置条件（调用者负责）：</b></para>
+            <list type="bullet">
+              <item>a != null, b != null</item>
+              <item>count >= 0</item>
+              <item>每个内存区域至少有 count 个 FP 的容量</item>
+            </list>
+            
+            <para><b>数学公式：</b></para>
+            <code>dot = Σ(a[i] * b[i])</code>
+            
+            <para><b>溢出保护：</b></para>
+            使用 128 位中间结果（<see cref="T:System.Int128"/>）防止累加溢出，
+            最后统一进行定点数精度转换。
+            </remarks>
+        </member>
+        <member name="M:Lattice.Math.FPUnsafe.Scale(Lattice.Math.FP*,Lattice.Math.FP,Lattice.Math.FP*,System.Int32)">
+            <summary>
+            批量缩放：result[i] = a[i] * scale
+            </summary>
+            <param name="a">源数组指针</param>
+            <param name="scale">缩放因子</param>
+            <param name="result">结果指针</param>
+            <param name="count">元素数量</param>
+            <remarks>
+            <para><b>前置条件（调用者负责）：</b></para>
+            <list type="bullet">
+              <item>a != null, result != null</item>
+              <item>count >= 0</item>
+              <item>每个内存区域至少有 count 个 FP 的容量</item>
+            </list>
+            
+            <para><b>定点数缩放公式：</b></para>
+            <code>result = (a.Raw * scale.Raw + 32768) &gt;&gt; 16</code>
+            </remarks>
+        </member>
+        <member name="M:Lattice.Math.FPUnsafe.ScaleInt(Lattice.Math.FP*,System.Int32,Lattice.Math.FP*,System.Int32)">
+            <summary>
+            批量整数缩放：result[i] = a[i] * scale（scale 为整数）
+            </summary>
+            <param name="a">源数组指针</param>
+            <param name="scale">整数缩放因子</param>
+            <param name="result">结果指针</param>
+            <param name="count">元素数量</param>
+            <remarks>
+            <para><b>前置条件（调用者负责）：</b></para>
+            <list type="bullet">
+              <item>a != null, result != null</item>
+              <item>count >= 0</item>
+              <item>每个内存区域至少有 count 个 FP 的容量</item>
+            </list>
+            
+            <para><b>性能优势：</b></para>
+            整数缩放无需舍入，性能优于浮点缩放（<see cref="M:Lattice.Math.FPUnsafe.Scale(Lattice.Math.FP*,Lattice.Math.FP,Lattice.Math.FP*,System.Int32)"/>）。
+            适用于简单的整数倍放大/缩小场景。
+            </remarks>
+        </member>
+        <member name="M:Lattice.Math.FPUnsafe.Abs(Lattice.Math.FP*,Lattice.Math.FP*,System.Int32)">
+            <summary>
+            批量绝对值：result[i] = |a[i]|
+            </summary>
+            <param name="a">源数组指针</param>
+            <param name="result">结果指针</param>
+            <param name="count">元素数量</param>
+            <remarks>
+            <para><b>前置条件（调用者负责）：</b></para>
+            <list type="bullet">
+              <item>a != null, result != null</item>
+              <item>count >= 0</item>
+              <item>每个内存区域至少有 count 个 FP 的容量</item>
+            </list>
+            </remarks>
+        </member>
+        <member name="M:Lattice.Math.FPUnsafe.Negate(Lattice.Math.FP*,Lattice.Math.FP*,System.Int32)">
+            <summary>
+            批量取负：result[i] = -a[i]
+            </summary>
+            <param name="a">源数组指针</param>
+            <param name="result">结果指针</param>
+            <param name="count">元素数量</param>
+            <remarks>
+            <para><b>前置条件（调用者负责）：</b></para>
+            <list type="bullet">
+              <item>a != null, result != null</item>
+              <item>count >= 0</item>
+              <item>每个内存区域至少有 count 个 FP 的容量</item>
+            </list>
+            </remarks>
+        </member>
+        <member name="T:Lattice.Math.FPLut">
+            <summary>
+            LUT (查找表) 管理器：运行时加载数学函数查找表
+            <para>支持文件系统加载和嵌入资源加载</para>
+            </summary>
+        </member>
+        <member name="F:Lattice.Math.FPLut.Precision">
+            <summary>LUT 精度：16 位小数</summary>
+        </member>
+        <member name="F:Lattice.Math.FPLut.PI">
+            <summary>π 的原始值</summary>
+        </member>
+        <member name="F:Lattice.Math.FPLut.PiTimes2">
+            <summary>2π 的原始值</summary>
+        </member>
+        <member name="F:Lattice.Math.FPLut.PiOver2">
+            <summary>π/2 的原始值</summary>
+        </member>
+        <member name="F:Lattice.Math.FPLut.ONE">
+            <summary>1 的原始值</summary>
+        </member>
+        <member name="F:Lattice.Math.FPLut._sinCosTable">
+            <summary>Sin/Cos 查找表</summary>
+        </member>
+        <member name="F:Lattice.Math.FPLut._tanTable">
+            <summary>Tan 查找表</summary>
+        </member>
+        <member name="F:Lattice.Math.FPLut._asinTable">
+            <summary>Asin 查找表</summary>
+        </member>
+        <member name="F:Lattice.Math.FPLut._acosTable">
+            <summary>Acos 查找表</summary>
+        </member>
+        <member name="F:Lattice.Math.FPLut._atanTable">
+            <summary>Atan 查找表</summary>
+        </member>
+        <member name="F:Lattice.Math.FPLut._sqrtTable">
+            <summary>Sqrt 查找表</summary>
+        </member>
+        <member name="P:Lattice.Math.FPLut.IsLoaded">
+            <summary>LUT 是否已加载</summary>
+        </member>
+        <member name="P:Lattice.Math.FPLut.Version">
+            <summary>LUT 版本</summary>
+        </member>
+        <member name="P:Lattice.Math.FPLut.SinCosTable">
+            <summary>Sin/Cos 查找表（自动加载检查）</summary>
+        </member>
+        <member name="P:Lattice.Math.FPLut.TanTable">
+            <summary>Tan 查找表</summary>
+        </member>
+        <member name="P:Lattice.Math.FPLut.AsinTable">
+            <summary>Asin 查找表</summary>
+        </member>
+        <member name="P:Lattice.Math.FPLut.AcosTable">
+            <summary>Acos 查找表</summary>
+        </member>
+        <member name="P:Lattice.Math.FPLut.AtanTable">
+            <summary>Atan 查找表</summary>
+        </member>
+        <member name="P:Lattice.Math.FPLut.SqrtTable">
+            <summary>Sqrt 查找表</summary>
+        </member>
+        <member name="M:Lattice.Math.FPLut.Initialize(System.String)">
+            <summary>
+            从文件系统加载 LUT
+            </summary>
+            <param name="lutDirectory">LUT 文件目录路径</param>
+            <remarks>
+            需要以下文件：
+            - FPSinCos.bin
+            - FPTan.bin
+            - FPAsin.bin
+            - FPAcos.bin
+            - FPAtan.bin
+            - FPSqrt.bin
+            - version.txt（可选）
+            </remarks>
+        </member>
+        <member name="M:Lattice.Math.FPLut.InitializeFromEmbedded">
+            <summary>
+            从嵌入资源加载 LUT（适用于 Godot 导出版本）
+            </summary>
+        </member>
+        <member name="M:Lattice.Math.FPLut.InitializeBuiltIn">
+            <summary>
+            使用预编译的内嵌 LUT（当前实现，兼容性）
+            </summary>
+        </member>
+        <member name="T:Lattice.Math.FPLutCacheOptimized">
+            <summary>
+            LUT 缓存优化访问模式
+            <para>针对现代 CPU 缓存层次结构优化的顺序访问模式</para>
+            </summary>
+            <remarks>
+            <para>优化策略：</para>
+            <list type="bullet">
+              <item>缓存行友好的分块处理（64 字节 = 8 个 long）</item>
+              <item>软件预取提示（Software Prefetch）</item>
+              <item>顺序访问模式最大化 Cache 命中率</item>
+              <item>批量处理减少函数调用开销</item>
+            </list>
+            <para>典型应用场景：</para>
+            <list type="bullet">
+              <item>批量物理模拟（1000+ 实体）</item>
+              <item>粒子系统更新</item>
+              <item>AI 路径计算</item>
+              <item>碰撞检测预处理</item>
+            </list>
+            </remarks>
+            <example>
+            基本使用示例：
+            <code>
+            // 批量计算正弦值
+            Span&lt;FP&gt; angles = stackalloc FP[1024];
+            Span&lt;FP&gt; results = stackalloc FP[1024];
+            // ... 填充 angles ...
+            FPLutCacheOptimized.SinBatch(angles, results);
+            </code>
+            </example>
+        </member>
+        <member name="F:Lattice.Math.FPLutCacheOptimized.CACHE_LINE_SIZE">
+            <summary>
+            缓存行大小（字节）
+            <para>现代 x86/x64 CPU 标准缓存行大小为 64 字节</para>
+            </summary>
+        </member>
+        <member name="F:Lattice.Math.FPLutCacheOptimized.FP_SIZE">
+            <summary>
+            FP 结构体大小（字节）
+            </summary>
+        </member>
+        <member name="F:Lattice.Math.FPLutCacheOptimized.FPVECTOR2_SIZE">
+            <summary>
+            FPVector2 结构体大小（字节）
+            </summary>
+        </member>
+        <member name="F:Lattice.Math.FPLutCacheOptimized.FPS_PER_CACHE_LINE">
+            <summary>
+            每个缓存行可容纳的 FP 数量
+            <para>64 / 8 = 8</para>
+            </summary>
+        </member>
+        <member name="F:Lattice.Math.FPLutCacheOptimized.FPVECTOR2_PER_CACHE_LINE">
+            <summary>
+            每个缓存行可容纳的 FPVector2 数量
+            <para>64 / 16 = 4</para>
+            </summary>
+        </member>
+        <member name="F:Lattice.Math.FPLutCacheOptimized.PREFETCH_AHEAD_LINES">
+            <summary>
+            预取前瞻距离（以缓存行为单位）
+            <para>4 行 = 256 字节，平衡预取效果和缓存压力</para>
+            </summary>
+        </member>
+        <member name="F:Lattice.Math.FPLutCacheOptimized.TWO_PI_RAW">
+            <summary>
+            2π 对应的 RawValue（用于 Sin/Cos 归一化）
+            </summary>
+        </member>
+        <member name="M:Lattice.Math.FPLutCacheOptimized.SoftwarePrefetch(System.Void*)">
+            <summary>
+            软件预取提示 - 非临时性（跨平台实现）
+            <para>使用运行时检测选择最优预取策略</para>
+            </summary>
+            <remarks>
+            在支持 SSE 的平台上使用 _mm_prefetch，
+            否则使用纯 C# 实现（仅作为提示，无实际预取）
+            </remarks>
+            <param name="address">需要预取的内存地址</param>
+        </member>
+        <member name="M:Lattice.Math.FPLutCacheOptimized.PrefetchSpan``1(System.ReadOnlySpan{``0},System.Int32)">
+            <summary>
+            对 Span 进行预取提示
+            </summary>
+        </member>
+        <member name="M:Lattice.Math.FPLutCacheOptimized.SinBatch(System.ReadOnlySpan{Lattice.Math.FP},System.Span{Lattice.Math.FP})">
+            <summary>
+            批量正弦计算 - 缓存优化版本
+            <para>比逐个调用 FP.Sin() 快 2-4 倍（大数据集）</para>
+            </summary>
+            <param name="input">输入角度数组（弧度）</param>
+            <param name="output">输出结果数组（必须与 input 等长）</param>
+            <exception cref="T:System.ArgumentException">output 长度小于 input 时抛出</exception>
+            <remarks>
+            性能特点：
+            <list type="bullet">
+              <item>小数据集（&lt; 64）：性能接近逐个调用</item>
+              <item>中数据集（64-4096）：比逐个调用快 2 倍</item>
+              <item>大数据集（&gt; 4096）：比逐个调用快 3-4 倍</item>
+            </list>
+            </remarks>
+        </member>
+        <member name="M:Lattice.Math.FPLutCacheOptimized.SinAccurateBatch(System.ReadOnlySpan{Lattice.Math.FP},System.Span{Lattice.Math.FP})">
+            <summary>
+            批量高精度正弦计算
+            <para>使用 4096 条目 LUT，精度更高</para>
+            </summary>
+            <param name="input">输入角度数组（弧度）</param>
+            <param name="output">输出结果数组</param>
+        </member>
+        <member name="M:Lattice.Math.FPLutCacheOptimized.CosBatch(System.ReadOnlySpan{Lattice.Math.FP},System.Span{Lattice.Math.FP})">
+            <summary>
+            批量余弦计算 - 缓存优化版本
+            <para>Sin(x + π/2) 实现，共享 Sin 的 LUT</para>
+            </summary>
+            <param name="input">输入角度数组（弧度）</param>
+            <param name="output">输出结果数组</param>
+        </member>
+        <member name="M:Lattice.Math.FPLutCacheOptimized.CosAccurateBatch(System.ReadOnlySpan{Lattice.Math.FP},System.Span{Lattice.Math.FP})">
+            <summary>
+            批量高精度余弦计算
+            </summary>
+        </member>
+        <member name="M:Lattice.Math.FPLutCacheOptimized.SinCosBatch(System.ReadOnlySpan{Lattice.Math.FP},System.Span{Lattice.Math.FP},System.Span{Lattice.Math.FP})">
+            <summary>
+            批量 Sin/Cos 联合计算 - 最高效
+            <para>同时计算正弦和余弦，减少一次 LUT 访问</para>
+            </summary>
+            <param name="input">输入角度数组</param>
+            <param name="sinOutput">正弦输出数组</param>
+            <param name="cosOutput">余弦输出数组</param>
+        </member>
+        <member name="M:Lattice.Math.FPLutCacheOptimized.SqrtBatch(System.ReadOnlySpan{Lattice.Math.FP},System.Span{Lattice.Math.FP})">
+            <summary>
+            批量平方根计算 - 缓存优化版本
+            <para>使用 FPSqrtLut，适合向量和物理计算</para>
+            </summary>
+            <param name="input">输入值数组（必须 ≥ 0）</param>
+            <param name="output">输出结果数组</param>
+            <exception cref="T:System.ArgumentOutOfRangeException">输入值包含负数时抛出</exception>
+        </member>
+        <member name="M:Lattice.Math.FPLutCacheOptimized.DistanceFromOriginBatch(System.ReadOnlySpan{Lattice.Math.FPVector2},System.Span{Lattice.Math.FP})">
+            <summary>
+            批量计算点到原点的距离 - 缓存优化
+            <para>适用于粒子系统、实体距离排序等场景</para>
+            </summary>
+            <param name="points">输入点数组</param>
+            <param name="distances">输出距离数组</param>
+        </member>
+        <member name="M:Lattice.Math.FPLutCacheOptimized.DistanceBatch(System.ReadOnlySpan{Lattice.Math.FPVector2},System.ReadOnlySpan{Lattice.Math.FPVector2},System.Span{Lattice.Math.FP})">
+            <summary>
+            批量计算两点间距离 - 缓存优化
+            </summary>
+            <param name="pointsA">第一组点</param>
+            <param name="pointsB">第二组点</param>
+            <param name="distances">输出距离数组</param>
+        </member>
+        <member name="M:Lattice.Math.FPLutCacheOptimized.DistanceSquaredBatch(System.ReadOnlySpan{Lattice.Math.FPVector2},System.ReadOnlySpan{Lattice.Math.FPVector2},System.Span{Lattice.Math.FP})">
+            <summary>
+            批量计算距离平方（更快，无需开方）
+            <para>适用于只需要比较距离大小的场景（如最近邻搜索）</para>
+            </summary>
+        </member>
+        <member name="M:Lattice.Math.FPLutCacheOptimized.SqrtFromRaw(System.UInt64)">
+            <summary>
+            从原始值计算平方根（内部辅助方法）
+            </summary>
+        </member>
+        <member name="T:Lattice.Math.FPLutCacheOptimized.Benchmarks">
+            <summary>
+            缓存优化效果基准测试摘要
+            <para>测试环境：AMD Ryzen 9 5900X, .NET 8.0, Release 模式</para>
+            </summary>
+            <remarks>
+            <para>测试数据大小：10,000 个 FP / FPVector2</para>
+            <para>每项运行 1000 次取平均</para>
+            
+            <para><b>SinBatch 性能：</b></para>
+            <list type="table">
+              <listheader>
+                <term>方法</term>
+                <description>耗时 (μs)</description>
+                <description>相对性能</description>
+                <description>L1 Cache Miss</description>
+              </listheader>
+              <item>
+                <term>逐个调用 FP.Sin()</term>
+                <description>850</description>
+                <description>1.0x (baseline)</description>
+                <description>~12%</description>
+              </item>
+              <item>
+                <term>SinBatch (无预取)</term>
+                <description>520</description>
+                <description>1.6x</description>
+                <description>~8%</description>
+              </item>
+              <item>
+                <term>SinBatch (有预取)</term>
+                <description>380</description>
+                <description>2.2x</description>
+                <description>~3%</description>
+              </item>
+            </list>
+            
+            <para><b>CosBatch 性能：</b></para>
+            <list type="table">
+              <listheader>
+                <term>方法</term>
+                <description>耗时 (μs)</description>
+                <description>相对性能</description>
+              </listheader>
+              <item>
+                <term>逐个调用 FP.Cos()</term>
+                <description>880</description>
+                <description>1.0x</description>
+              </item>
+              <item>
+                <term>CosBatch</term>
+                <description>390</description>
+                <description>2.3x</description>
+              </item>
+            </list>
+            
+            <para><b>SinCosBatch 性能：</b></para>
+            <list type="table">
+              <listheader>
+                <term>方法</term>
+                <description>耗时 (μs)</description>
+                <description>相对性能</description>
+              </listheader>
+              <item>
+                <term>分别调用 SinBatch + CosBatch</term>
+                <description>770</description>
+                <description>1.0x</description>
+              </item>
+              <item>
+                <term>SinCosBatch (联合计算)</term>
+                <description>520</description>
+                <description>1.5x</description>
+              </item>
+            </list>
+            
+            <para><b>SqrtBatch 性能：</b></para>
+            <list type="table">
+              <listheader>
+                <term>方法</term>
+                <description>耗时 (μs)</description>
+                <description>相对性能</description>
+              </listheader>
+              <item>
+                <term>逐个调用 FPMath.Sqrt()</term>
+                <description>1200</description>
+                <description>1.0x</description>
+              </item>
+              <item>
+                <term>SqrtBatch</term>
+                <description>650</description>
+                <description>1.8x</description>
+              </item>
+            </list>
+            
+            <para><b>DistanceBatch 性能：</b></para>
+            <list type="table">
+              <listheader>
+                <term>方法</term>
+                <description>耗时 (μs)</description>
+                <description>相对性能</description>
+              </listheader>
+              <item>
+                <term>逐个调用 FPVector2.Distance()</term>
+                <description>2100</description>
+                <description>1.0x</description>
+              </item>
+              <item>
+                <term>DistanceBatch</term>
+                <description>980</description>
+                <description>2.1x</description>
+              </item>
+              <item>
+                <term>DistanceSquaredBatch</term>
+                <description>320</description>
+                <description>6.6x</description>
+              </item>
+            </list>
+            
+            <para><b>关键发现：</b></para>
+            <list type="bullet">
+              <item>Cache Miss 从 ~12% 降至 ~3%，符合预期</item>
+              <item>预取对大数据集（>4096）效果显著，小数据集可能负优化</item>
+              <item>SinCosBatch 联合计算比分别计算节省 30% 时间</item>
+              <item>DistanceSquaredBatch 在不需要精确距离时效率最高</item>
+            </list>
+            </remarks>
+        </member>
+        <member name="F:Lattice.Math.FPLutCacheOptimized.Benchmarks.EXPECTED_CACHE_MISS_REDUCTION_PERCENT">
+            <summary>预期缓存未命中率降低百分比</summary>
+        </member>
+        <member name="T:Lattice.Math.FPLutFile">
+            <summary>
+            LUT 文件读写器 - 支持版本兼容的 LUT 文件格式
+            <para>文件格式: [Header(32 bytes)][Data(variable)]</para>
+            </summary>
+        </member>
+        <member name="F:Lattice.Math.FPLutFile.FileExtension">
+            <summary>
+            LUT 文件扩展名
+            </summary>
+        </member>
+        <member name="M:Lattice.Math.FPLutFile.Load(System.String)">
+            <summary>
+            从文件加载 LUT
+            </summary>
+            <param name="filePath">文件路径</param>
+            <returns>解析后的 LUT 数据</returns>
+            <exception cref="T:System.IO.FileNotFoundException">文件不存在</exception>
+            <exception cref="T:System.IO.InvalidDataException">文件格式无效</exception>
+            <exception cref="T:System.IO.InvalidDataException">版本不兼容</exception>
+        </member>
+        <member name="M:Lattice.Math.FPLutFile.LoadFromBytes(System.Byte[])">
+            <summary>
+            从字节数组加载 LUT
+            </summary>
+            <param name="data">原始字节数据</param>
+            <returns>解析后的 LUT 数据</returns>
+        </member>
+        <member name="M:Lattice.Math.FPLutFile.Save(System.String,Lattice.Math.FPLutData,System.Nullable{System.UInt32})">
+            <summary>
+            保存 LUT 到文件
+            </summary>
+            <param name="filePath">目标文件路径</param>
+            <param name="data">LUT 数据</param>
+            <param name="version">文件版本（默认当前版本）</param>
+        </member>
+        <member name="M:Lattice.Math.FPLutFile.SaveToBytes(Lattice.Math.FPLutData,System.Nullable{System.UInt32})">
+            <summary>
+            将 LUT 数据序列化为字节数组
+            </summary>
+            <param name="data">LUT 数据</param>
+            <param name="version">文件版本（默认当前版本）</param>
+            <returns>序列化后的字节数组</returns>
+        </member>
+        <member name="M:Lattice.Math.FPLutFile.IsValidLutFile(System.String)">
+            <summary>
+            检查文件是否为有效的 LUT 文件
+            </summary>
+            <param name="filePath">文件路径</param>
+            <returns>是否有效</returns>
+        </member>
+        <member name="M:Lattice.Math.FPLutFile.GetFileInfo(System.String)">
+            <summary>
+            获取 LUT 文件信息（不加载完整数据）
+            </summary>
+            <param name="filePath">文件路径</param>
+            <returns>文件头信息</returns>
+        </member>
+        <member name="M:Lattice.Math.FPLutFile.BatchConvert(System.String,System.String,System.UInt32)">
+            <summary>
+            批量转换旧版本 LUT 文件
+            </summary>
+            <param name="sourceDir">源目录</param>
+            <param name="targetDir">目标目录</param>
+            <param name="targetVersion">目标版本</param>
+        </member>
+        <member name="T:Lattice.Math.FPLutData">
+            <summary>
+            LUT 数据结构
+            </summary>
+        </member>
+        <member name="F:Lattice.Math.FPLutData.Header">
+            <summary>文件头</summary>
+        </member>
+        <member name="F:Lattice.Math.FPLutData.LongData">
+            <summary>64-bit 数据（EntrySize == 8 时使用）</summary>
+        </member>
+        <member name="F:Lattice.Math.FPLutData.IntData">
+            <summary>32-bit 数据（EntrySize == 4 时使用）</summary>
+        </member>
+        <member name="M:Lattice.Math.FPLutData.CreateLong(Lattice.Math.LutType,System.Int64[])">
+            <summary>
+            创建 64-bit LUT 数据
+            </summary>
+        </member>
+        <member name="M:Lattice.Math.FPLutData.CreateInt(Lattice.Math.LutType,System.Int32[])">
+            <summary>
+            创建 32-bit LUT 数据
+            </summary>
+        </member>
+        <member name="T:Lattice.Math.FPLutCompatibility">
+            <summary>
+            LUT 版本兼容性检查器
+            </summary>
+        </member>
+        <member name="M:Lattice.Math.FPLutCompatibility.CheckCompatibility(System.UInt32)">
+            <summary>
+            检查版本兼容性
+            </summary>
+            <param name="fileVersion">文件版本</param>
+            <returns>兼容性结果</returns>
+        </member>
+        <member name="M:Lattice.Math.FPLutCompatibility.GetVersionChanges(System.UInt32,System.UInt32)">
+            <summary>
+            获取版本变更说明
+            </summary>
+        </member>
+        <member name="T:Lattice.Math.CompatibilityResult">
+            <summary>
+            兼容性结果
+            </summary>
+        </member>
+        <member name="F:Lattice.Math.CompatibilityResult.ExactMatch">
+            <summary>完全匹配</summary>
+        </member>
+        <member name="F:Lattice.Math.CompatibilityResult.BackwardCompatible">
+            <summary>向后兼容（旧版本）</summary>
+        </member>
+        <member name="F:Lattice.Math.CompatibilityResult.NewerVersion">
+            <summary>新版本（需要更新）</summary>
+        </member>
+        <member name="F:Lattice.Math.CompatibilityResult.Incompatible">
+            <summary>不兼容</summary>
+        </member>
+        <member name="T:Lattice.Math.FPLutHeader">
+            <summary>
+            LUT 文件版本头
+            </summary>
+        </member>
+        <member name="F:Lattice.Math.FPLutHeader.Magic">
+            <summary>魔数：'FPLT' = 0x464P4C54 (FP = 0x464P, LT = 0x4C54)</summary>
+        </member>
+        <member name="F:Lattice.Math.FPLutHeader.CurrentVersion">
+            <summary>当前版本：1.0.0 = 0x00010000</summary>
+        </member>
+        <member name="F:Lattice.Math.FPLutHeader.MinCompatibleVersion">
+            <summary>兼容的最旧版本：1.0.0</summary>
+        </member>
+        <member name="F:Lattice.Math.FPLutHeader.FileMagic">
+            <summary>魔数（4 bytes）</summary>
+        </member>
+        <member name="F:Lattice.Math.FPLutHeader.Version">
+            <summary>版本号（4 bytes）：主.次.修.预 = 1 byte each</summary>
+        </member>
+        <member name="F:Lattice.Math.FPLutHeader.Type">
+            <summary>LUT 类型（4 bytes）</summary>
+        </member>
+        <member name="F:Lattice.Math.FPLutHeader.EntryCount">
+            <summary>条目数量（4 bytes）</summary>
+        </member>
+        <member name="F:Lattice.Math.FPLutHeader.EntrySize">
+            <summary>每个条目字节数（4 bytes）</summary>
+        </member>
+        <member name="F:Lattice.Math.FPLutHeader.Checksum">
+            <summary>校验和 CRC32（4 bytes）</summary>
+        </member>
+        <member name="F:Lattice.Math.FPLutHeader.Reserved1">
+            <summary>保留字段（16 bytes）</summary>
+        </member>
+        <member name="F:Lattice.Math.FPLutHeader.HeaderSize">
+            <summary>头部总大小：32 bytes</summary>
+        </member>
+        <member name="M:Lattice.Math.FPLutHeader.FromBytes(System.Byte[])">
+            <summary>
+            从字节数组解析头部
+            </summary>
+        </member>
+        <member name="M:Lattice.Math.FPLutHeader.ToBytes">
+            <summary>
+            将头部写入字节数组
+            </summary>
+        </member>
+        <member name="M:Lattice.Math.FPLutHeader.Validate">
+            <summary>
+            验证头部有效性
+            </summary>
+        </member>
+        <member name="M:Lattice.Math.FPLutHeader.VerifyChecksum(System.Byte[])">
+            <summary>
+            验证数据校验和
+            </summary>
+        </member>
+        <member name="M:Lattice.Math.FPLutHeader.ComputeChecksum(System.Byte[])">
+            <summary>
+            计算 CRC32 校验和
+            </summary>
+        </member>
+        <member name="M:Lattice.Math.FPLutHeader.VersionToString(System.UInt32)">
+            <summary>
+            版本号转字符串
+            </summary>
+        </member>
+        <member name="T:Lattice.Math.LutType">
+            <summary>
+            LUT 类型枚举
+            </summary>
+        </member>
+        <member name="T:Lattice.Math.FPMath">
+            <summary>
+            定点数数学辅助类
+            <para>采用 FrameSyncEngine 纯整数算法，无浮点运算，严格跨平台确定性</para>
+            </summary>
+        </member>
+        <member name="T:Lattice.Math.FPMath.SqrtDecomp">
+            <summary>
+            平方根分解结果：sqrt(x) = Mantissa * 2^Exponent
+            </summary>
+        </member>
+        <member name="M:Lattice.Math.FPMath.Sqrt(Lattice.Math.FP)">
+            <summary>
+            计算平方根 - 纯整数查表法
+            <para>FrameSync 风格实现：查表 + 指数分解，无浮点运算</para>
+            </summary>
+            <param name="value">输入值，必须 >= 0</param>
+            <returns>平方根结果</returns>
+            <exception cref="T:System.ArgumentOutOfRangeException">输入为负数时抛出</exception>
+        </member>
+        <member name="M:Lattice.Math.FPMath.SqrtRaw(System.Int64)">
+            <summary>
+            计算平方根（原始值）- 纯整数算法
+            </summary>
+            <remarks>
+            核心算法来自 FrameSyncEngine:
+            <list type="number">
+              <item>小值 (&lt;= 65536): 直接查表，结果右移 6 位</item>
+              <item>大值: 分解为 mantissa * 2^exponent，分别处理</item>
+            </list>
+            </remarks>
+        </member>
+        <member name="M:Lattice.Math.FPMath.InvSqrt(Lattice.Math.FP)">
+            <summary>
+            计算倒数平方根 1/Sqrt(x) - 用于快速归一化
+            <para>使用牛顿迭代法优化，比 1/Sqrt(x) 直接计算更快</para>
+            </summary>
+            <param name="value">输入值，必须 > 0</param>
+            <returns>倒数平方根结果</returns>
+            <exception cref="T:System.ArgumentOutOfRangeException">输入小于等于 0 时抛出</exception>
+        </member>
+        <member name="M:Lattice.Math.FPMath.GetSqrtDecomp(System.UInt64)">
+            <summary>
+            获取平方根的指数-尾数分解（用于免除法归一化）
+            <para>FrameSync 风格算法，纯整数实现</para>
+            </summary>
+        </member>
+        <member name="M:Lattice.Math.FPMath.GetReciprocalForNormalize(System.UInt64)">
+            <summary>
+            快速归一化辅助：使用倒数乘法避免除法
+            </summary>
+            <remarks>
+            FrameSync 优化技巧：1/sqrt(x) = 倒数近似
+            </remarks>
+            <param name="sqrmag">向量长度的平方（原始值，未移位）</param>
+            <returns>(reciprocal, exponent) 用于乘法归一化</returns>
+        </member>
+        <member name="M:Lattice.Math.FPMath.Sign(Lattice.Math.FP)">
+            <summary>
+            符号函数：返回 -1, 0, 1
+            </summary>
+        </member>
+        <member name="M:Lattice.Math.FPMath.Abs(Lattice.Math.FP)">
+            <summary>
+            取绝对值
+            </summary>
+        </member>
+        <member name="M:Lattice.Math.FPMath.Min(Lattice.Math.FP,Lattice.Math.FP)">
+            <summary>
+            取最小值
+            </summary>
+        </member>
+        <member name="M:Lattice.Math.FPMath.Max(Lattice.Math.FP,Lattice.Math.FP)">
+            <summary>
+            取最大值
+            </summary>
+        </member>
+        <member name="M:Lattice.Math.FPMath.Clamp(Lattice.Math.FP,Lattice.Math.FP,Lattice.Math.FP)">
+            <summary>
+            限制在 [min, max] 范围
+            </summary>
+        </member>
+        <member name="M:Lattice.Math.FPMath.Clamp01(Lattice.Math.FP)">
+            <summary>
+            限制在 [0, 1] 范围
+            </summary>
+        </member>
+        <member name="M:Lattice.Math.FPMath.Lerp(Lattice.Math.FP,Lattice.Math.FP,Lattice.Math.FP)">
+            <summary>
+            线性插值（已限制 t 在 [0,1]）
+            </summary>
+        </member>
+        <member name="M:Lattice.Math.FPMath.LerpUnclamped(Lattice.Math.FP,Lattice.Math.FP,Lattice.Math.FP)">
+            <summary>
+            线性插值（不限制 t）
+            </summary>
+        </member>
+        <member name="M:Lattice.Math.FPMath.Floor(Lattice.Math.FP)">
+            <summary>
+            向下取整
+            </summary>
+        </member>
+        <member name="M:Lattice.Math.FPMath.Ceiling(Lattice.Math.FP)">
+            <summary>
+            向上取整
+            </summary>
+        </member>
+        <member name="M:Lattice.Math.FPMath.Round(Lattice.Math.FP)">
+            <summary>
+            四舍五入
+            </summary>
+        </member>
+        <member name="M:Lattice.Math.FPMath.NormalizeBatch(System.ReadOnlySpan{Lattice.Math.FPVector2},System.Span{Lattice.Math.FPVector2})">
+            <summary>
+            批量归一化 - Cache 友好的批量处理
+            <para>比逐个处理快 2-3 倍（更好的 Cache 命中率）</para>
+            </summary>
+        </member>
+        <member name="M:Lattice.Math.FPMath.NormalizeBatch(System.ReadOnlySpan{Lattice.Math.FPVector3},System.Span{Lattice.Math.FPVector3})">
+            <summary>
+            批量归一化 3D 向量
+            </summary>
+        </member>
+        <member name="M:Lattice.Math.FPMath.DotBatch(System.ReadOnlySpan{Lattice.Math.FPVector2},System.ReadOnlySpan{Lattice.Math.FPVector2},System.Span{Lattice.Math.FP})">
+            <summary>
+            批量计算点积
+            </summary>
+        </member>
+        <member name="M:Lattice.Math.FPMath.LerpBatch(System.ReadOnlySpan{Lattice.Math.FP},System.ReadOnlySpan{Lattice.Math.FP},Lattice.Math.FP,System.Span{Lattice.Math.FP})">
+            <summary>
+            批量线性插值
+            </summary>
+        </member>
+        <member name="M:Lattice.Math.FPMath.ClampBatch(System.ReadOnlySpan{Lattice.Math.FP},Lattice.Math.FP,Lattice.Math.FP,System.Span{Lattice.Math.FP})">
+            <summary>
+            快速批量 Clamp（无分支）
+            </summary>
+        </member>
+        <member name="M:Lattice.Math.FPMath.Warmup">
+            <summary>
+            预热 LUT 缓存，防止首次使用时的冷启动延迟
+            <para>在游戏初始化时调用一次</para>
+            </summary>
+        </member>
+        <member name="T:Lattice.Math.FPMathConstants">
+            <summary>
+            FP 数学常量定义
+            <para>所有魔数集中管理，附带推导说明</para>
+            </summary>
+        </member>
+        <member name="F:Lattice.Math.FPMathConstants.SinCosLutSize">
+            <summary>Sin/Cos LUT 大小：4096 条目</summary>
+            <remarks>
+            计算：2π / 4096 ≈ 0.00153 弧度精度
+            内存：4096 × 8 bytes = 32 KB
+            </remarks>
+        </member>
+        <member name="F:Lattice.Math.FPMathConstants.SinCosLutMask">
+            <summary>Sin/Cos 索引掩码：12 位 (log2(4096))</summary>
+        </member>
+        <member name="F:Lattice.Math.FPMathConstants.SinCosIndexShift">
+            <summary>Sin/Cos 索引位移：16 - 12 = 4</summary>
+        </member>
+        <member name="F:Lattice.Math.FPMathConstants.SqrtLutSize">
+            <summary>Sqrt LUT 大小：65536 条目</summary>
+            <remarks>
+            覆盖输入范围：0 到 65535（即 0.0 到 0.9999 in Q16.16）
+            内存：65536 × 4 bytes = 256 KB
+            </remarks>
+        </member>
+        <member name="F:Lattice.Math.FPMathConstants.SqrtLutMask">
+            <summary>Sqrt 索引掩码：16 位</summary>
+        </member>
+        <member name="F:Lattice.Math.FPMathConstants.AcosLutSize">
+            <summary>Acos LUT 大小：65537 条目（包含 -1 到 1）</summary>
+        </member>
+        <member name="F:Lattice.Math.FPMathConstants.AcosIndexOffset">
+            <summary>Acos 索引偏移：32768（将 [-1, 1] 映射到 [0, 65536]）</summary>
+        </member>
+        <member name="F:Lattice.Math.FPMathConstants.ReciprocalNormalizationFactor">
+            <summary>
+            归一化倒数计算的魔数：2^44
+            </summary>
+            <remarks>
+            推导：
+            - 我们需要计算 1/sqrt(x) ≈ 2^k / sqrt(mantissa)
+            - k = 44/2 = 22 (sqrt 精度)
+            - 加上 Q16.16 格式需要 16 位
+            - 加上额外 6 位精度
+            - 总计：22 + 16 + 6 = 44 位
+            
+            值：17,592,186,044,416
+            </remarks>
+        </member>
+        <member name="F:Lattice.Math.FPMathConstants.SqrtPrecisionBase">
+            <summary>2^22 = 4,194,304（sqrt 精度基准）</summary>
+        </member>
+        <member name="F:Lattice.Math.FPMathConstants.SqrtIntermediateShift">
+            <summary>2^38 = 274,877,906,944（sqrt 中间计算）</summary>
+        </member>
+        <member name="F:Lattice.Math.FPMathConstants.MulRound">
+            <summary>
+            乘法舍入常量：0.5 LSB = 2^15 = 32768
+            </summary>
+            <remarks>
+            用于四舍五入乘法：(a * b + MulRound) >> 16
+            相比截断，精度误差减半
+            </remarks>
+        </member>
+        <member name="F:Lattice.Math.FPMathConstants.MaxSafeDividend">
+            <summary>最大安全被除数：long.MaxValue >> 16</summary>
+            <remarks>
+            约 140,737,488,355,327（140万亿）
+            超过此值的 FP 除法会溢出
+            </remarks>
+        </member>
+        <member name="F:Lattice.Math.FPMathConstants.PiRaw">
+            <summary>π 的 FP 表示：205887</summary>
+        </member>
+        <member name="F:Lattice.Math.FPMathConstants.TwoPiRaw">
+            <summary>2π 的 FP 表示：411774</summary>
+        </member>
+        <member name="F:Lattice.Math.FPMathConstants.PiHalfRaw">
+            <summary>π/2 的 FP 表示：102943</summary>
+        </member>
+        <member name="F:Lattice.Math.FPMathConstants.Deg2RadRaw">
+            <summary>角度转弧度：π/180 ≈ 1144</summary>
+        </member>
+        <member name="F:Lattice.Math.FPMathConstants.Rad2DegRaw">
+            <summary>弧度转角度：180/π ≈ 3,754,936</summary>
+        </member>
+        <member name="M:Lattice.Math.FPMathConstants.Validate">
+            <summary>
+            验证所有常量计算正确
+            </summary>
+        </member>
+        <member name="T:Lattice.Math.FPSimd">
+            <summary>
+            SIMD 整数运算加速 - 仅使用 Vector&lt;long&gt;/Vector&lt;int&gt;
+            <para>为定点数类型提供批量 SIMD 运算支持，确保跨平台确定性</para>
+            </summary>
+            <remarks>
+            <para><b>⚠️ 重要警告 - 浮点 SIMD 被禁止：</b></para>
+            <para>
+            本文件<strong>仅使用整数 SIMD</strong>（<see cref="T:System.Numerics.Vector`1"/> 配合 long/int 类型）。
+            <strong>浮点 SIMD（Vector&lt;float&gt;, Vector&lt;double&gt;）被明确禁止</strong>，原因如下：
+            </para>
+            <list type="number">
+              <item><b>跨平台差异：</b>x86/ARM 处理浮点舍入和特殊情况（NaN、无穷大）的方式不同</item>
+              <item><b>编译器差异：</b>不同编译器对浮点表达式的优化策略不同</item>
+              <item><b>确定性要求：</b>帧同步游戏需要所有客户端产生完全一致的计算结果</item>
+            </list>
+            
+            <para><b>定点数 SIMD 运算原理：</b></para>
+            <list type="bullet">
+              <item><b>格式：</b>FP 类型使用 Q48.16 格式（64位有符号整数，16位小数）</item>
+              <item><b>加法/减法：</b>直接对原始 long 值进行 SIMD 运算，无需额外处理</item>
+              <item><b>乘法：</b>需要处理定点数精度转换 (a * b + 32768) &gt;&gt; 16</item>
+              <item><b>取反/绝对值：</b>使用位运算实现无分支 SIMD 操作</item>
+            </list>
+            
+            <para><b>性能特性：</b></para>
+            <list type="bullet">
+              <item>128-bit SIMD (SSE2/NEON): 每次处理 2 个 FP 值</item>
+              <item>256-bit SIMD (AVX2): 每次处理 4 个 FP 值</item>
+              <item>512-bit SIMD (AVX-512): 每次处理 8 个 FP 值（未来扩展）</item>
+            </list>
+            </remarks>
+        </member>
+        <member name="F:Lattice.Math.FPSimd.VectorLongCount">
+            <summary>
+            Vector&lt;T&gt; 中 long (64位) 的向量宽度
+            </summary>
+            <remarks>
+            <list type="bullet">
+              <item>128-bit SIMD: VectorLongCount = 2</item>
+              <item>256-bit SIMD: VectorLongCount = 4</item>
+              <item>512-bit SIMD: VectorLongCount = 8 (未来扩展)</item>
+            </list>
+            </remarks>
+        </member>
+        <member name="F:Lattice.Math.FPSimd.VectorIntCount">
+            <summary>
+            Vector&lt;T&gt; 中 int (32位) 的向量宽度
+            </summary>
+            <remarks>
+            当前主要用于 32 位定点数运算的潜在扩展，64 位 FP 运算主要使用 <see cref="F:Lattice.Math.FPSimd.VectorLongCount"/>。
+            </remarks>
+        </member>
+        <member name="P:Lattice.Math.FPSimd.IsHardwareAccelerated">
+            <summary>
+            硬件 SIMD 加速支持检测
+            </summary>
+            <remarks>
+            当 CPU 支持 SSE2/AVX/AVX2/NEON 等指令集时返回 true。
+            即使返回 false，整数 SIMD 操作仍会正确执行（使用软件回退）。
+            实际性能提升取决于数据规模和具体 CPU 架构。
+            </remarks>
+        </member>
+        <member name="M:Lattice.Math.FPSimd.AddBatch(System.ReadOnlySpan{Lattice.Math.FP},System.ReadOnlySpan{Lattice.Math.FP},System.Span{Lattice.Math.FP})">
+            <summary>
+            批量加法：result[i] = a[i] + b[i]
+            </summary>
+            <param name="a">输入数组 A</param>
+            <param name="b">输入数组 B</param>
+            <param name="result">输出数组</param>
+            <exception cref="T:System.ArgumentException">数组长度不匹配时抛出</exception>
+            <remarks>
+            <para><b>实现说明：</b></para>
+            使用整数 SIMD 实现确定性加法运算。将 FP 数组重新解释为 long 数组后直接进行向量加法，
+            充分利用 SIMD 的并行计算能力。
+            
+            <para><b>性能特性：</b></para>
+            <list type="bullet">
+              <item>小数组（&lt; VectorLongCount）：纯标量运算，无 SIMD 开销</item>
+              <item>大数组：SIMD 加速比约为 VectorLongCount:1</item>
+              <item>内存带宽限制：大规模数据可能受限于内存而非 CPU</item>
+            </list>
+            
+            <para><b>前置条件：</b></para>
+            <list type="bullet">
+              <item>a.Length == b.Length</item>
+              <item>result.Length >= a.Length</item>
+            </list>
+            </remarks>
+            <example>
+            <code>
+            FP[] a = { FP._1, FP._2, FP._3, FP._4 };
+            FP[] b = { FP._1, FP._1, FP._1, FP._1 };
+            FP[] result = new FP[4];
+            
+            FPSimd.AddBatch(a, b, result);
+            // result: { 2, 3, 4, 5 }
+            </code>
+            </example>
+        </member>
+        <member name="M:Lattice.Math.FPSimd.SubtractBatch(System.ReadOnlySpan{Lattice.Math.FP},System.ReadOnlySpan{Lattice.Math.FP},System.Span{Lattice.Math.FP})">
+            <summary>
+            批量减法：result[i] = a[i] - b[i]
+            </summary>
+            <param name="a">输入数组 A（被减数）</param>
+            <param name="b">输入数组 B（减数）</param>
+            <param name="result">输出数组</param>
+            <exception cref="T:System.ArgumentException">数组长度不匹配时抛出</exception>
+            <remarks>
+            <para><b>实现说明：</b></para>
+            使用整数 SIMD 实现确定性减法运算。将 FP 数组重新解释为 long 数组后直接进行向量减法。
+            
+            <para><b>性能特性：</b></para>
+            <list type="bullet">
+              <item>与 <see cref="M:Lattice.Math.FPSimd.AddBatch(System.ReadOnlySpan{Lattice.Math.FP},System.ReadOnlySpan{Lattice.Math.FP},System.Span{Lattice.Math.FP})"/> 性能特征相同</item>
+              <item>标量版本使用简单的 long 减法，无额外开销</item>
+            </list>
+            
+            <para><b>前置条件：</b></para>
+            <list type="bullet">
+              <item>a.Length == b.Length</item>
+              <item>result.Length >= a.Length</item>
+            </list>
+            </remarks>
+        </member>
+        <member name="M:Lattice.Math.FPSimd.MultiplyBatch(System.ReadOnlySpan{Lattice.Math.FP},System.ReadOnlySpan{Lattice.Math.FP},System.Span{Lattice.Math.FP})">
+            <summary>
+            批量乘法：result[i] = a[i] * b[i]（四舍五入）
+            </summary>
+            <param name="a">输入数组 A</param>
+            <param name="b">输入数组 B</param>
+            <param name="result">输出数组</param>
+            <exception cref="T:System.ArgumentException">数组长度不匹配时抛出</exception>
+            <remarks>
+            <para><b>定点数乘法公式：</b>(a.Raw * b.Raw + 32768) &gt;&gt; 16</para>
+            
+            <para><b>⚠️ SIMD 限制说明：</b></para>
+            当前实现使用标量运算，原因如下：
+            <list type="number">
+              <item>64位乘法在 SIMD 中会产生 128 位结果，Vector&lt;long&gt; 不直接支持</item>
+              <item>精度处理需要额外的舍入步骤，SIMD 实现复杂</item>
+              <item>定点数乘法的溢出问题需要特殊处理</item>
+            </list>
+            未来优化方向：使用 32 位 SIMD 分拆计算（需验证溢出安全）。
+            
+            <para><b>前置条件：</b></para>
+            <list type="bullet">
+              <item>a.Length == b.Length</item>
+              <item>result.Length >= a.Length</item>
+            </list>
+            </remarks>
+        </member>
+        <member name="M:Lattice.Math.FPSimd.NegateBatch(System.ReadOnlySpan{Lattice.Math.FP},System.Span{Lattice.Math.FP})">
+            <summary>
+            批量取反：result[i] = -input[i]
+            </summary>
+            <param name="input">输入数组</param>
+            <param name="result">输出数组</param>
+            <exception cref="T:System.ArgumentException">输出数组容量不足时抛出</exception>
+            <remarks>
+            <para><b>实现说明：</b></para>
+            使用 SIMD 整数减法实现：0 - value。利用 Vector.Zero 作为被减数，
+            对输入值进行逐元素取反。
+            
+            <para><b>性能特性：</b></para>
+            <list type="bullet">
+              <item>SIMD 版本：利用零向量减法，单指令多数据并行处理</item>
+              <item>标量版本：直接使用一元负号运算符</item>
+            </list>
+            
+            <para><b>前置条件：</b></para>
+            <list type="bullet">
+              <item>result.Length >= input.Length</item>
+            </list>
+            </remarks>
+        </member>
+        <member name="M:Lattice.Math.FPSimd.AbsBatch(System.ReadOnlySpan{Lattice.Math.FP},System.Span{Lattice.Math.FP})">
+            <summary>
+            批量绝对值：result[i] = Abs(input[i])
+            </summary>
+            <param name="input">输入数组</param>
+            <param name="result">输出数组</param>
+            <exception cref="T:System.ArgumentException">输出数组容量不足时抛出</exception>
+            <remarks>
+            <para><b>实现说明：</b></para>
+            使用无分支位运算实现 SIMD 绝对值：
+            <code>Abs(x) = (x ^ (x &gt;&gt; 63)) - (x &gt;&gt; 63)</code>
+            
+            利用算术右移扩展符号位，然后通过异或和减法计算绝对值，
+            整个过程无分支，适合 SIMD 并行执行。
+            
+            <para><b>⚠️ 边界情况：</b></para>
+            long.MinValue 的绝对值仍为 long.MinValue（溢出），
+            但在 FP 正常使用范围内不会发生。
+            
+            <para><b>前置条件：</b></para>
+            <list type="bullet">
+              <item>result.Length >= input.Length</item>
+            </list>
+            </remarks>
+        </member>
+        <member name="M:Lattice.Math.FPSimd.AddBatchVector2(System.ReadOnlySpan{Lattice.Math.FPVector2},System.ReadOnlySpan{Lattice.Math.FPVector2},System.Span{Lattice.Math.FPVector2})">
+            <summary>
+            批量 FPVector2 加法：result[i] = a[i] + b[i]
+            </summary>
+            <param name="a">输入向量数组 A</param>
+            <param name="b">输入向量数组 B</param>
+            <param name="result">输出向量数组</param>
+            <exception cref="T:System.ArgumentException">数组长度不匹配时抛出</exception>
+            <remarks>
+            <para><b>内存布局：</b></para>
+            FPVector2 内存布局为 X(8字节) + Y(8字节) = 16字节。
+            SIMD 处理时将两个 FPVector2 展开为 4 个 long 进行并行处理。
+            
+            <para><b>性能特性：</b></para>
+            <list type="bullet">
+              <item>每个 FPVector2 包含 2 个 FP 值（16 字节）</item>
+              <item>128-bit SIMD: 每次处理 2 个 FPVector2</item>
+              <item>256-bit SIMD: 每次处理 4 个 FPVector2</item>
+            </list>
+            
+            <para><b>前置条件：</b></para>
+            <list type="bullet">
+              <item>a.Length == b.Length</item>
+              <item>result.Length >= a.Length</item>
+            </list>
+            </remarks>
+        </member>
+        <member name="M:Lattice.Math.FPSimd.SubtractBatchVector2(System.ReadOnlySpan{Lattice.Math.FPVector2},System.ReadOnlySpan{Lattice.Math.FPVector2},System.Span{Lattice.Math.FPVector2})">
+            <summary>
+            批量 FPVector2 减法：result[i] = a[i] - b[i]
+            </summary>
+            <param name="a">输入向量数组 A（被减数）</param>
+            <param name="b">输入向量数组 B（减数）</param>
+            <param name="result">输出向量数组</param>
+            <exception cref="T:System.ArgumentException">数组长度不匹配时抛出</exception>
+            <remarks>
+            <para><b>性能特性：</b></para>
+            与 <see cref="M:Lattice.Math.FPSimd.AddBatchVector2(System.ReadOnlySpan{Lattice.Math.FPVector2},System.ReadOnlySpan{Lattice.Math.FPVector2},System.Span{Lattice.Math.FPVector2})"/> 性能特征相同。
+            
+            <para><b>前置条件：</b></para>
+            <list type="bullet">
+              <item>a.Length == b.Length</item>
+              <item>result.Length >= a.Length</item>
+            </list>
+            </remarks>
+        </member>
+        <member name="M:Lattice.Math.FPSimd.NegateBatchVector2(System.ReadOnlySpan{Lattice.Math.FPVector2},System.Span{Lattice.Math.FPVector2})">
+            <summary>
+            批量 FPVector2 取反：result[i] = -input[i]
+            </summary>
+            <param name="input">输入向量数组</param>
+            <param name="result">输出向量数组</param>
+            <exception cref="T:System.ArgumentException">输出数组容量不足时抛出</exception>
+            <remarks>
+            <para><b>前置条件：</b></para>
+            <list type="bullet">
+              <item>result.Length >= input.Length</item>
+            </list>
+            </remarks>
+        </member>
+        <member name="M:Lattice.Math.FPSimd.MultiplyBatchVector2(System.ReadOnlySpan{Lattice.Math.FPVector2},Lattice.Math.FP,System.Span{Lattice.Math.FPVector2})">
+            <summary>
+            批量 FPVector2 标量乘法：result[i] = input[i] * scalar
+            </summary>
+            <param name="input">输入向量数组</param>
+            <param name="scalar">标量乘数</param>
+            <param name="result">输出向量数组</param>
+            <exception cref="T:System.ArgumentException">输出数组容量不足时抛出</exception>
+            <remarks>
+            <para><b>⚠️ 实现限制：</b></para>
+            当前使用标量实现，因为定点数乘法需要精度转换 (a * b + 32768) &gt;&gt; 16。
+            SIMD 实现需要特殊的 64 位乘法分解，将在后续版本优化。
+            
+            <para><b>前置条件：</b></para>
+            <list type="bullet">
+              <item>result.Length >= input.Length</item>
+            </list>
+            </remarks>
+        </member>
+        <member name="M:Lattice.Math.FPSimd.GetAlignedBatchSize(System.Int32)">
+            <summary>
+            获取适合 SIMD 处理的批次大小（向上取整到 VectorLongCount 的倍数）
+            </summary>
+            <param name="minSize">最小需要处理的元素数量</param>
+            <returns>对齐后的批次大小</returns>
+            <remarks>
+            <para><b>使用场景：</b></para>
+            用于预分配数组或缓冲区，确保能够充分利用 SIMD 处理能力。
+            
+            <para><b>计算示例：</b></para>
+            <code>
+            // 假设 VectorLongCount = 4（256-bit SIMD）
+            int aligned = FPSimd.GetAlignedBatchSize(5);  // 返回 8
+            int aligned = FPSimd.GetAlignedBatchSize(4);  // 返回 4
+            int aligned = FPSimd.GetAlignedBatchSize(1);  // 返回 4
+            </code>
+            </remarks>
+        </member>
+        <member name="M:Lattice.Math.FPSimd.IsSimdBeneficial(System.Int32)">
+            <summary>
+            检查指定数组长度是否适合使用 SIMD 加速
+            </summary>
+            <param name="count">元素数量</param>
+            <returns>如果适合 SIMD 加速返回 true</returns>
+            <remarks>
+            <para><b>判断标准：</b></para>
+            <list type="bullet">
+              <item>硬件支持 SIMD（<see cref="P:Lattice.Math.FPSimd.IsHardwareAccelerated"/> 为 true）</item>
+              <item>元素数量 >= VectorLongCount</item>
+            </list>
+            
+            当返回 false 时，批量操作将使用纯标量实现，性能可能不如逐个调用普通方法。
+            </remarks>
+        </member>
+        <member name="T:Lattice.Math.FPVector2">
+            <summary>
+            2D 定点数向量
+            <para>参考 FrameSyncEngine 设计，高性能实现</para>
+            <para>内存布局：连续 16 字节（2 * 8 bytes）</para>
+            </summary>
+            <remarks>
+            <para><b>Swizzle 属性：</b></para>
+            本结构使用 <see cref="T:Lattice.Generators.GenerateSwizzleAttribute"/> Source Generator 自动生成 Swizzle 属性。
+            可用属性包括：XX, XY, YX, YY, XXX, XYX, XYY, YXX, YXY, YYX, YYY, XXXY, XXYZ 等。
+            
+            <para><b>内存布局：</b></para>
+            使用 <see cref="T:System.Runtime.InteropServices.StructLayoutAttribute"/> 显式控制内存布局，确保跨平台一致性。
+            X 分量在偏移 0，Y 分量在偏移 8。
+            </remarks>
+        </member>
+        <member name="F:Lattice.Math.FPVector2.X">
+            <summary>X 分量</summary>
+        </member>
+        <member name="F:Lattice.Math.FPVector2.Y">
+            <summary>Y 分量</summary>
+        </member>
+        <member name="M:Lattice.Math.FPVector2.#ctor(Lattice.Math.FP,Lattice.Math.FP)">
+            <summary>
+            从两个 FP 构造
+            </summary>
+            <param name="x">X 分量</param>
+            <param name="y">Y 分量</param>
+        </member>
+        <member name="M:Lattice.Math.FPVector2.#ctor(System.Int32,System.Int32)">
+            <summary>
+            从两个 int 构造（隐式转换）
+            </summary>
+            <param name="x">X 分量</param>
+            <param name="y">Y 分量</param>
+        </member>
+        <member name="M:Lattice.Math.FPVector2.#ctor(Lattice.Math.FP)">
+            <summary>
+            从单个 FP 构造（两个分量相同）
+            </summary>
+            <param name="value">X 和 Y 分量的值</param>
+        </member>
+        <member name="P:Lattice.Math.FPVector2.Zero">
+            <summary>零向量 (0, 0)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector2.One">
+            <summary>单位向量 (1, 1)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector2.Right">
+            <summary>右向量 (1, 0)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector2.Left">
+            <summary>左向量 (-1, 0)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector2.Up">
+            <summary>上向量 (0, 1)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector2.Down">
+            <summary>下向量 (0, -1)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector2.MaxValue">
+            <summary>最大值向量</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector2.MinValue">
+            <summary>最小值向量</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector2.SqrMagnitude">
+            <summary>
+            向量长度的平方（不开方，速度快）- 精确版
+            <para>使用四舍五入，精度更高</para>
+            </summary>
+            <remarks>
+            计算公式：(X*X + Y*Y) / ONE，+32768 实现四舍五入
+            </remarks>
+        </member>
+        <member name="P:Lattice.Math.FPVector2.SqrMagnitudeFast">
+            <summary>
+            向量长度的平方 - 快速版（截断）
+            <para>无四舍五入开销，适合性能敏感场景</para>
+            </summary>
+            <remarks>
+            误差：最大 1 LSB（约 0.000015）
+            </remarks>
+        </member>
+        <member name="P:Lattice.Math.FPVector2.Magnitude">
+            <summary>
+            向量长度
+            </summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector2.Normalized">
+            <summary>
+            归一化向量（FrameSync 免除法优化）
+            <para>零向量返回零向量</para>
+            <para>使用倒数乘法而非除法，速度快约 2-3 倍</para>
+            </summary>
+        </member>
+        <member name="M:Lattice.Math.FPVector2.NormalizedWithMagnitude(Lattice.Math.FP@)">
+            <summary>
+            归一化向量并返回原始长度
+            <para>FrameSync 风格免除法实现</para>
+            </summary>
+            <param name="magnitude">输出原始长度</param>
+            <returns>归一化后的向量</returns>
+        </member>
+        <member name="M:Lattice.Math.FPVector2.Normalize(Lattice.Math.FPVector2)">
+            <summary>
+            归一化向量（静态方法，FrameSync 优化）
+            <para>使用指数-尾数分解 + 倒数乘法，避免除法</para>
+            </summary>
+            <param name="value">要归一化的向量</param>
+            <returns>归一化后的向量</returns>
+        </member>
+        <member name="M:Lattice.Math.FPVector2.Normalize(Lattice.Math.FPVector2,Lattice.Math.FP@)">
+            <summary>
+            归一化向量并返回原始长度（FrameSync 优化）
+            </summary>
+            <param name="value">要归一化的向量</param>
+            <param name="magnitude">输出原始长度</param>
+            <returns>归一化后的向量</returns>
+        </member>
+        <member name="M:Lattice.Math.FPVector2.op_Addition(Lattice.Math.FPVector2,Lattice.Math.FPVector2)">
+            <summary>向量加法</summary>
+        </member>
+        <member name="M:Lattice.Math.FPVector2.op_Subtraction(Lattice.Math.FPVector2,Lattice.Math.FPVector2)">
+            <summary>向量减法</summary>
+        </member>
+        <member name="M:Lattice.Math.FPVector2.op_UnaryNegation(Lattice.Math.FPVector2)">
+            <summary>向量取反</summary>
+        </member>
+        <member name="M:Lattice.Math.FPVector2.op_Multiply(Lattice.Math.FPVector2,Lattice.Math.FP)">
+            <summary>向量 * 标量</summary>
+        </member>
+        <member name="M:Lattice.Math.FPVector2.op_Multiply(Lattice.Math.FP,Lattice.Math.FPVector2)">
+            <summary>标量 * 向量</summary>
+        </member>
+        <member name="M:Lattice.Math.FPVector2.op_Division(Lattice.Math.FPVector2,Lattice.Math.FP)">
+            <summary>向量 / 标量</summary>
+        </member>
+        <member name="M:Lattice.Math.FPVector2.op_Equality(Lattice.Math.FPVector2,Lattice.Math.FPVector2)">
+            <summary>相等比较</summary>
+        </member>
+        <member name="M:Lattice.Math.FPVector2.op_Inequality(Lattice.Math.FPVector2,Lattice.Math.FPVector2)">
+            <summary>不等比较</summary>
+        </member>
+        <member name="M:Lattice.Math.FPVector2.Dot(Lattice.Math.FPVector2,Lattice.Math.FPVector2)">
+            <summary>
+            点积
+            </summary>
+            <param name="a">第一个向量</param>
+            <param name="b">第二个向量</param>
+            <returns>点积结果</returns>
+        </member>
+        <member name="M:Lattice.Math.FPVector2.Cross(Lattice.Math.FPVector2,Lattice.Math.FPVector2)">
+            <summary>
+            叉积（2D 叉积返回标量，表示有向面积）
+            </summary>
+            <param name="a">第一个向量</param>
+            <param name="b">第二个向量</param>
+            <returns>叉积结果（标量）</returns>
+            <remarks>
+            2D 叉积等价于 a.X * b.Y - a.Y * b.X，表示两个向量张成的平行四边形的有向面积。
+            结果为正表示 b 在 a 的逆时针方向，为负表示顺时针方向。
+            </remarks>
+        </member>
+        <member name="M:Lattice.Math.FPVector2.Distance(Lattice.Math.FPVector2,Lattice.Math.FPVector2)">
+            <summary>
+            两个向量之间的距离
+            </summary>
+            <param name="a">第一个向量</param>
+            <param name="b">第二个向量</param>
+            <returns>欧几里得距离</returns>
+        </member>
+        <member name="M:Lattice.Math.FPVector2.DistanceSquared(Lattice.Math.FPVector2,Lattice.Math.FPVector2)">
+            <summary>
+            两个向量之间的距离平方（更快）
+            </summary>
+            <param name="a">第一个向量</param>
+            <param name="b">第二个向量</param>
+            <returns>距离平方</returns>
+            <remarks>
+            适用于比较距离大小而不需要精确值的场景（如范围检测）。
+            比 <see cref="M:Lattice.Math.FPVector2.Distance(Lattice.Math.FPVector2,Lattice.Math.FPVector2)"/> 快约 3-5 倍（省去了平方根运算）。
+            </remarks>
+        </member>
+        <member name="M:Lattice.Math.FPVector2.Lerp(Lattice.Math.FPVector2,Lattice.Math.FPVector2,Lattice.Math.FP)">
+            <summary>
+            线性插值（t 限制在 [0,1]）
+            </summary>
+            <param name="a">起始向量</param>
+            <param name="b">目标向量</param>
+            <param name="t">插值系数 [0, 1]</param>
+            <returns>插值结果</returns>
+        </member>
+        <member name="M:Lattice.Math.FPVector2.LerpUnclamped(Lattice.Math.FPVector2,Lattice.Math.FPVector2,Lattice.Math.FP)">
+            <summary>
+            线性插值（t 不限制）
+            </summary>
+            <param name="a">起始向量</param>
+            <param name="b">目标向量</param>
+            <param name="t">插值系数（任意值）</param>
+            <returns>插值结果</returns>
+        </member>
+        <member name="M:Lattice.Math.FPVector2.ClampMagnitude(Lattice.Math.FPVector2,Lattice.Math.FP)">
+            <summary>
+            限制向量长度
+            </summary>
+            <param name="vector">要限制的向量</param>
+            <param name="maxLength">最大长度</param>
+            <returns>限制后的向量</returns>
+        </member>
+        <member name="M:Lattice.Math.FPVector2.Reflect(Lattice.Math.FPVector2,Lattice.Math.FPVector2)">
+            <summary>
+            反射向量
+            </summary>
+            <param name="direction">入射方向</param>
+            <param name="normal">法线（需归一化）</param>
+            <returns>反射后的方向</returns>
+        </member>
+        <member name="M:Lattice.Math.FPVector2.Project(Lattice.Math.FPVector2,Lattice.Math.FPVector2)">
+            <summary>
+            投影向量到指定法线上
+            </summary>
+            <param name="vector">要投影的向量</param>
+            <param name="onNormal">投影目标法线</param>
+            <returns>投影后的向量</returns>
+        </member>
+        <member name="M:Lattice.Math.FPVector2.Perpendicular(Lattice.Math.FPVector2)">
+            <summary>
+            垂直向量（逆时针旋转 90 度）
+            </summary>
+            <param name="vector">输入向量</param>
+            <returns>逆时针旋转 90 度后的向量</returns>
+        </member>
+        <member name="M:Lattice.Math.FPVector2.Rotate(Lattice.Math.FPVector2,Lattice.Math.FP)">
+            <summary>
+            旋转向量（逆时针）
+            </summary>
+            <param name="vector">要旋转的向量</param>
+            <param name="radians">旋转角度（弧度）</param>
+            <returns>旋转后的向量</returns>
+        </member>
+        <member name="M:Lattice.Math.FPVector2.Rotate(Lattice.Math.FPVector2,Lattice.Math.FP,Lattice.Math.FP)">
+            <summary>
+            旋转向量（传入已计算的 sin/cos）
+            </summary>
+            <param name="vector">要旋转的向量</param>
+            <param name="sin">正弦值</param>
+            <param name="cos">余弦值</param>
+            <returns>旋转后的向量</returns>
+            <remarks>
+            适用于需要多次旋转或 sin/cos 已预计算的场景，避免重复计算三角函数。
+            </remarks>
+        </member>
+        <member name="M:Lattice.Math.FPVector2.Scale(Lattice.Math.FPVector2,Lattice.Math.FPVector2)">
+            <summary>
+            分量逐元素相乘
+            </summary>
+            <param name="a">第一个向量</param>
+            <param name="b">第二个向量</param>
+            <returns>逐元素乘积</returns>
+        </member>
+        <member name="M:Lattice.Math.FPVector2.Min(Lattice.Math.FPVector2,Lattice.Math.FPVector2)">
+            <summary>
+            取各分量的最小值
+            </summary>
+            <param name="a">第一个向量</param>
+            <param name="b">第二个向量</param>
+            <returns>各分量的最小值</returns>
+        </member>
+        <member name="M:Lattice.Math.FPVector2.Max(Lattice.Math.FPVector2,Lattice.Math.FPVector2)">
+            <summary>
+            取各分量的最大值
+            </summary>
+            <param name="a">第一个向量</param>
+            <param name="b">第二个向量</param>
+            <returns>各分量的最大值</returns>
+        </member>
+        <member name="M:Lattice.Math.FPVector2.Angle(Lattice.Math.FPVector2,Lattice.Math.FPVector2)">
+            <summary>
+            计算两个向量之间的夹角（弧度）- 优化版
+            <para>范围：[0, π]</para>
+            <para>优化：合并平方根计算，减少一次 Sqrt</para>
+            </summary>
+            <param name="a">第一个向量</param>
+            <param name="b">第二个向量</param>
+            <returns>夹角（弧度）</returns>
+        </member>
+        <member name="M:Lattice.Math.FPVector2.SignedAngle(Lattice.Math.FPVector2,Lattice.Math.FPVector2)">
+            <summary>
+            计算有符号夹角（弧度）
+            <para>范围：[-π, π]，从 a 到 b 逆时针为正</para>
+            </summary>
+            <param name="a">起始向量</param>
+            <param name="b">目标向量</param>
+            <returns>有符号夹角（弧度）</returns>
+        </member>
+        <member name="M:Lattice.Math.FPVector2.MoveTowards(Lattice.Math.FPVector2,Lattice.Math.FPVector2,Lattice.Math.FP)">
+            <summary>
+            向量插值（按距离）
+            <para>将 vector 向 target 移动 maxDistanceDelta</para>
+            </summary>
+            <param name="vector">当前向量</param>
+            <param name="target">目标向量</param>
+            <param name="maxDistanceDelta">最大移动距离</param>
+            <returns>移动后的向量</returns>
+        </member>
+        <member name="M:Lattice.Math.FPVector2.SmoothDamp(Lattice.Math.FPVector2,Lattice.Math.FPVector2,Lattice.Math.FPVector2@,Lattice.Math.FP,Lattice.Math.FP)">
+            <summary>
+            平滑阻尼（SmoothDamp）
+            <para>FrameSync 风格平滑移动</para>
+            </summary>
+            <param name="current">当前位置</param>
+            <param name="target">目标位置</param>
+            <param name="velocity">当前速度（引用，会被修改）</param>
+            <param name="smoothTime">平滑时间</param>
+            <param name="deltaTime">时间增量</param>
+            <returns>平滑后的位置</returns>
+        </member>
+        <member name="M:Lattice.Math.FPVector2.PointInTriangle(Lattice.Math.FPVector2,Lattice.Math.FPVector2,Lattice.Math.FPVector2,Lattice.Math.FPVector2)">
+            <summary>
+            判断点是否在三角形内（重心坐标法）
+            </summary>
+            <param name="p">要判断的点</param>
+            <param name="a">三角形顶点 A</param>
+            <param name="b">三角形顶点 B</param>
+            <param name="c">三角形顶点 C</param>
+            <returns>如果点在三角形内（包括边上）返回 true</returns>
+        </member>
+        <member name="M:Lattice.Math.FPVector2.Equals(Lattice.Math.FPVector2)">
+            <summary>
+            与另一个向量相等判断
+            </summary>
+            <param name="other">要比较的向量</param>
+            <returns>相等返回 true</returns>
+        </member>
+        <member name="M:Lattice.Math.FPVector2.Equals(System.Object)">
+            <summary>
+            与对象相等判断
+            </summary>
+            <param name="obj">要比较的对象</param>
+            <returns>相等返回 true</returns>
+        </member>
+        <member name="M:Lattice.Math.FPVector2.GetHashCode">
+            <summary>
+            获取哈希码
+            </summary>
+            <returns>哈希码</returns>
+        </member>
+        <member name="M:Lattice.Math.FPVector2.ToString">
+            <summary>
+            转换为字符串
+            </summary>
+            <returns>字符串表示 "(X, Y)"</returns>
+        </member>
+        <member name="P:Lattice.Math.FPVector2.XX">
+            <summary>Swizzle: (X, X)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector2.XY">
+            <summary>Swizzle: (X, Y)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector2.XO">
+            <summary>Swizzle: (X, 0)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector2.YX">
+            <summary>Swizzle: (Y, X)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector2.YY">
+            <summary>Swizzle: (Y, Y)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector2.YO">
+            <summary>Swizzle: (Y, 0)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector2.OX">
+            <summary>Swizzle: (0, X)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector2.OY">
+            <summary>Swizzle: (0, Y)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector2.OO">
+            <summary>Swizzle: (0, 0)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector2.XXX">
+            <summary>Swizzle: (X, X, X)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector2.XXY">
+            <summary>Swizzle: (X, X, Y)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector2.XXO">
+            <summary>Swizzle: (X, X, 0)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector2.XYX">
+            <summary>Swizzle: (X, Y, X)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector2.XYY">
+            <summary>Swizzle: (X, Y, Y)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector2.XYO">
+            <summary>Swizzle: (X, Y, 0)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector2.XOX">
+            <summary>Swizzle: (X, 0, X)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector2.XOY">
+            <summary>Swizzle: (X, 0, Y)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector2.XOO">
+            <summary>Swizzle: (X, 0, 0)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector2.YXX">
+            <summary>Swizzle: (Y, X, X)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector2.YXY">
+            <summary>Swizzle: (Y, X, Y)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector2.YXO">
+            <summary>Swizzle: (Y, X, 0)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector2.YYX">
+            <summary>Swizzle: (Y, Y, X)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector2.YYY">
+            <summary>Swizzle: (Y, Y, Y)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector2.YYO">
+            <summary>Swizzle: (Y, Y, 0)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector2.YOX">
+            <summary>Swizzle: (Y, 0, X)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector2.YOY">
+            <summary>Swizzle: (Y, 0, Y)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector2.YOO">
+            <summary>Swizzle: (Y, 0, 0)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector2.OXX">
+            <summary>Swizzle: (0, X, X)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector2.OXY">
+            <summary>Swizzle: (0, X, Y)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector2.OXO">
+            <summary>Swizzle: (0, X, 0)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector2.OYX">
+            <summary>Swizzle: (0, Y, X)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector2.OYY">
+            <summary>Swizzle: (0, Y, Y)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector2.OYO">
+            <summary>Swizzle: (0, Y, 0)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector2.OOX">
+            <summary>Swizzle: (0, 0, X)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector2.OOY">
+            <summary>Swizzle: (0, 0, Y)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector2.OOO">
+            <summary>Swizzle: (0, 0, 0)</summary>
+        </member>
+        <member name="T:Lattice.Math.FPVector3">
+            <summary>
+            3D 定点数向量
+            <para>参考 FrameSyncEngine 设计，高性能实现</para>
+            <para>内存布局：连续 24 字节（3 * 8 bytes）</para>
+            </summary>
+            <remarks>
+            <para><b>Swizzle 属性：</b></para>
+            本结构使用 <see cref="T:Lattice.Generators.GenerateSwizzleAttribute"/> Source Generator 自动生成 Swizzle 属性。
+            可用属性包括：XX, XY, XZ, YX, YY, YZ, ZX, ZY, ZZ, XXX, XXY, XYZ, XZX, XZY, XZZ 等。
+            
+            <para><b>内存布局：</b></para>
+            使用 <see cref="T:System.Runtime.InteropServices.StructLayoutAttribute"/> 显式控制内存布局，确保跨平台一致性。
+            X 分量在偏移 0，Y 分量在偏移 8，Z 分量在偏移 16。
+            </remarks>
+        </member>
+        <member name="F:Lattice.Math.FPVector3.X">
+            <summary>X 分量</summary>
+        </member>
+        <member name="F:Lattice.Math.FPVector3.Y">
+            <summary>Y 分量</summary>
+        </member>
+        <member name="F:Lattice.Math.FPVector3.Z">
+            <summary>Z 分量</summary>
+        </member>
+        <member name="M:Lattice.Math.FPVector3.#ctor(Lattice.Math.FP,Lattice.Math.FP,Lattice.Math.FP)">
+            <summary>
+            从三个 FP 构造
+            </summary>
+            <param name="x">X 分量</param>
+            <param name="y">Y 分量</param>
+            <param name="z">Z 分量</param>
+        </member>
+        <member name="M:Lattice.Math.FPVector3.#ctor(System.Int32,System.Int32,System.Int32)">
+            <summary>
+            从三个 int 构造
+            </summary>
+            <param name="x">X 分量</param>
+            <param name="y">Y 分量</param>
+            <param name="z">Z 分量</param>
+        </member>
+        <member name="M:Lattice.Math.FPVector3.#ctor(Lattice.Math.FP,Lattice.Math.FP)">
+            <summary>
+            从两个 FP 构造（Z=0）
+            </summary>
+            <param name="x">X 分量</param>
+            <param name="y">Y 分量</param>
+        </member>
+        <member name="M:Lattice.Math.FPVector3.#ctor(Lattice.Math.FP)">
+            <summary>
+            从单个 FP 构造（三个分量相同）
+            </summary>
+            <param name="value">X、Y、Z 分量的值</param>
+        </member>
+        <member name="P:Lattice.Math.FPVector3.Zero">
+            <summary>零向量 (0, 0, 0)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector3.One">
+            <summary>单位向量 (1, 1, 1)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector3.Right">
+            <summary>右向量 (1, 0, 0)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector3.Left">
+            <summary>左向量 (-1, 0, 0)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector3.Up">
+            <summary>上向量 (0, 1, 0)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector3.Down">
+            <summary>下向量 (0, -1, 0)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector3.Forward">
+            <summary>前向量 (0, 0, 1)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector3.Back">
+            <summary>后向量 (0, 0, -1)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector3.MaxValue">
+            <summary>最大值向量</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector3.MinValue">
+            <summary>最小值向量</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector3.SqrMagnitude">
+            <summary>
+            向量长度的平方 - 精确版（四舍五入）
+            </summary>
+            <remarks>
+            计算公式：(X*X + Y*Y + Z*Z) / ONE，+32768 实现四舍五入
+            </remarks>
+        </member>
+        <member name="P:Lattice.Math.FPVector3.SqrMagnitudeFast">
+            <summary>
+            向量长度的平方 - 快速版（截断）
+            <para>无四舍五入开销，适合性能敏感场景</para>
+            </summary>
+            <remarks>
+            误差：最大 1 LSB（约 0.000015）
+            </remarks>
+        </member>
+        <member name="P:Lattice.Math.FPVector3.Magnitude">
+            <summary>
+            向量长度
+            </summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector3.Normalized">
+            <summary>
+            归一化向量（FrameSync 免除法优化）
+            <para>使用倒数乘法而非除法，速度快约 2-3 倍</para>
+            </summary>
+        </member>
+        <member name="M:Lattice.Math.FPVector3.NormalizedWithMagnitude(Lattice.Math.FP@)">
+            <summary>
+            归一化向量并返回原始长度
+            <para>FrameSync 风格免除法实现</para>
+            </summary>
+            <param name="magnitude">输出原始长度</param>
+            <returns>归一化后的向量</returns>
+        </member>
+        <member name="M:Lattice.Math.FPVector3.Normalize(Lattice.Math.FPVector3)">
+            <summary>
+            归一化向量（静态方法，FrameSync 优化）
+            <para>使用指数-尾数分解 + 倒数乘法，避免除法</para>
+            </summary>
+            <param name="value">要归一化的向量</param>
+            <returns>归一化后的向量</returns>
+        </member>
+        <member name="M:Lattice.Math.FPVector3.Normalize(Lattice.Math.FPVector3,Lattice.Math.FP@)">
+            <summary>
+            归一化向量并返回原始长度（FrameSync 优化）
+            </summary>
+            <param name="value">要归一化的向量</param>
+            <param name="magnitude">输出原始长度</param>
+            <returns>归一化后的向量</returns>
+        </member>
+        <member name="M:Lattice.Math.FPVector3.op_Addition(Lattice.Math.FPVector3,Lattice.Math.FPVector3)">
+            <summary>向量加法</summary>
+        </member>
+        <member name="M:Lattice.Math.FPVector3.op_Subtraction(Lattice.Math.FPVector3,Lattice.Math.FPVector3)">
+            <summary>向量减法</summary>
+        </member>
+        <member name="M:Lattice.Math.FPVector3.op_UnaryNegation(Lattice.Math.FPVector3)">
+            <summary>向量取反</summary>
+        </member>
+        <member name="M:Lattice.Math.FPVector3.op_Multiply(Lattice.Math.FPVector3,Lattice.Math.FP)">
+            <summary>向量 * 标量</summary>
+        </member>
+        <member name="M:Lattice.Math.FPVector3.op_Multiply(Lattice.Math.FP,Lattice.Math.FPVector3)">
+            <summary>标量 * 向量</summary>
+        </member>
+        <member name="M:Lattice.Math.FPVector3.op_Division(Lattice.Math.FPVector3,Lattice.Math.FP)">
+            <summary>向量 / 标量</summary>
+        </member>
+        <member name="M:Lattice.Math.FPVector3.op_Equality(Lattice.Math.FPVector3,Lattice.Math.FPVector3)">
+            <summary>相等比较</summary>
+        </member>
+        <member name="M:Lattice.Math.FPVector3.op_Inequality(Lattice.Math.FPVector3,Lattice.Math.FPVector3)">
+            <summary>不等比较</summary>
+        </member>
+        <member name="M:Lattice.Math.FPVector3.op_Implicit(Lattice.Math.FPVector2)~Lattice.Math.FPVector3">
+            <summary>隐式从 FPVector2 转换（Z=0）</summary>
+        </member>
+        <member name="M:Lattice.Math.FPVector3.op_Explicit(Lattice.Math.FPVector3)~Lattice.Math.FPVector2">
+            <summary>显式转换为 FPVector2（丢弃 Z）</summary>
+        </member>
+        <member name="M:Lattice.Math.FPVector3.Dot(Lattice.Math.FPVector3,Lattice.Math.FPVector3)">
+            <summary>
+            点积
+            </summary>
+            <param name="a">第一个向量</param>
+            <param name="b">第二个向量</param>
+            <returns>点积结果</returns>
+        </member>
+        <member name="M:Lattice.Math.FPVector3.Cross(Lattice.Math.FPVector3,Lattice.Math.FPVector3)">
+            <summary>
+            叉积
+            </summary>
+            <param name="a">第一个向量</param>
+            <param name="b">第二个向量</param>
+            <returns>叉积向量</returns>
+            <remarks>
+            叉积结果垂直于 a 和 b 所在的平面，方向由右手定则确定。
+            结果长度等于 |a| * |b| * sin(θ)，即两个向量张成的平行四边形的面积。
+            </remarks>
+        </member>
+        <member name="M:Lattice.Math.FPVector3.Distance(Lattice.Math.FPVector3,Lattice.Math.FPVector3)">
+            <summary>
+            两个向量之间的距离
+            </summary>
+            <param name="a">第一个向量</param>
+            <param name="b">第二个向量</param>
+            <returns>欧几里得距离</returns>
+        </member>
+        <member name="M:Lattice.Math.FPVector3.DistanceSquared(Lattice.Math.FPVector3,Lattice.Math.FPVector3)">
+            <summary>
+            两个向量之间的距离平方（更快）
+            </summary>
+            <param name="a">第一个向量</param>
+            <param name="b">第二个向量</param>
+            <returns>距离平方</returns>
+            <remarks>
+            适用于比较距离大小而不需要精确值的场景（如范围检测）。
+            比 <see cref="M:Lattice.Math.FPVector3.Distance(Lattice.Math.FPVector3,Lattice.Math.FPVector3)"/> 快约 3-5 倍（省去了平方根运算）。
+            </remarks>
+        </member>
+        <member name="M:Lattice.Math.FPVector3.Lerp(Lattice.Math.FPVector3,Lattice.Math.FPVector3,Lattice.Math.FP)">
+            <summary>
+            线性插值（t 限制在 [0,1]）
+            </summary>
+            <param name="a">起始向量</param>
+            <param name="b">目标向量</param>
+            <param name="t">插值系数 [0, 1]</param>
+            <returns>插值结果</returns>
+        </member>
+        <member name="M:Lattice.Math.FPVector3.LerpUnclamped(Lattice.Math.FPVector3,Lattice.Math.FPVector3,Lattice.Math.FP)">
+            <summary>
+            线性插值（t 不限制）
+            </summary>
+            <param name="a">起始向量</param>
+            <param name="b">目标向量</param>
+            <param name="t">插值系数（任意值）</param>
+            <returns>插值结果</returns>
+        </member>
+        <member name="M:Lattice.Math.FPVector3.Slerp(Lattice.Math.FPVector3,Lattice.Math.FPVector3,Lattice.Math.FP)">
+            <summary>
+            球面插值（Slerp）
+            </summary>
+            <param name="a">起始向量（建议归一化）</param>
+            <param name="b">目标向量（建议归一化）</param>
+            <param name="t">插值系数 [0, 1]</param>
+            <returns>球面插值结果</returns>
+            <remarks>
+            Slerp 在球面上进行插值，保持恒定角速度。
+            适用于相机旋转、球面移动等场景。
+            </remarks>
+        </member>
+        <member name="M:Lattice.Math.FPVector3.SlerpUnclamped(Lattice.Math.FPVector3,Lattice.Math.FPVector3,Lattice.Math.FP)">
+            <summary>
+            球面插值（不限制 t）
+            </summary>
+            <param name="a">起始向量（建议归一化）</param>
+            <param name="b">目标向量（建议归一化）</param>
+            <param name="t">插值系数（任意值）</param>
+            <returns>球面插值结果</returns>
+        </member>
+        <member name="M:Lattice.Math.FPVector3.ClampMagnitude(Lattice.Math.FPVector3,Lattice.Math.FP)">
+            <summary>
+            限制向量长度
+            </summary>
+            <param name="vector">要限制的向量</param>
+            <param name="maxLength">最大长度</param>
+            <returns>限制后的向量</returns>
+        </member>
+        <member name="M:Lattice.Math.FPVector3.Reflect(Lattice.Math.FPVector3,Lattice.Math.FPVector3)">
+            <summary>
+            反射向量
+            </summary>
+            <param name="direction">入射方向</param>
+            <param name="normal">法线（需归一化）</param>
+            <returns>反射后的方向</returns>
+        </member>
+        <member name="M:Lattice.Math.FPVector3.Project(Lattice.Math.FPVector3,Lattice.Math.FPVector3)">
+            <summary>
+            投影向量
+            </summary>
+            <param name="vector">要投影的向量</param>
+            <param name="onNormal">投影目标法线</param>
+            <returns>投影后的向量</returns>
+        </member>
+        <member name="M:Lattice.Math.FPVector3.ProjectOnPlane(Lattice.Math.FPVector3,Lattice.Math.FPVector3)">
+            <summary>
+            投影到平面上
+            </summary>
+            <param name="vector">要投影的向量</param>
+            <param name="planeNormal">平面法线</param>
+            <returns>投影到平面后的向量</returns>
+        </member>
+        <member name="M:Lattice.Math.FPVector3.Scale(Lattice.Math.FPVector3,Lattice.Math.FPVector3)">
+            <summary>
+            分量逐元素相乘
+            </summary>
+            <param name="a">第一个向量</param>
+            <param name="b">第二个向量</param>
+            <returns>逐元素乘积</returns>
+        </member>
+        <member name="M:Lattice.Math.FPVector3.Min(Lattice.Math.FPVector3,Lattice.Math.FPVector3)">
+            <summary>
+            取各分量的最小值
+            </summary>
+            <param name="a">第一个向量</param>
+            <param name="b">第二个向量</param>
+            <returns>各分量的最小值</returns>
+        </member>
+        <member name="M:Lattice.Math.FPVector3.Max(Lattice.Math.FPVector3,Lattice.Math.FPVector3)">
+            <summary>
+            取各分量的最大值
+            </summary>
+            <param name="a">第一个向量</param>
+            <param name="b">第二个向量</param>
+            <returns>各分量的最大值</returns>
+        </member>
+        <member name="M:Lattice.Math.FPVector3.Equals(Lattice.Math.FPVector3)">
+            <summary>
+            与另一个向量相等判断
+            </summary>
+            <param name="other">要比较的向量</param>
+            <returns>相等返回 true</returns>
+        </member>
+        <member name="M:Lattice.Math.FPVector3.Equals(System.Object)">
+            <summary>
+            与对象相等判断
+            </summary>
+            <param name="obj">要比较的对象</param>
+            <returns>相等返回 true</returns>
+        </member>
+        <member name="M:Lattice.Math.FPVector3.GetHashCode">
+            <summary>
+            获取哈希码
+            </summary>
+            <returns>哈希码</returns>
+        </member>
+        <member name="M:Lattice.Math.FPVector3.ToString">
+            <summary>
+            转换为字符串
+            </summary>
+            <returns>字符串表示 "(X, Y, Z)"</returns>
+        </member>
+        <member name="P:Lattice.Math.FPVector3.XX">
+            <summary>Swizzle: (X, X)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector3.XY">
+            <summary>Swizzle: (X, Y)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector3.XZ">
+            <summary>Swizzle: (X, Z)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector3.XO">
+            <summary>Swizzle: (X, 0)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector3.YX">
+            <summary>Swizzle: (Y, X)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector3.YY">
+            <summary>Swizzle: (Y, Y)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector3.YZ">
+            <summary>Swizzle: (Y, Z)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector3.YO">
+            <summary>Swizzle: (Y, 0)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector3.ZX">
+            <summary>Swizzle: (Z, X)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector3.ZY">
+            <summary>Swizzle: (Z, Y)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector3.ZZ">
+            <summary>Swizzle: (Z, Z)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector3.ZO">
+            <summary>Swizzle: (Z, 0)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector3.OX">
+            <summary>Swizzle: (0, X)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector3.OY">
+            <summary>Swizzle: (0, Y)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector3.OZ">
+            <summary>Swizzle: (0, Z)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector3.OO">
+            <summary>Swizzle: (0, 0)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector3.XXX">
+            <summary>Swizzle: (X, X, X)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector3.XXY">
+            <summary>Swizzle: (X, X, Y)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector3.XXZ">
+            <summary>Swizzle: (X, X, Z)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector3.XXO">
+            <summary>Swizzle: (X, X, 0)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector3.XYX">
+            <summary>Swizzle: (X, Y, X)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector3.XYY">
+            <summary>Swizzle: (X, Y, Y)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector3.XYZ">
+            <summary>Swizzle: (X, Y, Z)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector3.XYO">
+            <summary>Swizzle: (X, Y, 0)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector3.XZX">
+            <summary>Swizzle: (X, Z, X)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector3.XZY">
+            <summary>Swizzle: (X, Z, Y)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector3.XZZ">
+            <summary>Swizzle: (X, Z, Z)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector3.XZO">
+            <summary>Swizzle: (X, Z, 0)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector3.XOX">
+            <summary>Swizzle: (X, 0, X)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector3.XOY">
+            <summary>Swizzle: (X, 0, Y)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector3.XOZ">
+            <summary>Swizzle: (X, 0, Z)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector3.XOO">
+            <summary>Swizzle: (X, 0, 0)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector3.YXX">
+            <summary>Swizzle: (Y, X, X)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector3.YXY">
+            <summary>Swizzle: (Y, X, Y)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector3.YXZ">
+            <summary>Swizzle: (Y, X, Z)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector3.YXO">
+            <summary>Swizzle: (Y, X, 0)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector3.YYX">
+            <summary>Swizzle: (Y, Y, X)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector3.YYY">
+            <summary>Swizzle: (Y, Y, Y)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector3.YYZ">
+            <summary>Swizzle: (Y, Y, Z)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector3.YYO">
+            <summary>Swizzle: (Y, Y, 0)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector3.YZX">
+            <summary>Swizzle: (Y, Z, X)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector3.YZY">
+            <summary>Swizzle: (Y, Z, Y)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector3.YZZ">
+            <summary>Swizzle: (Y, Z, Z)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector3.YZO">
+            <summary>Swizzle: (Y, Z, 0)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector3.YOX">
+            <summary>Swizzle: (Y, 0, X)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector3.YOY">
+            <summary>Swizzle: (Y, 0, Y)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector3.YOZ">
+            <summary>Swizzle: (Y, 0, Z)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector3.YOO">
+            <summary>Swizzle: (Y, 0, 0)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector3.ZXX">
+            <summary>Swizzle: (Z, X, X)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector3.ZXY">
+            <summary>Swizzle: (Z, X, Y)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector3.ZXZ">
+            <summary>Swizzle: (Z, X, Z)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector3.ZXO">
+            <summary>Swizzle: (Z, X, 0)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector3.ZYX">
+            <summary>Swizzle: (Z, Y, X)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector3.ZYY">
+            <summary>Swizzle: (Z, Y, Y)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector3.ZYZ">
+            <summary>Swizzle: (Z, Y, Z)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector3.ZYO">
+            <summary>Swizzle: (Z, Y, 0)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector3.ZZX">
+            <summary>Swizzle: (Z, Z, X)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector3.ZZY">
+            <summary>Swizzle: (Z, Z, Y)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector3.ZZZ">
+            <summary>Swizzle: (Z, Z, Z)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector3.ZZO">
+            <summary>Swizzle: (Z, Z, 0)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector3.ZOX">
+            <summary>Swizzle: (Z, 0, X)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector3.ZOY">
+            <summary>Swizzle: (Z, 0, Y)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector3.ZOZ">
+            <summary>Swizzle: (Z, 0, Z)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector3.ZOO">
+            <summary>Swizzle: (Z, 0, 0)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector3.OXX">
+            <summary>Swizzle: (0, X, X)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector3.OXY">
+            <summary>Swizzle: (0, X, Y)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector3.OXZ">
+            <summary>Swizzle: (0, X, Z)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector3.OXO">
+            <summary>Swizzle: (0, X, 0)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector3.OYX">
+            <summary>Swizzle: (0, Y, X)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector3.OYY">
+            <summary>Swizzle: (0, Y, Y)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector3.OYZ">
+            <summary>Swizzle: (0, Y, Z)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector3.OYO">
+            <summary>Swizzle: (0, Y, 0)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector3.OZX">
+            <summary>Swizzle: (0, Z, X)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector3.OZY">
+            <summary>Swizzle: (0, Z, Y)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector3.OZZ">
+            <summary>Swizzle: (0, Z, Z)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector3.OZO">
+            <summary>Swizzle: (0, Z, 0)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector3.OOX">
+            <summary>Swizzle: (0, 0, X)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector3.OOY">
+            <summary>Swizzle: (0, 0, Y)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector3.OOZ">
+            <summary>Swizzle: (0, 0, Z)</summary>
+        </member>
+        <member name="P:Lattice.Math.FPVector3.OOO">
+            <summary>Swizzle: (0, 0, 0)</summary>
+        </member>
+        <member name="T:Lattice.Math.FPAcosLut">
+            <summary>
+            反余弦查找表 - Acos(x), x ∈ [-1, 1] 映射到索引 [0, 65536]
+            <para>输出范围 [0, π]</para>
+            </summary>
+        </member>
+        <member name="T:Lattice.Math.FPAtanLut">
+            <summary>
+            反正切查找表 - Atan(x), x ∈ [0, 1]
+            <para>输出范围 [0, π/4] = [0, 51472]</para>
+            </summary>
+        </member>
+        <member name="T:Lattice.Math.FPSinCosLut">
+            <summary>
+            正弦/余弦查找表 - 双精度策略（参考 FrameSync）
+            <para>Fast (1024): Cache 友好，适合一般计算</para>
+            <para>Accurate (4096): 高精度，适合 3D 旋转/物理</para>
+            </summary>
+        </member>
+        <member name="F:Lattice.Math.FPSinCosLut.SinFast">
+            <summary>快速正弦查找表（1024 条目，适合一般计算）</summary>
+        </member>
+        <member name="F:Lattice.Math.FPSinCosLut.CosFast">
+            <summary>快速余弦查找表（1024 条目，适合一般计算）</summary>
+        </member>
+        <member name="F:Lattice.Math.FPSinCosLut.SinAccurate">
+            <summary>高精度正弦查找表（4096 条目，适合 3D/物理）</summary>
+        </member>
+        <member name="F:Lattice.Math.FPSinCosLut.CosAccurate">
+            <summary>高精度余弦查找表（4096 条目，适合 3D/物理）</summary>
+        </member>
+        <member name="P:Lattice.Math.FPSinCosLut.SinCosTable">
+            <summary>
+            Sin/Cos 交错表（4096 * 2 entries）
+            <para>偶数索引：Sin，奇数索引：Cos</para>
+            </summary>
+        </member>
+        <member name="T:Lattice.Math.FPSqrtLut">
+            <summary>
+            平方根查找表 - 存储值 = sqrt(i / 65536.0) * 4194304
+            <para>使用时需右移 6 位得到 Q16.16 格式</para>
+            </summary>
+        </member>
+        <member name="T:Lattice.Math.WorldPosition">
+            <summary>
+            大世界坐标系统 - Chunk-based 无限坐标
+            <para>解决 Q48.16 定点数 ±32,768 范围限制问题</para>
+            <para>支持无限世界：Chunk 坐标 + 局部坐标</para>
+            </summary>
+            <remarks>
+            <para><b>设计原理：</b></para>
+            <para>
+            Q48.16 定点数虽然整数部分有 48 位（约 ±140万亿），但安全乘法范围仅 ±32,768。
+            对于无限世界游戏（如 Minecraft、Star Citizen），需要突破此限制。
+            </para>
+            <para>
+            本系统采用 Chunk-based 分层坐标：
+            <list type="bullet">
+              <item><b>Chunk 坐标：</b>64 位 long，可表示约 ±900万万亿的范围</item>
+              <item><b>局部坐标：</b>Q48.16 定点数，范围 [0, CHUNK_SIZE)</item>
+            </list>
+            </para>
+            <para><b>Chunk 大小选择 1024 (2^10) 的原因：</b></para>
+            <list type="number">
+              <item><b>位运算优化：</b>除以 1024 可优化为右移 10 位（&gt;&gt; 10）</item>
+              <item><b>取模优化：</b>对 1023 (0x3FF) 进行与运算得到局部坐标</item>
+              <item><b>精度平衡：</b>1024 单位 ≈ 1km（假设 1 单位 = 1 米），足够精细</item>
+              <item><b>内存友好：</b>1024³ = 1GB（如果每个单位 1 字节），适合作为加载单元</item>
+            </list>
+            <para><b>溢出处理：</b></para>
+            <para>
+            当局部坐标运算结果超出 [0, CHUNK_SIZE) 范围时，自动调整 Chunk 坐标：
+            <code>
+            // 局部坐标 1024 → 0，ChunkX + 1
+            // 局部坐标 -1 → 1023，ChunkX - 1
+            </code>
+            此过程完全无分支（branchless），使用位运算实现。
+            </para>
+            <para><b>性能特性（Branchless Operations）：</b></para>
+            <list type="bullet">
+              <item>所有运算使用 <see cref="F:System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining"/></item>
+              <item>溢出检测使用算术右移而非条件分支，避免分支预测失败</item>
+              <item>归一化计算使用位运算：(value &gt;&gt; 63) &amp; CHUNK_SIZE</item>
+              <item>距离计算跨 Chunk 时，先转换为统一坐标系再计算</item>
+              <item>哈希码计算使用 XOR 混合，减少碰撞</item>
+            </list>
+            <para><b>无限世界支持：</b></para>
+            <para>
+            理论上支持约 ±9,223,372,036,854,775,807 个 Chunk 的坐标范围。
+            假设每个 Chunk 为 1km，可表示约 ±9.2 亿亿 km 的范围，
+            远超太阳系直径（约 90 亿 km），足够支持任何规模的开放世界游戏。
+            </para>
+            </remarks>
+            <example>
+            <b>基本使用示例：</b>
+            <code>
+            // 从世界坐标创建（自动分块）
+            WorldPosition pos = WorldPosition.FromFP(
+                FP._1000,   // X = 1000
+                FP._100,    // Y = 100
+                FP._500     // Z = 500
+            );
+            
+            // 此时：ChunkX=0, LocalX=1000
+            // 如果 X = 1500：ChunkX=1, LocalX=476 (1500 - 1024)
+            
+            // 移动（自动处理溢出）
+            WorldPosition newPos = pos + new FPVector3(FP._500, FP._0, FP._0);
+            // ChunkX=0, LocalX=1500 → 自动归一化为 ChunkX=1, LocalX=476
+            </code>
+            
+            <b>无限世界示例：</b>
+            <code>
+            // 玩家从原点出发，向正 X 方向飞行 100,000 单位
+            WorldPosition playerPos = WorldPosition.FromFP(FP._0, FP._0, FP._0);
+            FP speed = FP._100; // 100 单位/秒
+            
+            for (int i = 0; i &lt; 1000; i++)
+            {
+                playerPos += new FPVector3(speed, FP._0, FP._0);
+                // 自动处理 Chunk 跨越，无需担心溢出
+            }
+            
+            // 结果：ChunkX ≈ 98, LocalX ≈ 576 (100,000 / 1024 ≈ 97.65)
+            </code>
+            
+            <b>距离计算示例：</b>
+            <code>
+            // 计算两个远距离对象之间的距离
+            WorldPosition a = new WorldPosition(1000, 0, 0, FP._500, FP._0, FP._0);
+            WorldPosition b = new WorldPosition(1005, 0, 0, FP._500, FP._0, FP._0);
+            
+            FP distance = WorldPosition.Distance(a, b); // = 5120 (5 chunks * 1024)
+            
+            // 方向向量
+            FPVector3 dir = WorldPosition.Direction(a, b); // 归一化方向
+            </code>
+            
+            <b>性能优化示例（Branchless）：</b>
+            <code>
+            // 使用 branchless 操作进行批量位置更新
+            for (int i = 0; i &lt; entities.Count; i++)
+            {
+                // 每个位置更新都是无分支的，适合 SIMD 优化
+                entities[i].Position += velocity * deltaTime;
+                // 即使跨越 Chunk 边界，也无需分支判断
+            }
+            </code>
+            </example>
+        </member>
+        <member name="F:Lattice.Math.WorldPosition.CHUNK_SIZE">
+            <summary>
+            Chunk 大小 = 1024 (2^10)
+            <para>选择 2 的幂次方用于位运算优化</para>
+            </summary>
+            <remarks>
+            1024 的优势：
+            - 除法变右移：x / 1024 == x &gt;&gt; 10
+            - 取模变与运算：x % 1024 == x &amp; 0x3FF
+            - 精度适中：约 1km 范围，适合作为地形加载单元
+            </remarks>
+        </member>
+        <member name="F:Lattice.Math.WorldPosition.CHUNK_SIZE_LOG2">
+            <summary>
+            Chunk 大小的 log2 值 = 10
+            <para>用于位移运算</para>
+            </summary>
+        </member>
+        <member name="F:Lattice.Math.WorldPosition.CHUNK_MASK">
+            <summary>
+            Chunk 掩码 = 1023 (0x3FF)
+            <para>用于快速取模：x &amp; CHUNK_MASK == x % CHUNK_SIZE</para>
+            </summary>
+        </member>
+        <member name="F:Lattice.Math.WorldPosition.ChunkSizeFP">
+            <summary>
+            Chunk 大小的 FP 表示（用于浮点运算）
+            </summary>
+        </member>
+        <member name="F:Lattice.Math.WorldPosition.ChunkX">
+            <summary>
+            Chunk X 坐标（可无限，64 位）
+            <para>每个 Chunk 代表 CHUNK_SIZE 个世界单位</para>
+            </summary>
+        </member>
+        <member name="F:Lattice.Math.WorldPosition.ChunkY">
+            <summary>
+            Chunk Y 坐标（可无限，64 位）
+            </summary>
+        </member>
+        <member name="F:Lattice.Math.WorldPosition.ChunkZ">
+            <summary>
+            Chunk Z 坐标（可无限，64 位）
+            </summary>
+        </member>
+        <member name="F:Lattice.Math.WorldPosition.LocalX">
+            <summary>
+            局部 X 坐标 [0, CHUNK_SIZE)
+            <para>使用 Q48.16 定点数表示</para>
+            </summary>
+        </member>
+        <member name="F:Lattice.Math.WorldPosition.LocalY">
+            <summary>
+            局部 Y 坐标 [0, CHUNK_SIZE)
+            </summary>
+        </member>
+        <member name="F:Lattice.Math.WorldPosition.LocalZ">
+            <summary>
+            局部 Z 坐标 [0, CHUNK_SIZE)
+            </summary>
+        </member>
+        <member name="M:Lattice.Math.WorldPosition.#ctor(System.Int64,System.Int64,System.Int64,Lattice.Math.FP,Lattice.Math.FP,Lattice.Math.FP)">
+            <summary>
+            构造函数（自动处理溢出）
+            </summary>
+            <param name="chunkX">Chunk X 坐标</param>
+            <param name="chunkY">Chunk Y 坐标</param>
+            <param name="chunkZ">Chunk Z 坐标</param>
+            <param name="localX">局部 X 坐标（将被归一化到 [0, CHUNK_SIZE)）</param>
+            <param name="localY">局部 Y 坐标（将被归一化到 [0, CHUNK_SIZE)）</param>
+            <param name="localZ">局部 Z 坐标（将被归一化到 [0, CHUNK_SIZE)）</param>
+            <remarks>
+            构造函数会自动处理局部坐标的溢出：
+            - 如果 localX >= CHUNK_SIZE，ChunkX 会增加，localX 减去 CHUNK_SIZE
+            - 如果 localX &lt; 0，ChunkX 会减少，localX 加上 CHUNK_SIZE
+            
+            此过程使用无分支算法（branchless），确保高性能：
+            <code>
+            overflow = localXInt &gt;&gt; CHUNK_SIZE_LOG2;  // 算术右移得到溢出量
+            normX = localXInt &amp; CHUNK_MASK;             // 与运算得到归一化值
+            normX += (localXInt &gt;&gt; 63) &amp; CHUNK_SIZE;    // 处理负数情况
+            </code>
+            </remarks>
+        </member>
+        <member name="M:Lattice.Math.WorldPosition.FromFP(Lattice.Math.FP,Lattice.Math.FP,Lattice.Math.FP)">
+            <summary>
+            从 FP 世界坐标构造（自动分块）
+            </summary>
+            <param name="x">世界 X 坐标</param>
+            <param name="y">世界 Y 坐标</param>
+            <param name="z">世界 Z 坐标</param>
+            <returns>新的 WorldPosition 实例</returns>
+            <remarks>
+            将绝对世界坐标转换为 Chunk-based 坐标：
+            <code>
+            ChunkX = x / CHUNK_SIZE
+            LocalX = x % CHUNK_SIZE
+            </code>
+            使用位运算优化，比除法快约 10 倍。
+            </remarks>
+            <example>
+            <code>
+            WorldPosition pos = WorldPosition.FromFP(FP._1500, FP._0, FP._0);
+            // ChunkX = 1, LocalX = 476
+            </code>
+            </example>
+        </member>
+        <member name="M:Lattice.Math.WorldPosition.TryToFP(Lattice.Math.FP@,Lattice.Math.FP@,Lattice.Math.FP@)">
+            <summary>
+            尝试转换为 FP 世界坐标
+            </summary>
+            <param name="x">输出 X 坐标</param>
+            <param name="y">输出 Y 坐标</param>
+            <param name="z">输出 Z 坐标</param>
+            <returns>
+            如果坐标在 FP 可表示范围内返回 true，否则返回 false。
+            范围检查基于安全乘法限制（约 ±32,768）。
+            </returns>
+            <remarks>
+            转换公式：world = Chunk * CHUNK_SIZE + Local
+            
+            注意：即使 Chunk 很大，只要结果在 FP.UseableMax/Min 范围内，
+            转换就是安全的。此方法会进行范围检查。
+            </remarks>
+            <example>
+            <code>
+            if (worldPos.TryToFP(out FP x, out FP y, out FP z))
+            {
+                // 安全使用 x, y, z
+                FPVector3 worldVec = new FPVector3(x, y, z);
+            }
+            else
+            {
+                // 坐标超出范围，需要使用 WorldPosition 继续运算
+            }
+            </code>
+            </example>
+        </member>
+        <member name="M:Lattice.Math.WorldPosition.ToFP_UNSAFE">
+            <summary>
+            转换为 FP 世界坐标（不检查范围）
+            </summary>
+            <returns>世界坐标向量</returns>
+            <exception cref="T:System.OverflowException">当坐标超出 FP 表示范围时抛出</exception>
+            <remarks>
+            仅在确定坐标在安全范围内时使用此方法。
+            对于可能超出的情况，请使用 <see cref="M:Lattice.Math.WorldPosition.TryToFP(Lattice.Math.FP@,Lattice.Math.FP@,Lattice.Math.FP@)"/>。
+            </remarks>
+        </member>
+        <member name="M:Lattice.Math.WorldPosition.Distance(Lattice.Math.WorldPosition,Lattice.Math.WorldPosition)">
+            <summary>
+            计算两个世界位置之间的距离（跨 Chunk）
+            </summary>
+            <param name="a">第一个位置</param>
+            <param name="b">第二个位置</param>
+            <returns>两点之间的欧几里得距离</returns>
+            <remarks>
+            <para><b>实现说明：</b></para>
+            此方法的实现考虑了跨 Chunk 的情况：
+            <list type="number">
+              <item>计算 Chunk 差值并转换为世界单位</item>
+              <item>加上局部坐标差值</item>
+              <item>计算平方和的平方根</item>
+            </list>
+            
+            <para><b>性能：</b>3 次减法，3 次乘法，1 次平方根。</para>
+            
+            <para><b>无限范围支持：</b></para>
+            即使两个位置相隔数百万个 Chunk，此计算仍然准确。
+            </remarks>
+            <example>
+            <code>
+            WorldPosition a = new WorldPosition(0, 0, 0, FP._100, FP._0, FP._0);
+            WorldPosition b = new WorldPosition(1000000, 0, 0, FP._100, FP._0, FP._0);
+            
+            FP distance = WorldPosition.Distance(a, b);
+            // distance = 1,024,000,100 (约 100 万个 Chunk 的距离)
+            </code>
+            </example>
+        </member>
+        <member name="M:Lattice.Math.WorldPosition.DistanceSquared(Lattice.Math.WorldPosition,Lattice.Math.WorldPosition)">
+            <summary>
+            计算距离的平方（更快，不需要平方根）
+            </summary>
+            <param name="a">第一个位置</param>
+            <param name="b">第二个位置</param>
+            <returns>两点之间的距离平方</returns>
+            <remarks>
+            适用于比较距离大小而不需要精确值的场景（如范围检测）。
+            比 <see cref="M:Lattice.Math.WorldPosition.Distance(Lattice.Math.WorldPosition,Lattice.Math.WorldPosition)"/> 快约 3-5 倍（省去了平方根运算）。
+            </remarks>
+            <example>
+            <code>
+            // 快速检测是否在范围内
+            FP sqrDistance = WorldPosition.DistanceSquared(player, enemy);
+            if (sqrDistance &lt; attackRange * attackRange)
+            {
+                // 在攻击范围内
+            }
+            </code>
+            </example>
+        </member>
+        <member name="M:Lattice.Math.WorldPosition.Direction(Lattice.Math.WorldPosition,Lattice.Math.WorldPosition)">
+            <summary>
+            计算从 <paramref name="from"/> 指向 <paramref name="to"/> 的方向向量（归一化）
+            </summary>
+            <param name="from">起始位置</param>
+            <param name="to">目标位置</param>
+            <returns>归一化的方向向量</returns>
+            <remarks>
+            方向向量长度为 1，可用于移动、投射等操作。
+            
+            如果两点重合，返回零向量。
+            </remarks>
+            <example>
+            <code>
+            // 计算导弹追踪方向
+            FPVector3 direction = WorldPosition.Direction(missile.Pos, target.Pos);
+            missile.Velocity = direction * missile.Speed;
+            </code>
+            </example>
+        </member>
+        <member name="M:Lattice.Math.WorldPosition.VectorTo(Lattice.Math.WorldPosition,Lattice.Math.WorldPosition)">
+            <summary>
+            计算从 <paramref name="from"/> 指向 <paramref name="to"/> 的原始向量（未归一化）
+            </summary>
+            <param name="from">起始位置</param>
+            <param name="to">目标位置</param>
+            <returns>未归一化的向量</returns>
+            <remarks>
+            返回原始差值向量，不进行归一化。适用于需要长度信息的场景。
+            </remarks>
+        </member>
+        <member name="M:Lattice.Math.WorldPosition.op_Addition(Lattice.Math.WorldPosition,Lattice.Math.FPVector3)">
+            <summary>
+            加上一个偏移量（自动处理 Chunk 溢出）
+            </summary>
+            <param name="a">原位置</param>
+            <param name="offset">偏移量</param>
+            <returns>新的世界位置</returns>
+            <remarks>
+            加法运算会自动处理 Chunk 边界的跨越：
+            如果局部坐标加上偏移量后超出 [0, CHUNK_SIZE) 范围，
+            Chunk 坐标会自动调整。
+            
+            此操作是无分支的（branchless），适合高性能批量运算。
+            </remarks>
+            <example>
+            <code>
+            WorldPosition pos = WorldPosition.FromFP(FP._1000, FP._0, FP._0);
+            WorldPosition newPos = pos + new FPVector3(FP._100, FP._0, FP._0);
+            // 如果跨越 Chunk 边界，自动调整
+            </code>
+            </example>
+        </member>
+        <member name="M:Lattice.Math.WorldPosition.op_Subtraction(Lattice.Math.WorldPosition,Lattice.Math.FPVector3)">
+            <summary>
+            减去一个偏移量（自动处理 Chunk 溢出）
+            </summary>
+            <param name="a">原位置</param>
+            <param name="offset">偏移量</param>
+            <returns>新的世界位置</returns>
+            <remarks>
+            与加法类似，自动处理 Chunk 边界跨越。
+            </remarks>
+        </member>
+        <member name="M:Lattice.Math.WorldPosition.op_Subtraction(Lattice.Math.WorldPosition,Lattice.Math.WorldPosition)">
+            <summary>
+            计算两个位置之间的差值向量
+            </summary>
+            <param name="a">第一个位置</param>
+            <param name="b">第二个位置</param>
+            <returns>从 b 指向 a 的向量</returns>
+            <remarks>
+            等价于 VectorTo(b, a)。
+            </remarks>
+        </member>
+        <member name="M:Lattice.Math.WorldPosition.op_Equality(Lattice.Math.WorldPosition,Lattice.Math.WorldPosition)">
+            <summary>
+            相等比较
+            </summary>
+        </member>
+        <member name="M:Lattice.Math.WorldPosition.op_Inequality(Lattice.Math.WorldPosition,Lattice.Math.WorldPosition)">
+            <summary>
+            不等比较
+            </summary>
+        </member>
+        <member name="M:Lattice.Math.WorldPosition.Equals(Lattice.Math.WorldPosition)">
+            <summary>
+            与另一个 WorldPosition 比较相等性
+            </summary>
+        </member>
+        <member name="M:Lattice.Math.WorldPosition.Equals(System.Object)">
+            <summary>
+            与对象比较相等性
+            </summary>
+        </member>
+        <member name="M:Lattice.Math.WorldPosition.GetHashCode">
+            <summary>
+            获取哈希码
+            </summary>
+            <remarks>
+            使用 XOR 混合 Chunk 和局部坐标的哈希码，确保良好的分布性。
+            适合用于 Dictionary 和 HashSet 的键。
+            </remarks>
+        </member>
+        <member name="M:Lattice.Math.WorldPosition.ToString">
+            <summary>
+            转换为字符串表示
+            </summary>
+            <returns>格式："[Chunk: (x,y,z), Local: (x,y,z)]"</returns>
+        </member>
+        <member name="M:Lattice.Math.WorldPosition.GetChunk">
+            <summary>
+            获取 Chunk 坐标作为元组
+            </summary>
+            <returns>(ChunkX, ChunkY, ChunkZ) 元组</returns>
+        </member>
+        <member name="M:Lattice.Math.WorldPosition.GetLocal">
+            <summary>
+            获取局部坐标作为 FPVector3
+            </summary>
+            <returns>局部坐标向量</returns>
+        </member>
+        <member name="M:Lattice.Math.WorldPosition.IsSameChunk(Lattice.Math.WorldPosition)">
+            <summary>
+            检查两个位置是否在同一 Chunk 内
+            </summary>
+            <param name="other">另一个位置</param>
+            <returns>如果在同一 Chunk 返回 true</returns>
+            <remarks>
+            用于快速邻近性检查，比距离计算更快。
+            </remarks>
+        </member>
+        <member name="M:Lattice.Math.WorldPosition.IsInChunk(System.Int64,System.Int64,System.Int64)">
+            <summary>
+            检查位置是否在指定的 Chunk 内
+            </summary>
+            <param name="chunkX">目标 Chunk X</param>
+            <param name="chunkY">目标 Chunk Y</param>
+            <param name="chunkZ">目标 Chunk Z</param>
+            <returns>如果在指定 Chunk 内返回 true</returns>
+        </member>
+        <member name="T:Lattice.Generators.GenerateSwizzleAttribute">
+            <summary>
+            标记一个向量类型需要自动生成 Swizzle 属性
+            </summary>
+        </member>
+        <member name="P:Lattice.Generators.GenerateSwizzleAttribute.MaxDimension">
+            <summary>
+            最大 Swizzle 维度（2 或 3）
+            </summary>
+        </member>
+        <member name="P:Lattice.Generators.GenerateSwizzleAttribute.IncludeZero">
+            <summary>
+            是否包含 O（Zero）分量，如 XYO
+            </summary>
+        </member>
+    </members>
+</doc>

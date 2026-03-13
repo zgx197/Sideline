@@ -1,0 +1,163 @@
+# Copyright (c) 2026 Sideline Authors. All rights reserved.
+# Licensed under GPL-3.0.
+
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'godot/scripts/lattice/**'
+      - 'godot/Lattice.Tests/**'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'godot/scripts/lattice/**'
+      - 'godot/Lattice.Tests/**'
+
+env:
+  DOTNET_VERSION: '8.0.x'
+  LATTICE_PATH: 'godot/scripts/lattice'
+  TESTS_PATH: 'godot/Lattice.Tests'
+
+jobs:
+  build:
+    name: Build & Test
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+      fail-fast: false
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+
+    - name: Cache NuGet packages
+      uses: actions/cache@v3
+      with:
+        path: ~/.nuget/packages
+        key: ${{ runner.os }}-nuget-${{ hashFiles('**/packages.lock.json') }}
+        restore-keys: |
+          ${{ runner.os }}-nuget-
+
+    - name: Restore dependencies
+      run: |
+        dotnet restore ${{ env.LATTICE_PATH }}/Lattice.csproj
+        dotnet restore ${{ env.TESTS_PATH }}/Lattice.Tests.csproj
+
+    - name: Build Lattice
+      run: dotnet build ${{ env.LATTICE_PATH }}/Lattice.csproj -c Release --no-restore
+
+    - name: Run tests
+      run: dotnet test ${{ env.TESTS_PATH }}/Lattice.Tests.csproj -c Release --no-build --verbosity normal
+
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: lattice-${{ matrix.os }}
+        path: |
+          ${{ env.LATTICE_PATH }}/bin/Release/**/*.dll
+          ${{ env.LATTICE_PATH }}/bin/Release/**/*.xml
+
+  analyzers:
+    name: Code Analysis
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+
+    - name: Restore dependencies
+      run: dotnet restore ${{ env.LATTICE_PATH }}/Lattice.csproj
+
+    - name: Run Analyzers
+      run: |
+        dotnet build ${{ env.LATTICE_PATH }}/Lattice.csproj -c Release \
+          /p:TreatWarningsAsErrors=false \
+          /p:RunAnalyzersDuringBuild=true \
+          /p:RunAnalyzers=true
+
+    - name: Check Banned API Usage
+      run: |
+        dotnet build ${{ env.LATTICE_PATH }}/Lattice.csproj -c Release 2>&1 | \
+          grep -E "(RS0030|RS0031)" || echo "No banned API usage found"
+
+  determinism:
+    name: Determinism Tests
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+
+    - name: Run Determinism Tests
+      run: |
+        dotnet test ${{ env.TESTS_PATH }}/Lattice.Tests.csproj \
+          -c Release \
+          --filter "FullyQualifiedName~Determinism" \
+          --verbosity normal
+
+    - name: Run NoFloatUsage Tests
+      run: |
+        dotnet test ${{ env.TESTS_PATH }}/Lattice.Tests.csproj \
+          -c Release \
+          --filter "FullyQualifiedName~NoFloatUsage" \
+          --verbosity normal
+
+  coverage:
+    name: Code Coverage
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+
+    - name: Install coverage tools
+      run: dotnet tool install --global dotnet-coverage
+
+    - name: Run tests with coverage
+      run: |
+        dotnet-coverage collect \
+          "dotnet test ${{ env.TESTS_PATH }}/Lattice.Tests.csproj -c Release" \
+          -f xml \
+          -o coverage.xml
+
+    - name: Upload coverage
+      uses: codecov/codecov-action@v3
+      with:
+        files: coverage.xml
+        fail_ci_if_error: false
+
+  build-status:
+    name: Build Status Check
+    runs-on: ubuntu-latest
+    needs: [build, analyzers, determinism]
+    if: always()
+    steps:
+    - name: Check build status
+      run: |
+        if [ "${{ needs.build.result }}" != "success" ] || \
+           [ "${{ needs.analyzers.result }}" != "success" ] || \
+           [ "${{ needs.determinism.result }}" != "success" ]; then
+          echo "Build failed!"
+          exit 1
+        fi
+        echo "All checks passed!"

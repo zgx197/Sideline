@@ -102,3 +102,6 @@ crash_log_*.txt
 coverage.info
 coverage/
 
+# Test Results
+TestResults/
+

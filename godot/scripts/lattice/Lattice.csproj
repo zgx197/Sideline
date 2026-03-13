@@ -10,6 +10,14 @@
     <RootNamespace>Lattice</RootNamespace>
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
     <GenerateTargetFrameworkAttribute>false</GenerateTargetFrameworkAttribute>
+    
+    <!-- XML 文档生成 -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <DocumentationFile>$(OutputPath)$(AssemblyName).xml</DocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>  <!-- 暂时忽略缺少文档警告 -->
+    
+    <!-- 允许不安全代码（缓存优化需要） -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <!-- 纯 C# 库，不依赖 Godot -->

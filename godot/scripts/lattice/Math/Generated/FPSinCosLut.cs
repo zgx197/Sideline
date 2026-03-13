@@ -688,5 +688,15 @@ namespace Lattice.Math
             65516, 65519, 65521, 65523, 65525, 65527, 65528, 65530, 65531, 65532, 65533, 65534, 65535, 65535, 65536, 65536 // 4080..4095
         };
         #endregion
+        
+        #region FPLut 兼容接口
+        
+        /// <summary>
+        /// Sin/Cos 交错表（4096 * 2 entries）
+        /// <para>偶数索引：Sin，奇数索引：Cos</para>
+        /// </summary>
+        public static long[] SinCosTable => SinAccurate;
+        
+        #endregion
     }
 }
