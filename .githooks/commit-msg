@@ -1,0 +1,45 @@
+#!/bin/bash
+#
+# Git commit-msg hook
+# 检查提交信息格式（允许中文或英文）
+#
+
+# 获取提交信息文件路径
+COMMIT_MSG_FILE=$1
+
+# 读取提交信息内容
+COMMIT_MSG=$(cat "$COMMIT_MSG_FILE")
+
+# 忽略合并提交（通常由Git自动生成）
+if echo "$COMMIT_MSG" | grep -E "^Merge " > /dev/null; then
+    exit 0
+fi
+
+# 忽略 fixup/squash 提交
+if echo "$COMMIT_MSG" | grep -E "^(fixup|squash)!" > /dev/null; then
+    exit 0
+fi
+
+# 检查提交信息格式（可选警告）
+# 格式: type(scope): subject
+if ! echo "$COMMIT_MSG" | grep -E '^(feat|fix|docs|style|refactor|perf|test|ci|chore|revert)(\([a-z-]+\))?: .+' > /dev/null; then
+    echo "⚠️  提示: Commit message 格式建议遵循约定"
+    echo ""
+    echo "推荐格式: <type>(<scope>): <subject>"
+    echo ""
+    echo "Valid types: feat, fix, docs, style, refactor, perf, test, ci, chore, revert"
+    echo ""
+    echo "中文示例:"
+    echo "  feat(lattice): 添加 SIMD 批处理操作"
+    echo "  fix(ci): 修复 PowerShell 兼容性"
+    echo "  docs: 更新 README 基准测试"
+    echo ""
+    echo "英文示例:"
+    echo "  feat(lattice): add SIMD batch operations"
+    echo "  fix(ci): resolve PowerShell compatibility"
+    echo ""
+    # 不阻止提交，只提供建议
+fi
+
+echo "✓ Commit message check passed."
+exit 0

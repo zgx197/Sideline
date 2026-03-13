@@ -221,9 +221,74 @@ public partial class WindowManager : Node
 
 ---
 
+## Git 提交规范
+
+### 语言要求
+
+**AI 助手生成 Commit Message 时优先使用中文**，以便开发者（中文母语）理解。英文非必须，清晰表达即可。
+
+```bash
+# ✅ 推荐示例（中文）
+feat(lattice): 添加 SIMD 整数批处理操作
+fix(ci): 修复 PowerShell 兼容性问题
+docs: 更新 README 性能基准测试
+
+# ✅ 也可接受（英文）
+feat(lattice): add SIMD integer batch operations
+fix(ci): resolve PowerShell compatibility issues
+```
+
+### Commit Message 格式
+
+```
+<type>(<scope>): <subject>
+
+<body>
+
+<footer>
+```
+
+#### Type（必须）
+- `feat`: 新功能
+- `fix`: Bug 修复
+- `docs`: 文档更新
+- `style`: 代码格式（不影响功能）
+- `refactor`: 重构
+- `perf`: 性能优化
+- `test`: 测试相关
+- `ci`: CI/CD 配置
+- `chore`: 构建/工具链
+
+#### Scope（可选）
+- `lattice`: 定点数库
+- `ecs`: ECS 核心
+- `ui`: 界面系统
+- `ci`: CI/CD
+
+#### Subject（必须）
+- 简洁描述变更内容
+- 首字母小写（英文）或直接中文
+- 不超过 72 字符
+- 不加句号
+
+### 完整示例（中文）
+
+```bash
+feat(lattice): 添加 WorldPosition 无限世界坐标系统
+
+- 实现基于 Chunk 的坐标系统（CHUNK_SIZE = 1024）
+- 使用位运算实现无分支溢出处理
+- 包含 45 个跨 Chunk 场景的单元测试
+
+Refs: #45
+```
+
+---
+
 ## 注意事项
 
 1. **Godot 版本**: 必须使用 **Mono/.NET 版**，Steam 版 Godot 不支持 C#
 2. **编辑器设置**: 关闭"在游戏内嵌窗口"选项，否则无边框窗口特性无法正常测试
 3. **资源管理**: AI 生成的原始素材存放于 `ai/generated/`，经筛选处理后移入 `godot/assets/`
 4. **Git 提交**: `.godot/` 和构建产物已加入 `.gitignore`，无需提交
+5. **提交语言**: **强制英文**，参考上方 Git 提交规范
