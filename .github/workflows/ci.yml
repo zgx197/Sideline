@@ -62,7 +62,6 @@ jobs:
   build-and-test:
     name: Build & Test (${{ matrix.os }}, ${{ matrix.configuration }})
     needs: format-check  # 格式检查通过后才会执行
-    name: Build & Test (${{ matrix.os }}, ${{ matrix.configuration }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
