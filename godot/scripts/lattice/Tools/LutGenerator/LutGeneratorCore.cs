@@ -17,7 +17,11 @@ namespace Lattice.Tools
         public const int SQRT_TABLE_SIZE = 65537;    // [0, 65536]
         public const int ACOS_TABLE_SIZE = 65537;    // [-1, 1] 映射到 [0, 65536]
         public const int ATAN_TABLE_SIZE = 256;      // [0, 1] -> [0, π/4]
-        public const int SINCOS_TABLE_SIZE = 4096;   // [0, 2π) - FrameSync 风格高精度
+        
+        // SinCos 双精度策略（参考 FrameSync）
+        public const int SINCOS_FAST_SIZE = 1024;    // 快速模式：Cache 友好，适合一般计算
+        public const int SINCOS_ACCURATE_SIZE = 4096; // 高精度：3D 旋转、物理模拟
+        
         public const int TAN_TABLE_SIZE = 1024;      // [0, 2π)
         
         // FrameSync 风格额外精度
@@ -120,51 +124,89 @@ namespace Lattice.Tools
         }
 
         /// <summary>
-        /// 生成正弦/余弦查找表
+        /// 生成正弦/余弦查找表（双精度策略）
         /// </summary>
         public static void GenerateSinCosLut(string outputDirectory)
         {
             string filePath = Path.Combine(outputDirectory, "FPSinCosLut.cs");
-            Console.WriteLine("Generating SinCos LUT...");
+            Console.WriteLine("Generating SinCos LUTs (Dual Precision)...");
             
-            var sinValues = new long[SINCOS_TABLE_SIZE];
-            var cosValues = new long[SINCOS_TABLE_SIZE];
+            // 生成两个精度的表
+            var (sinFast, cosFast) = GenerateSinCosTables(SINCOS_FAST_SIZE);
+            var (sinAccurate, cosAccurate) = GenerateSinCosTables(SINCOS_ACCURATE_SIZE);
             
-            for (int i = 0; i < SINCOS_TABLE_SIZE; i++)
-            {
-                double angle = (i * 2.0 * Math.PI) / SINCOS_TABLE_SIZE;
-                sinValues[i] = (long)(Math.Sin(angle) * ONE + 0.5);
-                cosValues[i] = (long)(Math.Cos(angle) * ONE + 0.5);
-            }
-            
-            // 写入组合文件（Sin 和 Cos 在同一文件）
+            // 写入组合文件
             var sb = new StringBuilder();
             sb.AppendLine(GenerateFileHeader("FPSinCosLut"));
             sb.AppendLine("    /// <summary>");
-            sb.AppendLine("    /// 正弦/余弦查找表");
-            sb.AppendLine($"    /// 角度范围: [0, 2π) 映射到索引 [0, {SINCOS_TABLE_SIZE - 1}]");
+            sb.AppendLine("    /// 正弦/余弦查找表 - 双精度策略（参考 FrameSync）");
+            sb.AppendLine("    /// <para>Fast (1024): Cache 友好，适合一般计算</para>");
+            sb.AppendLine("    /// <para>Accurate (4096): 高精度，适合 3D 旋转/物理</para>");
             sb.AppendLine("    /// </summary>");
             sb.AppendLine("    internal static class FPSinCosLut");
             sb.AppendLine("    {");
-            sb.AppendLine($"        public const int TableSize = {SINCOS_TABLE_SIZE};");
+            
+            // Fast 模式常量
+            sb.AppendLine("        #region Fast Mode (1024 entries)");
+            sb.AppendLine("        public const int FastSize = 1024;");
+            sb.AppendLine("        public const int FastIndexBits = 10;  // log2(1024)");
+            sb.AppendLine("        public const int FastIndexMask = 0x3FF;");
             sb.AppendLine();
             
-            // Sin 表
-            sb.AppendLine("        /// <summary>正弦查找表 Sin(angle)</summary>");
-            WriteArray(sb, "SinTable", "long", sinValues);
+            // Fast Sin 表
+            sb.AppendLine("        /// <summary>快速正弦查找表（1024 条目，适合一般计算）</summary>");
+            WriteArray(sb, "SinFast", "long", sinFast);
             sb.AppendLine();
             
-            // Cos 表
-            sb.AppendLine("        /// <summary>余弦查找表 Cos(angle)</summary>");
-            WriteArray(sb, "CosTable", "long", cosValues);
+            // Fast Cos 表
+            sb.AppendLine("        /// <summary>快速余弦查找表（1024 条目，适合一般计算）</summary>");
+            WriteArray(sb, "CosFast", "long", cosFast);
+            sb.AppendLine("        #endregion");
+            sb.AppendLine();
+            
+            // Accurate 模式常量
+            sb.AppendLine("        #region Accurate Mode (4096 entries)");
+            sb.AppendLine("        public const int AccurateSize = 4096;");
+            sb.AppendLine("        public const int AccurateIndexBits = 12;  // log2(4096)");
+            sb.AppendLine("        public const int AccurateIndexMask = 0xFFF;");
+            sb.AppendLine();
+            
+            // Accurate Sin 表
+            sb.AppendLine("        /// <summary>高精度正弦查找表（4096 条目，适合 3D/物理）</summary>");
+            WriteArray(sb, "SinAccurate", "long", sinAccurate);
+            sb.AppendLine();
+            
+            // Accurate Cos 表
+            sb.AppendLine("        /// <summary>高精度余弦查找表（4096 条目，适合 3D/物理）</summary>");
+            WriteArray(sb, "CosAccurate", "long", cosAccurate);
+            sb.AppendLine("        #endregion");
             
             sb.AppendLine("    }");
             sb.AppendLine("}");
             
             File.WriteAllText(filePath, sb.ToString(), Encoding.UTF8);
             
-            Console.WriteLine($"  Entries: {SINCOS_TABLE_SIZE:N0} (Sin + Cos)");
-            Console.WriteLine($"  Size: {new FileInfo(filePath).Length / 1024.0:F1} KB");
+            Console.WriteLine($"  Fast: {SINCOS_FAST_SIZE:N0} entries x 2 (Sin+Cos)");
+            Console.WriteLine($"  Accurate: {SINCOS_ACCURATE_SIZE:N0} entries x 2 (Sin+Cos)");
+            Console.WriteLine($"  Total Size: {new FileInfo(filePath).Length / 1024.0:F1} KB");
+        }
+        
+        /// <summary>
+        /// 生成指定大小的 Sin/Cos 表
+        /// </summary>
+        private static (long[] sin, long[] cos) GenerateSinCosTables(int size)
+        {
+            var sin = new long[size];
+            var cos = new long[size];
+            
+            for (int i = 0; i < size; i++)
+            {
+                double angle = (i * 2.0 * Math.PI) / size;
+                sin[i] = (long)(Math.Sin(angle) * ONE + 0.5);
+                cos[i] = (long)(Math.Cos(angle) * ONE + 0.5);
+            }
+            
+            return (sin, cos);
         }
 
         #region 辅助方法

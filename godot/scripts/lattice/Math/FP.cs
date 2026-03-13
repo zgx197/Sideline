@@ -572,158 +572,111 @@ public readonly struct FP : IEquatable<FP>, IComparable<FP>
 
     #endregion
 
-    #region 三角函数（查找表实现，帧同步必需）
-
-    /// <summary>三角函数查找表大小（2的幂次，便于位运算取模）</summary>
-    private const int SIN_TABLE_SIZE = 4096;  // FrameSync 风格高精度表
+    #region 三角函数（双精度 LUT 实现，参考 FrameSync）
+    
+    // 使用预生成的双精度 LUT（Fast: 1024, Accurate: 4096）
     
     /// <summary>2π 对应的 RawValue</summary>
     private static readonly long TWO_PI_RAW = Pi2.RawValue;
-    
-    /// <summary>Sin 查找表（静态初始化，延迟加载）</summary>
-    private static readonly long[] SinTable = InitSinTable();
-    
-    /// <summary>
-    /// 初始化 Sin 查找表
-    /// <para>使用确定性算法（泰勒展开），避免 Math.Sin 的平台差异风险</para>
-    /// </summary>
-    private static long[] InitSinTable()
-    {
-        var table = new long[SIN_TABLE_SIZE];
-        for (int i = 0; i < SIN_TABLE_SIZE; i++)
-        {
-            // 计算角度：i / SIN_TABLE_SIZE * 2π
-            // 使用 FP 运算确保确定性
-            FP angle = new((i * Pi2.RawValue) / SIN_TABLE_SIZE);
-            table[i] = SinTaylor(angle).RawValue;
-        }
-        return table;
-    }
+
+    #region 快速模式 (1024 LUT) - Cache 友好
 
     /// <summary>
-    /// 使用泰勒级数计算 Sin（确定性实现）
-    /// <para>Sin(x) = x - x³/3! + x⁵/5! - x⁷/7! + x⁹/9! - x¹¹/11!</para>
-    /// </summary>
-    private static FP SinTaylor(FP x)
-    {
-        // 将 x 归一化到 [-π/2, π/2] 以提高精度
-        x = NormalizeAngleSmall(x);
-        
-        FP x2 = x * x;
-        FP x3 = x2 * x;
-        FP x5 = x3 * x2;
-        FP x7 = x5 * x2;
-        FP x9 = x7 * x2;
-        FP x11 = x9 * x2;
-        
-        // 使用更高精度的系数
-        FP oneDiv6 = FromRaw(10923);       // 1/6 * 65536
-        FP oneDiv120 = FromRaw(546);       // 1/120 * 65536
-        FP oneDiv5040 = FromRaw(13);       // 1/5040 * 65536 ≈ 13.00
-        FP oneDiv362880 = FromRaw(0);      // 太小，忽略
-        FP oneDiv39916800 = FromRaw(0);    // 太小，忽略
-        
-        return x - x3 * oneDiv6 + x5 * oneDiv120 - x7 * oneDiv5040;
-    }
-
-    /// <summary>将角度归一化到 [-π/2, π/2]（小范围，提高泰勒展开精度）</summary>
-    private static FP NormalizeAngleSmall(FP angle)
-    {
-        long raw = angle.RawValue;
-        long halfPiRaw = PiHalf.RawValue;
-        long piRaw = Pi.RawValue;
-        long twoPiRaw = Pi2.RawValue;
-        
-        // 先归一化到 [0, 2π)
-        raw = raw % twoPiRaw;
-        if (raw < 0) raw += twoPiRaw;
-        
-        // 转换到 [-π, π]
-        if (raw > piRaw) raw -= twoPiRaw;
-        
-        // 利用对称性：sin(-x) = -sin(x), sin(π-x) = sin(x)
-        // 最终映射到 [-π/2, π/2]
-        if (raw > halfPiRaw)
-            raw = piRaw - raw;
-        else if (raw < -halfPiRaw)
-            raw = -piRaw - raw;
-        
-        return new(raw);
-    }
-
-    /// <summary>将角度归一化到 [-π, π]</summary>
-    private static FP NormalizeAngle(FP angle)
-    {
-        long raw = angle.RawValue;
-        long piRaw = Pi.RawValue;
-        long twoPiRaw = Pi2.RawValue;
-        
-        // 归一化到 [0, 2π)
-        raw = raw % twoPiRaw;
-        if (raw < 0) raw += twoPiRaw;
-        
-        // 转换到 [-π, π]
-        if (raw > piRaw) raw -= twoPiRaw;
-        
-        return new(raw);
-    }
-
-    /// <summary>
-    /// 正弦函数 Sin(angle)
-    /// <para>输入：任意角度（FP 表示的弧度）</para>
-    /// <para>包含角度归一化，适用于任意范围输入</para>
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static FP Sin(FP angle)
-    {
-        // 将角度归一化到 [0, 2π)，然后映射到 [0, SIN_TABLE_SIZE)
-        long raw = angle.RawValue;
-        
-        // 使用位运算取模（要求 SIN_TABLE_SIZE 是 2 的幂）
-        // 先处理负数：((raw % TWO_PI_RAW) + TWO_PI_RAW) % TWO_PI_RAW
-        if (raw < 0) raw = raw % TWO_PI_RAW + TWO_PI_RAW;
-        else if (raw >= TWO_PI_RAW) raw = raw % TWO_PI_RAW;
-        
-        // raw / TWO_PI_RAW * SIN_TABLE_SIZE
-        // = raw * SIN_TABLE_SIZE / TWO_PI_RAW
-        int index = (int)((raw * SIN_TABLE_SIZE) / TWO_PI_RAW);
-        if (index >= SIN_TABLE_SIZE) index = 0; // 处理 2π 边界
-        
-        return new(SinTable[index]);
-    }
-
-    /// <summary>
-    /// 快速正弦函数（无归一化，适用于已知范围的角度）
-    /// <para>要求：angle ∈ [0, 2π)，否则结果未定义</para>
-    /// <para>比 Sin() 快约 20-30%，适合高频调用</para>
+    /// 快速正弦函数（1024 LUT，Cache 友好）
+    /// <para>精度：~0.35° 步长，适合一般计算</para>
+    /// <para>速度：比 Accurate 模式快，Cache 命中率高</para>
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static FP SinFast(FP angle)
     {
         long raw = angle.RawValue;
-        // 直接映射，跳过归一化检查
-        int index = (int)((raw * SIN_TABLE_SIZE) / TWO_PI_RAW);
-        // 边界保护（在发布模式下可移除）
-        if ((uint)index >= (uint)SIN_TABLE_SIZE) 
-            index = index < 0 ? 0 : SIN_TABLE_SIZE - 1;
-        return new(SinTable[index]);
+        
+        // 归一化到 [0, 2π)
+        if (raw < 0) raw = raw % TWO_PI_RAW + TWO_PI_RAW;
+        else if (raw >= TWO_PI_RAW) raw = raw % TWO_PI_RAW;
+        
+        // 映射到 [0, 1024)：raw * 1024 / 2π
+        int index = (int)((raw << 10) / TWO_PI_RAW);  // 10 = log2(1024)
+        if (index >= FPSinCosLut.FastSize) index = 0;
+        
+        return new(FPSinCosLut.SinFast[index]);
     }
 
     /// <summary>
-    /// 余弦函数 Cos(angle)
+    /// 快速余弦函数（1024 LUT）
     /// <para>Cos(x) = Sin(x + π/2)</para>
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static FP CosFast(FP angle)
+    {
+        return SinFast(angle + PiHalf);
+    }
+
+    #endregion
+
+    #region 标准模式 (1024 LUT + 归一化) - 平衡
+
+    /// <summary>
+    /// 标准正弦函数（1024 LUT）
+    /// <para>默认推荐：平衡精度和性能</para>
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static FP Sin(FP angle)
+    {
+        // 使用快速模式（当前实现相同，未来可添加插值）
+        return SinFast(angle);
+    }
+
+    /// <summary>
+    /// 标准余弦函数（1024 LUT）
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static FP Cos(FP angle)
     {
-        // Cos(x) = Sin(x + π/2)
         return Sin(angle + PiHalf);
     }
 
+    #endregion
+
+    #region 高精度模式 (4096 LUT) - 3D/物理
+
     /// <summary>
-    /// 正切函数 Tan(angle)
+    /// 高精度正弦函数（4096 LUT）
+    /// <para>精度：~0.088° 步长，适合 3D 旋转和物理模拟</para>
+    /// <para>内存：比 Fast 模式多 24KB，Cache 压力略大</para>
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static FP SinAccurate(FP angle)
+    {
+        long raw = angle.RawValue;
+        
+        // 归一化到 [0, 2π)
+        if (raw < 0) raw = raw % TWO_PI_RAW + TWO_PI_RAW;
+        else if (raw >= TWO_PI_RAW) raw = raw % TWO_PI_RAW;
+        
+        // 映射到 [0, 4096)：raw * 4096 / 2π
+        int index = (int)((raw << 12) / TWO_PI_RAW);  // 12 = log2(4096)
+        if (index >= FPSinCosLut.AccurateSize) index = 0;
+        
+        return new(FPSinCosLut.SinAccurate[index]);
+    }
+
+    /// <summary>
+    /// 高精度余弦函数（4096 LUT）
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static FP CosAccurate(FP angle)
+    {
+        return SinAccurate(angle + PiHalf);
+    }
+
+    #endregion
+
+    #region 其他三角函数
+
+    /// <summary>
+    /// 正切函数 Tan(angle) - 使用标准精度
     /// <para>Tan(x) = Sin(x) / Cos(x)</para>
-    /// <para>注意：当 Cos(x) 接近 0 时返回带符号的最大值</para>
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static FP Tan(FP angle)
@@ -731,16 +684,63 @@ public readonly struct FP : IEquatable<FP>, IComparable<FP>
         FP sin = Sin(angle);
         FP cos = Cos(angle);
         
-        // 当 Cos 接近 0 时，Tan 趋向无穷大
-        // 返回带符号的最大值表示无穷方向
+        // 当 Cos 接近 0 时处理
         long absCos = cos.RawValue < 0 ? -cos.RawValue : cos.RawValue;
-        if (absCos < 10) // 小于 10/65536 ≈ 0.00015，视为接近零
+        if (absCos < 10) // 接近零
         {
             return sin.RawValue >= 0 ? UseableMax : UseableMin;
         }
         
         return sin / cos;
     }
+
+    /// <summary>
+    /// 高精度正切函数 - 使用 4096 LUT
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static FP TanAccurate(FP angle)
+    {
+        FP sin = SinAccurate(angle);
+        FP cos = CosAccurate(angle);
+        
+        long absCos = cos.RawValue < 0 ? -cos.RawValue : cos.RawValue;
+        if (absCos < 10)
+        {
+            return sin.RawValue >= 0 ? UseableMax : UseableMin;
+        }
+        
+        return sin / cos;
+    }
+
+    #endregion
+
+    #region 使用指南注释
+
+    /*
+     * 精度选择指南：
+     * 
+     * 1. Fast 模式 (1024 LUT):
+     *    - 场景：粒子效果、UI 动画、非关键逻辑
+     *    - 优势：Cache 命中率高，适合高频调用
+     *    - 精度：±0.35° 最大误差
+     * 
+     * 2. 标准模式 (1024 LUT):
+     *    - 场景：2D 游戏、一般移动计算
+     *    - 优势：平衡的性能和精度
+     *    - 精度：±0.35° 最大误差
+     * 
+     * 3. Accurate 模式 (4096 LUT):
+     *    - 场景：3D 旋转、物理模拟、长时间积分
+     *    - 优势：高精度减少误差累积
+     *    - 精度：±0.088° 最大误差
+     * 
+     * 内存占用：
+     * - Fast (1024)：Sin + Cos = 16 KB
+     * - Accurate (4096)：Sin + Cos = 64 KB
+     * - 总计：80 KB（可接受）
+     */
+
+    #endregion
 
     /// <summary>
     /// 反正切函数 Atan2(y, x)，返回角度 [-π, π]
