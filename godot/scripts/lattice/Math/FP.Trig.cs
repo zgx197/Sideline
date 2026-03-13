@@ -31,15 +31,15 @@ public readonly partial struct FP
     public static FP SinFast(FP angle)
     {
         long raw = angle.RawValue;
-        
+
         // 归一化到 [0, 2π)
         if (raw < 0) raw = raw % TWO_PI_RAW + TWO_PI_RAW;
         else if (raw >= TWO_PI_RAW) raw = raw % TWO_PI_RAW;
-        
+
         // 映射到 [0, 1024)：raw * 1024 / 2π
         int index = (int)((raw << 10) / TWO_PI_RAW);  // 10 = log2(1024)
         if (index >= FPSinCosLut.FastSize) index = 0;
-        
+
         return new(FPSinCosLut.SinFast[index]);
     }
 
@@ -90,15 +90,15 @@ public readonly partial struct FP
     public static FP SinAccurate(FP angle)
     {
         long raw = angle.RawValue;
-        
+
         // 归一化到 [0, 2π)
         if (raw < 0) raw = raw % TWO_PI_RAW + TWO_PI_RAW;
         else if (raw >= TWO_PI_RAW) raw = raw % TWO_PI_RAW;
-        
+
         // 映射到 [0, 4096)：raw * 4096 / 2π
         int index = (int)((raw << 12) / TWO_PI_RAW);  // 12 = log2(4096)
         if (index >= FPSinCosLut.AccurateSize) index = 0;
-        
+
         return new(FPSinCosLut.SinAccurate[index]);
     }
 
@@ -124,14 +124,14 @@ public readonly partial struct FP
     {
         FP sin = Sin(angle);
         FP cos = Cos(angle);
-        
+
         // 当 Cos 接近 0 时处理
         long absCos = cos.RawValue < 0 ? -cos.RawValue : cos.RawValue;
         if (absCos < 10) // 接近零
         {
             return sin.RawValue >= 0 ? UseableMax : UseableMin;
         }
-        
+
         return sin / cos;
     }
 
@@ -143,13 +143,13 @@ public readonly partial struct FP
     {
         FP sin = SinAccurate(angle);
         FP cos = CosAccurate(angle);
-        
+
         long absCos = cos.RawValue < 0 ? -cos.RawValue : cos.RawValue;
         if (absCos < 10)
         {
             return sin.RawValue >= 0 ? UseableMax : UseableMin;
         }
-        
+
         return sin / cos;
     }
 
@@ -178,10 +178,10 @@ public readonly partial struct FP
         {
             return x.RawValue > 0 ? Zero : Pi;
         }
-        
+
         FP absY = Abs(y);
         FP absX = Abs(x);
-        
+
         // 使用公式：atan2(y, x) = atan(y/x) (适当调整象限)
         // 但为了精度，当 |y| > |x| 时，使用 atan2(y, x) = π/2 - atan(x/y)
         FP angle;
@@ -197,7 +197,7 @@ public readonly partial struct FP
             FP ratio = absX / absY;  // [0, 1]
             angle = PiHalf - AtanSmall(ratio);
         }
-        
+
         // 恢复符号和象限
         // 将结果从第一象限 [0, π/2] 映射到正确的象限
         if (x.RawValue < 0)
@@ -211,7 +211,7 @@ public readonly partial struct FP
             angle = -angle;
         }
         // 否则第一象限，保持不变
-        
+
         return angle;
     }
 
@@ -240,18 +240,18 @@ public readonly partial struct FP
         long r = x.RawValue;
         if (r <= 0) return Zero;
         if (r >= ONE) return new FP(FPAtanLut.Table[ATAN_TABLE_SIZE]);
-        
+
         // 映射到表索引
         long idxLong = (r * ATAN_TABLE_SIZE) / ONE;
         int idx = (int)idxLong;
         if (idx >= ATAN_TABLE_SIZE) return new FP(FPAtanLut.Table[ATAN_TABLE_SIZE]);
-        
+
         // 线性插值
         long lower = FPAtanLut.Table[idx];
         long upper = FPAtanLut.Table[idx + 1];
         long frac = (r * ATAN_TABLE_SIZE) % ONE;
         long interpolated = lower + ((upper - lower) * frac) / ONE;
-        
+
         return new FP(interpolated);
     }
 

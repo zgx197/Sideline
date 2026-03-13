@@ -116,7 +116,7 @@ public static class FPLutCacheOptimized
     private static unsafe void PrefetchSpan<T>(ReadOnlySpan<T> span, int offset) where T : unmanaged
     {
         if (offset >= span.Length) return;
-        
+
         fixed (T* ptr = span)
         {
             SoftwarePrefetch(ptr + offset);
@@ -174,7 +174,7 @@ public static class FPLutCacheOptimized
                 int blockEnd = count - prefetchOffset;
 
                 int i = 0;
-                
+
                 // 主循环：带预取
                 for (; i < blockEnd; i++)
                 {
@@ -186,15 +186,15 @@ public static class FPLutCacheOptimized
                     }
 
                     long raw = inPtr[i].RawValue;
-                    
+
                     // 归一化到 [0, 2π)
                     if (raw < 0) raw = raw % TWO_PI_RAW + TWO_PI_RAW;
                     else if (raw >= TWO_PI_RAW) raw = raw % TWO_PI_RAW;
-                    
+
                     // 映射到 [0, 1024) 使用 Fast LUT
                     int index = (int)((raw << 10) / TWO_PI_RAW);
                     if (index >= FPSinCosLut.FastSize) index = 0;
-                    
+
                     outPtr[i] = new FP(FPSinCosLut.SinFast[index]);
                 }
 
@@ -202,13 +202,13 @@ public static class FPLutCacheOptimized
                 for (; i < count; i++)
                 {
                     long raw = inPtr[i].RawValue;
-                    
+
                     if (raw < 0) raw = raw % TWO_PI_RAW + TWO_PI_RAW;
                     else if (raw >= TWO_PI_RAW) raw = raw % TWO_PI_RAW;
-                    
+
                     int index = (int)((raw << 10) / TWO_PI_RAW);
                     if (index >= FPSinCosLut.FastSize) index = 0;
-                    
+
                     outPtr[i] = new FP(FPSinCosLut.SinFast[index]);
                 }
             }
@@ -241,7 +241,7 @@ public static class FPLutCacheOptimized
                 int blockEnd = count - prefetchOffset;
 
                 int i = 0;
-                
+
                 for (; i < blockEnd; i++)
                 {
                     if ((i & (FPS_PER_CACHE_LINE - 1)) == 0)
@@ -251,14 +251,14 @@ public static class FPLutCacheOptimized
                     }
 
                     long raw = inPtr[i].RawValue;
-                    
+
                     if (raw < 0) raw = raw % TWO_PI_RAW + TWO_PI_RAW;
                     else if (raw >= TWO_PI_RAW) raw = raw % TWO_PI_RAW;
-                    
+
                     // 使用 4096 条目 Accurate LUT
                     int index = (int)((raw << 12) / TWO_PI_RAW);
                     if (index >= FPSinCosLut.AccurateSize) index = 0;
-                    
+
                     outPtr[i] = new FP(FPSinCosLut.SinAccurate[index]);
                 }
 
@@ -304,7 +304,7 @@ public static class FPLutCacheOptimized
                 long piHalfRaw = piHalf.RawValue;
 
                 int i = 0;
-                
+
                 for (; i < blockEnd; i++)
                 {
                     if ((i & (FPS_PER_CACHE_LINE - 1)) == 0)
@@ -315,14 +315,14 @@ public static class FPLutCacheOptimized
 
                     // angle + π/2
                     long raw = inPtr[i].RawValue + piHalfRaw;
-                    
+
                     // 归一化
                     if (raw < 0) raw = raw % TWO_PI_RAW + TWO_PI_RAW;
                     else if (raw >= TWO_PI_RAW) raw = raw % TWO_PI_RAW;
-                    
+
                     int index = (int)((raw << 10) / TWO_PI_RAW);
                     if (index >= FPSinCosLut.FastSize) index = 0;
-                    
+
                     outPtr[i] = new FP(FPSinCosLut.SinFast[index]);
                 }
 
@@ -341,20 +341,20 @@ public static class FPLutCacheOptimized
     {
         // 简单实现：复用 SinAccurateBatch，传入偏移后的角度
         Span<FP> tempAngles = stackalloc FP[System.Math.Min(input.Length, 512)];
-        
+
         int processed = 0;
         while (processed < input.Length)
         {
             int batchSize = System.Math.Min(tempAngles.Length, input.Length - processed);
             var inputSlice = input.Slice(processed, batchSize);
             var outputSlice = output.Slice(processed, batchSize);
-            
+
             // angle + π/2
             for (int i = 0; i < batchSize; i++)
             {
                 tempAngles[i] = inputSlice[i] + FP.PiHalf;
             }
-            
+
             SinAccurateBatch(tempAngles.Slice(0, batchSize), outputSlice);
             processed += batchSize;
         }
@@ -392,7 +392,7 @@ public static class FPLutCacheOptimized
                 long piHalfRaw = piHalf.RawValue;
 
                 int i = 0;
-                
+
                 for (; i < blockEnd; i++)
                 {
                     if ((i & (FPS_PER_CACHE_LINE - 1)) == 0)
@@ -403,16 +403,16 @@ public static class FPLutCacheOptimized
                     }
 
                     long raw = inPtr[i].RawValue;
-                    
+
                     // 归一化
                     if (raw < 0) raw = raw % TWO_PI_RAW + TWO_PI_RAW;
                     else if (raw >= TWO_PI_RAW) raw = raw % TWO_PI_RAW;
-                    
+
                     // Sin
                     int sinIndex = (int)((raw << 10) / TWO_PI_RAW);
                     if (sinIndex >= FPSinCosLut.FastSize) sinIndex = 0;
                     sinPtr[i] = new FP(FPSinCosLut.SinFast[sinIndex]);
-                    
+
                     // Cos (使用偏移后的索引，避免重复计算)
                     long rawCos = raw + piHalfRaw;
                     if (rawCos >= TWO_PI_RAW) rawCos -= TWO_PI_RAW;
@@ -472,7 +472,7 @@ public static class FPLutCacheOptimized
                 int blockEnd = count - prefetchOffset;
 
                 int i = 0;
-                
+
                 for (; i < blockEnd; i++)
                 {
                     if ((i & (FPS_PER_CACHE_LINE - 1)) == 0)
@@ -482,10 +482,10 @@ public static class FPLutCacheOptimized
                     }
 
                     long x = inPtr[i].RawValue;
-                    
+
                     if (x < 0)
                         throw new ArgumentOutOfRangeException(nameof(input), $"Input at index {i} is negative");
-                    
+
                     if (x == 0)
                     {
                         outPtr[i] = FP.Zero;
@@ -535,7 +535,7 @@ public static class FPLutCacheOptimized
                 int blockEnd = count - prefetchOffset;
 
                 int i = 0;
-                
+
                 for (; i < blockEnd; i++)
                 {
                     if ((i & (FPVECTOR2_PER_CACHE_LINE - 1)) == 0)
@@ -547,12 +547,12 @@ public static class FPLutCacheOptimized
                     // 计算距离 = sqrt(x² + y²)
                     long x = ptPtr[i].X.RawValue;
                     long y = ptPtr[i].Y.RawValue;
-                    
+
                     // 使用 SqrMagnitudeFast 逻辑
                     long x2 = (x * x) >> 16;
                     long y2 = (y * y) >> 16;
                     ulong sqrMag = (ulong)(x2 + y2);
-                    
+
                     // 使用 FPMath 内部方法计算平方根
                     distPtr[i] = SqrtFromRaw(sqrMag);
                 }
@@ -596,7 +596,7 @@ public static class FPLutCacheOptimized
                 int blockEnd = count - prefetchOffset;
 
                 int i = 0;
-                
+
                 for (; i < blockEnd; i++)
                 {
                     if ((i & (FPVECTOR2_PER_CACHE_LINE - 1)) == 0)
@@ -609,12 +609,12 @@ public static class FPLutCacheOptimized
                     // delta = A - B
                     long dx = aPtr[i].X.RawValue - bPtr[i].X.RawValue;
                     long dy = aPtr[i].Y.RawValue - bPtr[i].Y.RawValue;
-                    
+
                     // |delta|²
                     long dx2 = (dx * dx) >> 16;
                     long dy2 = (dy * dy) >> 16;
                     ulong sqrDist = (ulong)(dx2 + dy2);
-                    
+
                     distPtr[i] = SqrtFromRaw(sqrDist);
                 }
 
@@ -661,10 +661,10 @@ public static class FPLutCacheOptimized
 
                     long dx = aPtr[i].X.RawValue - bPtr[i].X.RawValue;
                     long dy = aPtr[i].Y.RawValue - bPtr[i].Y.RawValue;
-                    
+
                     long dx2 = (dx * dx + 32768) >> 16;  // 四舍五入
                     long dy2 = (dy * dy + 32768) >> 16;
-                    
+
                     distPtr[i] = new FP(dx2 + dy2);
                 }
             }
@@ -689,7 +689,7 @@ public static class FPLutCacheOptimized
         // 计算 log2
         ulong raw = x;
         int log2 = 0;
-        
+
         if ((raw >> 32) != 0UL) { raw >>= 32; log2 += 32; }
         if ((raw >> 16) != 0UL) { raw >>= 16; log2 += 16; }
         if ((raw >> 8) != 0UL) { raw >>= 8; log2 += 8; }
@@ -699,7 +699,7 @@ public static class FPLutCacheOptimized
         int exponent = log2 - 16 + 2;
         int mantissaSqrt = FPSqrtLut.Table[x >> exponent];
         long result = (long)mantissaSqrt << (exponent >> 1);
-        
+
         return FP.FromRaw(result >> FPSqrtLut.AdditionalPrecisionBits);
     }
 
@@ -836,7 +836,7 @@ public static class FPLutCacheOptimized
     {
         /// <summary>预期缓存未命中率降低百分比</summary>
         public const int EXPECTED_CACHE_MISS_REDUCTION_PERCENT = 75;
-        
+
         // 注意：以下预期值为文档说明，使用字符串避免 float 类型
         // 实际值：大数据集 ~2.2x，中等数据集 ~1.6x
     }

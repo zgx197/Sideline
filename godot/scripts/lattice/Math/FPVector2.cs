@@ -192,9 +192,9 @@ namespace Lattice.Math
         {
             ulong sqrmag = (ulong)(value.X.RawValue * value.X.RawValue + value.Y.RawValue * value.Y.RawValue);
             if (sqrmag == 0) return Zero;
-            
+
             var (reciprocal, shift) = FPMath.GetReciprocalForNormalize(sqrmag);
-            
+
             return new FPVector2(
                 new FP(value.X.RawValue * reciprocal >> shift),
                 new FP(value.Y.RawValue * reciprocal >> shift)
@@ -216,12 +216,12 @@ namespace Lattice.Math
                 magnitude = FP.Zero;
                 return Zero;
             }
-            
+
             var sqrt = FPMath.GetSqrtDecomp(sqrmag);
             var (reciprocal, shift) = FPMath.GetReciprocalForNormalize(sqrmag);
-            
+
             magnitude = FP.FromRaw((long)sqrt.Mantissa << sqrt.Exponent >> 14);
-            
+
             return new FPVector2(
                 new FP(value.X.RawValue * reciprocal >> shift),
                 new FP(value.Y.RawValue * reciprocal >> shift)
@@ -497,7 +497,7 @@ namespace Lattice.Math
             FP sqrMagA = a.SqrMagnitude;
             FP sqrMagB = b.SqrMagnitude;
             if (sqrMagA.RawValue == 0 || sqrMagB.RawValue == 0) return FP.Zero;
-            
+
             // 优化：sqrt(|a|² * |b|²) = |a| * |b|，只需一次 Sqrt
             FP cos = dot / FPMath.Sqrt(sqrMagA * sqrMagB);
             cos = FPMath.Clamp(cos, -FP._1, FP._1);
@@ -552,13 +552,13 @@ namespace Lattice.Math
             FP omega = 2 / smoothTime;
             FP x = omega * deltaTime;
             FP exp = FP._1 / (FP._1 + x + x * x * FP._0_50); // exp(-x) 近似
-            
+
             FPVector2 change = velocity * deltaTime;
             FPVector2 diff = current - target;
-            
+
             FPVector2 temp = (velocity + omega * diff) * deltaTime;
             velocity = (velocity - omega * temp) * exp;
-            
+
             return target + (diff + change) * exp;
         }
 
@@ -576,10 +576,10 @@ namespace Lattice.Math
             FP d1 = Cross(b - a, p - a);
             FP d2 = Cross(c - b, p - b);
             FP d3 = Cross(a - c, p - c);
-            
+
             bool hasNeg = (d1.RawValue < 0) || (d2.RawValue < 0) || (d3.RawValue < 0);
             bool hasPos = (d1.RawValue > 0) || (d2.RawValue > 0) || (d3.RawValue > 0);
-            
+
             return !(hasNeg && hasPos);
         }
 

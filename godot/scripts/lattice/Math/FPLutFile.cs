@@ -53,7 +53,7 @@ namespace Lattice.Math
             // 验证数据大小
             long expectedDataSize = header.EntryCount * header.EntrySize;
             long actualDataSize = data.Length - FPLutHeader.HeaderSize;
-            
+
             if (actualDataSize < expectedDataSize)
                 throw new InvalidDataException(
                     $"LUT data truncated: expected {expectedDataSize} bytes, got {actualDataSize}");
@@ -63,7 +63,7 @@ namespace Lattice.Math
             {
                 byte[] payload = new byte[expectedDataSize];
                 Buffer.BlockCopy(data, FPLutHeader.HeaderSize, payload, 0, (int)expectedDataSize);
-                
+
                 if (!header.VerifyChecksum(payload))
                     throw new InvalidDataException("LUT checksum verification failed");
             }
@@ -71,7 +71,7 @@ namespace Lattice.Math
             // 提取数据
             long[] longData;
             int[] intData;
-            
+
             if (header.EntrySize == 8)
             {
                 longData = new long[header.EntryCount];
@@ -128,11 +128,11 @@ namespace Lattice.Math
 
             // 序列化
             byte[] headerBytes = header.ToBytes();
-            byte[] result = new byte[FPLutHeader.HeaderSize + 
+            byte[] result = new byte[FPLutHeader.HeaderSize +
                 (header.EntrySize == 8 ? data.LongData.Length * 8 : data.IntData.Length * 4)];
-            
+
             Buffer.BlockCopy(headerBytes, 0, result, 0, FPLutHeader.HeaderSize);
-            
+
             if (header.EntrySize == 8 && data.LongData.Length > 0)
             {
                 Buffer.BlockCopy(data.LongData, 0, result, FPLutHeader.HeaderSize, data.LongData.Length * 8);
@@ -194,7 +194,7 @@ namespace Lattice.Math
         public static void BatchConvert(string sourceDir, string targetDir, uint targetVersion)
         {
             Directory.CreateDirectory(targetDir);
-            
+
             foreach (string file in Directory.GetFiles(sourceDir, "*" + FileExtension))
             {
                 string fileName = Path.GetFileName(file);
@@ -220,10 +220,10 @@ namespace Lattice.Math
     {
         /// <summary>文件头</summary>
         public readonly FPLutHeader Header;
-        
+
         /// <summary>64-bit 数据（EntrySize == 8 时使用）</summary>
         public readonly long[] LongData;
-        
+
         /// <summary>32-bit 数据（EntrySize == 4 时使用）</summary>
         public readonly int[] IntData;
 
@@ -312,13 +312,13 @@ namespace Lattice.Math
     {
         /// <summary>完全匹配</summary>
         ExactMatch,
-        
+
         /// <summary>向后兼容（旧版本）</summary>
         BackwardCompatible,
-        
+
         /// <summary>新版本（需要更新）</summary>
         NewerVersion,
-        
+
         /// <summary>不兼容</summary>
         Incompatible
     }

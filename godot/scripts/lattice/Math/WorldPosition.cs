@@ -239,7 +239,7 @@ namespace Lattice.Math
             // 但 C# 中条件表达式可能产生分支，这里使用掩码技巧
             // 实际上对于负数，& CHUNK_MASK 会得到正确的正数补码表示
             // 但我们需要确保它在 [0, 1024) 范围内
-            
+
             // 对于负数，& CHUNK_MASK 会产生一个大的正数（补码），我们需要减去 CHUNK_SIZE
             // 使用条件移动：如果 localXInt < 0，则 normX -= CHUNK_SIZE
             // 但在 C# 中，我们可以使用：normX += (localXInt >> 63) & CHUNK_SIZE

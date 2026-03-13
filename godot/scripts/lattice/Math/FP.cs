@@ -46,60 +46,60 @@ public readonly partial struct FP : IEquatable<FP>, IComparable<FP>
 
     /// <summary>小数位数量</summary>
     public const int FRACTIONAL_BITS = 16;
-    
+
     /// <summary>比例因子 = 2^16 = 65536</summary>
     public const long ONE = 1L << FRACTIONAL_BITS;
-    
+
     /// <summary>乘法舍入常量：0.5 LSB = 2^15</summary>
     /// <remarks>
     /// 用于乘法四舍五入：(a * b + MulRound) >> 16
     /// 相比截断，精度误差减半
     /// </remarks>
     internal const long MulRound = 1L << (FRACTIONAL_BITS - 1);  // 32768
-    
+
     /// <summary>
     /// 安全乘法上限：sqrt(long.MaxValue) ≈ 3,037,000,499
     /// 对应真实值约 46,340
     /// <para>两个 FP 都 ≤ UseableMax 时，乘法不会溢出 long</para>
     /// </summary>
     public static readonly FP UseableMax = new(3037000499L);
-    
+
     /// <summary>安全乘法下限（对应真实值约 -46,340）</summary>
     public static readonly FP UseableMin = new(-3037000499L);
-    
+
     /// <summary>
     /// 最小精度：1/65536 ≈ 0.000015
     /// <para>注意：这是 Q48.16 能表示的最小单位，不是 float.Epsilon 的概念</para>
     /// </summary>
     public static readonly FP Epsilon = new(1L);
-    
+
     /// <summary>
     /// 默认近似比较容差（10倍精度，约 0.00015）
     /// <para>用于 Approximately 的默认参数</para>
     /// </summary>
     public static readonly FP EpsilonDefault = new(10L);
-    
+
     /// <summary>零</summary>
     public static FP Zero => new(0);
-    
+
     /// <summary>一</summary>
     public static FP One => new(ONE);
-    
+
     /// <summary>二</summary>
     public static FP Two => new(ONE * 2);
-    
+
     /// <summary>一半 (0.5)</summary>
     public static FP Half => new(ONE >> 1);
-    
+
     /// <summary>π (3.14159...)</summary>
     public static FP Pi => new(205887L);       // 3.1415863037109375
-    
+
     /// <summary>2π</summary>
     public static FP Pi2 => new(411774L);      // 6.283172607421875
-    
+
     /// <summary>π/2</summary>
     public static FP PiHalf => new(102943L);   // 1.57079315185546875
-    
+
     // 快捷常量命名（参考 Quantum 风格）
     public static FP _0 => new(0);
     public static FP _1 => new(ONE);
@@ -110,7 +110,7 @@ public readonly partial struct FP : IEquatable<FP>, IComparable<FP>
     public static FP _10 => new(ONE * 10);
     public static FP _100 => new(ONE * 100);
     public static FP _1000 => new(ONE * 1000);
-    
+
     public static FP _0_01 => new(655);        // 0.01 (655.36 截断)
     public static FP _0_05 => new(3277);       // 0.05 (3276.8 四舍五入)
     public static FP _0_10 => new(6554);       // 0.1
@@ -144,7 +144,7 @@ public readonly partial struct FP : IEquatable<FP>, IComparable<FP>
         public const long _360 = 23592960L;    // 360
         public const long _1000 = ONE * 1000;
         public const long _10000 = 655360000L; // 10000
-        
+
         // ==================== 小数常量 (0.01 ~ 0.99) ====================
         public const long _0_01 = 655L;        // 0.01
         public const long _0_02 = 1311L;       // 0.02
@@ -159,7 +159,7 @@ public readonly partial struct FP : IEquatable<FP>, IComparable<FP>
         public const long _0_66 = 43691L;      // 0.66 (2/3 近似)
         public const long _0_75 = (ONE >> 1) + (ONE >> 2); // 0.75
         public const long _0_99 = 64881L;      // 0.99
-        
+
         // ==================== 大于1的常量 ====================
         public const long _1_01 = 66191L;      // 1.01
         public const long _1_02 = 66847L;      // 1.02
@@ -173,7 +173,7 @@ public readonly partial struct FP : IEquatable<FP>, IComparable<FP>
         public const long _1_50 = ONE + (ONE >> 1); // 1.5
         public const long _1_75 = 114688L;     // 1.75
         public const long _1_99 = 130417L;     // 1.99
-        
+
         // ==================== 角度弧度常量 ====================
         public const long _PI = 205887;        // π ≈ 3.14159
         public const long _2Pi = 411774;       // 2π
@@ -186,23 +186,23 @@ public readonly partial struct FP : IEquatable<FP>, IComparable<FP>
         public const long Rad_45 = 51472L;     // π/4 (45度)
         public const long Rad_30 = 34315L;     // π/6 (30度)
         public const long Rad_22_50 = 25736L;  // π/8 (22.5度)
-        
+
         // ==================== 角度转换常量 ====================
         public const long _Deg2Rad = 1144;      // π/180 ≈ 0.0174533
         public const long _Rad2Deg = 3754936;   // 180/π ≈ 57.2958
-        
+
         // ==================== 极小量常量 (EN = Epsilon N) ====================
         public const long EN1 = 6554L;         // 0.1
         public const long EN2 = 655L;          // 0.01
         public const long EN3 = 66L;           // 0.001 (Epsilon)
         public const long EN4 = 7L;            // 0.0001
         public const long EN5 = 1L;            // 0.000015 (最小精度)
-        
+
         // ==================== 数学常量 ====================
         public const long _E = 178145L;        // e ≈ 2.71828
         public const long Log2_E = 94548L;     // log2(e)
         public const long Log2_10 = 217706L;   // log2(10)
-        
+
         // ==================== 极值常量 ====================
         public const long _MaxValue = 3037000499L;  // UseableMax
         public const long _MinValue = -3037000499L; // UseableMin
@@ -334,7 +334,7 @@ public readonly partial struct FP : IEquatable<FP>, IComparable<FP>
     public static FP operator *(FP a, FP b)
     {
         long product = a.RawValue * b.RawValue;
-        
+
 #if DEBUG
         // 检查舍入溢出（当 product 接近 long.MaxValue/MinValue 时）
         // 这种情况在正常使用中极不可能发生（需要数值 > 2^63 / 2^16 ≈ 140万亿）
@@ -346,7 +346,7 @@ public readonly partial struct FP : IEquatable<FP>, IComparable<FP>
         // 四舍五入：加上 0.5 LSB 后截断
         return new((product + MulRound) >> FRACTIONAL_BITS);
     }
-    
+
     /// <summary>
     /// 快速乘法（截断，无舍入开销）
     /// </summary>
@@ -359,7 +359,7 @@ public readonly partial struct FP : IEquatable<FP>, IComparable<FP>
     {
         return new((a.RawValue * b.RawValue) >> FRACTIONAL_BITS);
     }
-    
+
     /// <summary>
     /// 高精度乘法（带溢出检测）
     /// </summary>
@@ -369,11 +369,11 @@ public readonly partial struct FP : IEquatable<FP>, IComparable<FP>
     {
         long product = a.RawValue * b.RawValue;
         long rounded = product + MulRound;
-        
+
         // 检测舍入溢出
         if ((product > 0 && rounded < product) || (product < 0 && rounded > product))
             throw new OverflowException($"FP multiplication overflow: {a} * {b}");
-        
+
         return new(rounded >> FRACTIONAL_BITS);
     }
 
@@ -388,13 +388,13 @@ public readonly partial struct FP : IEquatable<FP>, IComparable<FP>
     {
         if (b.RawValue == 0)
             throw new DivideByZeroException("FP division by zero");
-        
+
         // 检查左移是否会导致溢出：|a| > long.MaxValue >> 16 ≈ 140万亿
         // 对于正常游戏数值（通常 < 100万），永远不会触发
         const long MAX_SAFE_DIVIDEND = long.MaxValue >> FRACTIONAL_BITS; // ≈ 140,737,488,355,327
         if (a.RawValue > MAX_SAFE_DIVIDEND || a.RawValue < -MAX_SAFE_DIVIDEND)
             throw new OverflowException($"FP division overflow: dividend {a.RawValue} is too large for division");
-        
+
         long result = (a.RawValue << FRACTIONAL_BITS) / b.RawValue;
         return new(result);
     }

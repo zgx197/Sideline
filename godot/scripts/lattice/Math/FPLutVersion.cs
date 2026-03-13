@@ -16,31 +16,31 @@ namespace Lattice.Math
     {
         /// <summary>魔数：'FPLT' = 0x464P4C54 (FP = 0x464P, LT = 0x4C54)</summary>
         public const uint Magic = 0x464F4C54;  // 'F' 'P' 'L' 'T' ASCII
-        
+
         /// <summary>当前版本：1.0.0 = 0x00010000</summary>
         public const uint CurrentVersion = 0x00010000;
-        
+
         /// <summary>兼容的最旧版本：1.0.0</summary>
         public const uint MinCompatibleVersion = 0x00010000;
 
         /// <summary>魔数（4 bytes）</summary>
         public uint FileMagic;
-        
+
         /// <summary>版本号（4 bytes）：主.次.修.预 = 1 byte each</summary>
         public uint Version;
-        
+
         /// <summary>LUT 类型（4 bytes）</summary>
         public LutType Type;
-        
+
         /// <summary>条目数量（4 bytes）</summary>
         public uint EntryCount;
-        
+
         /// <summary>每个条目字节数（4 bytes）</summary>
         public uint EntrySize;
-        
+
         /// <summary>校验和 CRC32（4 bytes）</summary>
         public uint Checksum;
-        
+
         /// <summary>保留字段（16 bytes）</summary>
         public ulong Reserved1;
         public ulong Reserved2;
@@ -153,15 +153,15 @@ namespace Lattice.Math
             byte minor = (byte)(version >> 16);
             byte patch = (byte)(version >> 8);
             byte pre = (byte)version;
-            
+
             if (pre == 0)
                 return $"{major}.{minor}.{patch}";
             return $"{major}.{minor}.{patch}-pre{pre}";
         }
 
-        public bool Equals(FPLutHeader other) => 
-            FileMagic == other.FileMagic && 
-            Version == other.Version && 
+        public bool Equals(FPLutHeader other) =>
+            FileMagic == other.FileMagic &&
+            Version == other.Version &&
             Type == other.Type;
 
         public override bool Equals(object? obj) => obj is FPLutHeader other && Equals(other);

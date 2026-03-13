@@ -53,7 +53,7 @@ public readonly partial struct FP
 
         // 分割整数和小数部分
         int dotIndex = s.IndexOf('.', start);
-        
+
         // 解析整数部分
         long integerPart = 0;
         int end = dotIndex >= 0 ? dotIndex : s.Length;
@@ -70,7 +70,7 @@ public readonly partial struct FP
         {
             int fracStart = dotIndex + 1;
             int fracLength = System.Math.Min(5, s.Length - fracStart);
-            
+
             long fracValue = 0;
             long divisor = 1;
             for (int i = 0; i < fracLength; i++)
@@ -81,7 +81,7 @@ public readonly partial struct FP
                 fracValue = fracValue * 10 + (c - '0');
                 divisor *= 10;
             }
-            
+
             // 将小数部分转换为定点数：fracValue / divisor * ONE
             fractionalPart = (fracValue * ONE) / divisor;
         }
@@ -158,33 +158,33 @@ public readonly partial struct FP
     private string ToStringInternal(int decimalPlaces)
     {
         if (RawValue == 0) return "0." + new string('0', decimalPlaces);
-        
+
         long raw = RawValue;
         bool negative = raw < 0;
         if (negative) raw = -raw;
-        
+
         // 整数部分
         long intPart = raw >> FRACTIONAL_BITS;
-        
+
         // 小数部分（16位）
         long fracPart = raw & (ONE - 1);
-        
+
         // 将小数部分扩展到指定位数
         // fracPart / 65536 * 10^decimalPlaces
         long divisor = ONE;
         for (int i = 0; i < decimalPlaces; i++) divisor /= 10;
         if (divisor == 0) divisor = 1; // 防止除零
-        
+
         long scaledFrac = (fracPart * Pow10(decimalPlaces)) / ONE;
-        
+
         // 格式化
         string intStr = intPart.ToString();
         string fracStr = scaledFrac.ToString().PadLeft(decimalPlaces, '0');
-        
+
         // 截断到指定位数
         if (fracStr.Length > decimalPlaces)
             fracStr = fracStr.Substring(0, decimalPlaces);
-        
+
         return (negative ? "-" : "") + intStr + "." + fracStr;
     }
 

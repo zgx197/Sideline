@@ -28,12 +28,12 @@ public readonly partial struct FP
         long clamped = x.RawValue;
         if (clamped < -FP.ONE) clamped = -FP.ONE;
         if (clamped > FP.ONE) clamped = FP.ONE;
-        
+
         // 使用查表：索引 = (x + 1) * 32768，结果在 [0, π]
         int index = (int)((clamped + FP.ONE) * 32768 >> 16);
         if (index < 0) index = 0;
         if (index > 65536) index = 65536;
-        
+
         // 使用预生成 LUT
         return new FP(FPAcosLut.Table[index]);
     }

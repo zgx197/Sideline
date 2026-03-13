@@ -87,14 +87,14 @@ namespace Lattice.Math
             // log2 - 16: 因为查找表覆盖 16 位小数
             // + 2: FrameSync 的调整因子
             int exponent = log2 - 16 + 2;
-            
+
             // 查表获取尾数的平方根（带额外精度）
             int mantissaSqrt = FPSqrtLut.Table[x >> exponent];
-            
+
             // 结果 = 尾数平方根 << (exponent / 2)
             // exponent >> 1 相当于 exponent / 2
             long result = (long)mantissaSqrt << (exponent >> 1);
-            
+
             // 右移 6 位去除额外精度
             return result >> FPSqrtLut.AdditionalPrecisionBits;
         }
@@ -111,11 +111,11 @@ namespace Lattice.Math
         {
             if (value.RawValue <= 0)
                 throw new ArgumentOutOfRangeException(nameof(value), "InvSqrt 输入必须为正数");
-            
+
             // 初始估计：使用 LUT 获取近似值
             // 1/sqrt(x) = sqrt(1/x)，但直接计算更快
             long x = value.RawValue;
-            
+
             // 使用指数-尾数分解：x = m * 2^e
             // 1/sqrt(x) = 1/sqrt(m) * 2^(-e/2)
             int log2 = 0;
@@ -125,24 +125,24 @@ namespace Lattice.Math
             if ((raw >> 8) != 0L) { raw >>= 8; log2 += 8; }
             if ((raw >> 4) != 0L) { raw >>= 4; log2 += 4; }
             if ((raw >> 2) != 0L) { log2 += 2; }
-            
+
             // 归一化到 [1, 4) 范围
             int exponent = log2 - 16;
             long mantissa = x >> (exponent & ~1);
             if (mantissa > 65536) mantissa >>= 1;
-            
+
             // 初始估计（查表或近似公式）
             // 对于 x 在 [1, 4)，1/sqrt(x) 在 [0.5, 1]
             long estimate = FP.ONE * 2 / (SqrtRaw(mantissa) >> 15);
-            
+
             // 牛顿迭代一次提高精度: y = y * (3 - x*y^2) / 2
             // 简化：使用查表结果已经足够用于 Normalize
-            
+
             // 应用指数调整
             int resultExp = -(exponent >> 1);
             if ((exponent & 1) != 0) // 奇数指数需要 sqrt(2) 补偿
                 estimate = (estimate * 46341) >> 16; // 46341 ≈ sqrt(2) * 32768
-            
+
             return FP.FromRaw(estimate << resultExp);
         }
 
@@ -163,7 +163,7 @@ namespace Lattice.Math
             // 计算 log2（找最高有效位）
             ulong raw = x;
             int log2 = 0;
-            
+
             if ((raw >> 32) != 0UL) { raw >>= 32; log2 += 32; }
             if ((raw >> 16) != 0UL) { raw >>= 16; log2 += 16; }
             if ((raw >> 8) != 0UL) { raw >>= 8; log2 += 8; }
@@ -171,7 +171,7 @@ namespace Lattice.Math
             if ((raw >> 2) != 0UL) { log2 += 2; }
 
             int exponent = log2 - 16 + 2;
-            
+
             return new SqrtDecomp(
                 exponent: exponent >> 1,
                 mantissa: FPSqrtLut.Table[x >> exponent]);
@@ -189,14 +189,14 @@ namespace Lattice.Math
         internal static (long reciprocal, int shift) GetReciprocalForNormalize(ulong sqrmag)
         {
             var sqrt = GetSqrtDecomp(sqrmag);
-            
+
             // 计算尾数的倒数：使用 2^44 / mantissa
             // 44 = 22 (sqrt 精度) + 16 (Q16.16) + 6 (额外精度)
             long reciprocal = FPMathConstants.ReciprocalNormalizationFactor / sqrt.Mantissa;
-            
+
             // 计算位移量
             int shift = 22 + sqrt.Exponent - 8;
-            
+
             return (reciprocal, shift);
         }
 

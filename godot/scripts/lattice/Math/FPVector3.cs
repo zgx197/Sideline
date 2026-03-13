@@ -218,9 +218,9 @@ namespace Lattice.Math
         {
             ulong sqrmag = (ulong)(value.X.RawValue * value.X.RawValue + value.Y.RawValue * value.Y.RawValue + value.Z.RawValue * value.Z.RawValue);
             if (sqrmag == 0) return Zero;
-            
+
             var (reciprocal, shift) = FPMath.GetReciprocalForNormalize(sqrmag);
-            
+
             return new FPVector3(
                 new FP(value.X.RawValue * reciprocal >> shift),
                 new FP(value.Y.RawValue * reciprocal >> shift),
@@ -243,12 +243,12 @@ namespace Lattice.Math
                 magnitude = FP.Zero;
                 return Zero;
             }
-            
+
             var sqrt = FPMath.GetSqrtDecomp(sqrmag);
             var (reciprocal, shift) = FPMath.GetReciprocalForNormalize(sqrmag);
-            
+
             magnitude = FP.FromRaw((long)sqrt.Mantissa << sqrt.Exponent >> 14);
-            
+
             return new FPVector3(
                 new FP(value.X.RawValue * reciprocal >> shift),
                 new FP(value.Y.RawValue * reciprocal >> shift),
