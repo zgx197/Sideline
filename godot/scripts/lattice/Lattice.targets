@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  
+  <!--
+    Lattice LUT 生成 MSBuild 目标
+    在编译前自动生成查找表（如果 LutGenerator 代码比生成的 LUT 新）
+  -->
+  
+  <PropertyGroup>
+    <LutGeneratorProject>$(MSBuildThisFileDirectory)Tools\LutGenerator\LutGenerator.csproj</LutGeneratorProject>
+    <LutOutputDirectory>$(MSBuildThisFileDirectory)Math\Generated</LutOutputDirectory>
+    <LutGeneratedFile>$(LutOutputDirectory)\FPSqrtLut.cs</LutGeneratedFile>
+  </PropertyGroup>
+  
+  <!-- 
+    在 CoreCompile 之前执行 LUT 生成
+    条件：LutGenerator 项目中的任何文件比生成的 LUT 文件新
+  -->
+  <Target Name="GenerateLuts" BeforeTargets="CoreCompile"
+          Inputs="$(LutGeneratorProject);$(MSBuildThisFileDirectory)Tools\LutGenerator\*.cs"
+          Outputs="$(LutGeneratedFile)">
+    
+    <Message Text="Generating Lattice LUTs..." Importance="high" />
+    
+    <Exec Command="dotnet run --project &quot;$(LutGeneratorProject)&quot; -- &quot;$(LutOutputDirectory)&quot;"
+          WorkingDirectory="$(MSBuildThisFileDirectory)"
+          ConsoleToMSBuild="true">
+      <Output TaskParameter="ConsoleOutput" PropertyName="LutGeneratorOutput" />
+    </Exec>
+    
+    <Message Text="$(LutGeneratorOutput)" Importance="low" />
+    <Message Text="LUT generation completed" Importance="high" />
+    
+  </Target>
+  
+  <!-- 
+    清理目标：删除生成的 LUT 文件
+  -->
+  <Target Name="CleanLuts" AfterTargets="Clean">
+    <Message Text="Cleaning generated LUT files..." Importance="high" />
+    <RemoveDir Directories="$(LutOutputDirectory)" />
+  </Target>
+
+</Project>
