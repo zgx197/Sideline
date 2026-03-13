@@ -511,6 +511,154 @@ public void Sqrt_ShouldMatchExpectedValue()
 
 ---
 
-*文档版本: 1.0*  
+## 5. FrameSync 免除法归一化优化
+
+### 5.1 问题：传统归一化的性能瓶颈
+
+```csharp
+// 传统方法：需要两次除法
+public FPVector2 Normalized
+{
+    get {
+        FP mag = Magnitude;           // 第1次：Sqrt (查表)
+        return this / mag;            // 第2次：除法 (慢)
+    }
+}
+```
+
+### 5.2 FrameSync 解决方案：倒数乘法
+
+```csharp
+// 优化方法：使用倒数乘法避免除法
+public static FPVector2 Normalize(FPVector2 value)
+{
+    ulong sqrmag = (ulong)(x*x + y*y);
+    if (sqrmag == 0) return Zero;
+    
+    // 1. 获取 sqrt 的指数-尾数分解
+    var sqrt = FPMath.GetSqrtDecomp(sqrmag);
+    
+    // 2. 计算尾数的倒数：2^44 / mantissa
+    long reciprocal = 17592186044416L / sqrt.Mantissa;
+    
+    // 3. 计算位移量
+    int shift = 22 + sqrt.Exponent - 8;
+    
+    // 4. 乘法代替除法
+    return new FPVector2(
+        new FP(x.RawValue * reciprocal >> shift),
+        new FP(y.RawValue * reciprocal >> shift)
+    );
+}
+```
+
+### 5.3 原理详解
+
+**数学基础**：
+```
+给定向量 v = (x, y)，长度平方 |v|² = x² + y²
+
+归一化：v' = v / |v| = v / sqrt(|v|²)
+
+FrameSync 技巧：
+1. 分解 sqrt(|v|²) = mantissa * 2^exponent
+2. 1/sqrt = 1/mantissa * 2^(-exponent)
+3. 使用大常数 2^44 计算倒数：2^44 / mantissa
+4. 通过位移调整指数：result >> (22 + exponent - 8)
+```
+
+**为什么是 2^44？**
+```
+44 = 22 (sqrt 精度) + 16 (Q16.16) + 6 (额外精度)
+
+17592186044416 = 2^44
+```
+
+### 5.4 性能对比
+
+| 方法 | 运算 | 相对速度 |
+|-----|------|---------|
+| 传统 | Sqrt + 除法 | 1.0x |
+| InvSqrt | Sqrt + 乘法 | 1.5x |
+| FrameSync | 查表 + 倒数乘法 | 2-3x |
+
+---
+
+## 6. Source Generator 自动生成代码
+
+### 6.1 问题：手写 Swizzle 重复且易错
+
+```csharp
+// 手写 30+ Swizzle 属性，容易出错
+public readonly FPVector2 XX => new(X, X);
+public readonly FPVector2 XY => new(X, Y);
+// ... 还有 28 个
+```
+
+### 6.2 解决方案：Source Generator
+
+```csharp
+// 定义元数据
+[GenerateSwizzle]
+public partial struct FPVector2 { }
+
+// Source Generator 自动生成：
+// partial struct FPVector2 {
+//     public readonly FPVector2 XX => new(X, X);
+//     ...
+// }
+```
+
+### 6.3 实现思路
+
+```csharp
+[Generator]
+public class SwizzleGenerator : ISourceGenerator
+{
+    public void Execute(GeneratorExecutionContext context)
+    {
+        var compilation = context.Compilation;
+        
+        // 1. 查找标记了 [GenerateSwizzle] 的类型
+        var types = GetTypesWithAttribute(compilation, "GenerateSwizzle");
+        
+        // 2. 为每个类型生成 Swizzle 代码
+        foreach (var type in types)
+        {
+            var source = GenerateSwizzleCode(type);
+            context.AddSource($"{type.Name}.Swizzle.g.cs", source);
+        }
+    }
+    
+    string GenerateSwizzleCode(INamedTypeSymbol type)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine("// Auto-generated");
+        sb.AppendLine($"partial struct {type.Name}");
+        sb.AppendLine("{");
+        
+        // 生成所有 Swizzle 组合
+        var components = GetComponents(type); // ["X", "Y"] 或 ["X", "Y", "Z"]
+        foreach (var combo in GetSwizzleCombinations(components))
+        {
+            GenerateSwizzleProperty(sb, combo);
+        }
+        
+        sb.AppendLine("}");
+        return sb.ToString();
+    }
+}
+```
+
+### 6.4 优势
+
+- **零运行时开销**：生成的是普通 C# 代码
+- **编译时检查**：语法错误在编译时发现
+- **IDE 支持**：IntelliSense 能显示生成的成员
+- **易于维护**：修改生成逻辑即可批量更新
+
+---
+
+*文档版本: 1.1*  
 *最后更新: 2026-03-13*  
 *作者: Lattice Team*
