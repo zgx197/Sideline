@@ -2,6 +2,7 @@ using System;
 using System.Buffers;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using Lattice.Math;
 
 namespace Lattice.Core
 {
@@ -202,7 +203,7 @@ namespace Lattice.Core
         public int FreeCount { get; init; }
         public int ElementSize { get; init; }
 
-        public float UtilizationRate => TotalBytes > 0 ? (float)AllocatedCount * ElementSize / TotalBytes : 0;
+        public FP UtilizationRate => TotalBytes > 0 ? (FP)AllocatedCount * (FP)ElementSize / (FP)TotalBytes : FP.Zero;
 
         public override string ToString()
         {

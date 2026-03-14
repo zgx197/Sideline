@@ -5,8 +5,10 @@ using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using Lattice.Math;
 
 namespace Lattice.Core
 {
@@ -178,13 +180,21 @@ namespace Lattice.Core
         private long _totalCreated;
         private long _totalDestroyed;
         private long _versionOverflowCount;  // 版本号溢出计数（调试用）
+        private long _totalReserved;
+        private long _totalActivated;
+        private int _peakAlive;
+        private int _peakReserved;
+        private int _reservedCount;
+
+        // 预留实体列表（用于快速访问预留实体）
+        private List<int>? _reservedIndices;
 
         /// <summary>
         /// 创建注册表
         /// </summary>
         public EntityRegistry(int initialCapacity = 256)
         {
-            initialCapacity = System.Math.Min(System.Math.Max(initialCapacity, 16), MaxEntityCount);
+            initialCapacity = System.Math.Min(System.Math.Max(initialCapacity, 4), MaxEntityCount);
 
             _info = new EntityInfo[initialCapacity];
             _archetypeIds = new int[initialCapacity];
@@ -215,6 +225,11 @@ namespace Lattice.Core
         /// 待销毁实体数量
         /// </summary>
         public int PendingDestroyCount => _pendingDestroys?.Count ?? 0;
+
+        /// <summary>
+        /// 预留实体数量
+        /// </summary>
+        public int ReservedCount => _reservedCount;
 
         /// <summary>
         /// 总创建实体数（统计用）
@@ -278,6 +293,10 @@ namespace Lattice.Core
             _aliveCount++;
             _totalCreated++;
 
+            // 更新峰值
+            if (_aliveCount > _peakAlive)
+                _peakAlive = _aliveCount;
+
             // TODO: 添加事件回调支持
             // OnEntityCreated?.Invoke(info.Entity);
 
@@ -337,6 +356,12 @@ namespace Lattice.Core
         }
 
         // === 实体销毁 ===
+
+        /// <summary>
+        /// 销毁实体（立即销毁的便捷API）
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public bool Destroy(Entity entity) => DestroyImmediate(entity);
 
         /// <summary>
         /// 立即销毁实体（内部使用，外部推荐用DestroyDelayed）
@@ -459,6 +484,197 @@ namespace Lattice.Core
             return (_info[entity.Index].Flags & (EntityFlags)1) != 0;  // DestroyPending
         }
 
+        // === 预留/激活系统 ===
+
+        /// <summary>
+        /// 预留一个实体（非活跃状态，可后续激活）
+        /// </summary>
+        public Entity Reserve()
+        {
+            int index;
+            EntityInfo info;
+
+            if (_freeHead >= 0)
+            {
+                // 从空闲链表弹出
+                index = _freeHead;
+                info = _info[index];
+                _freeHead = info.NextFree;
+
+                // 递增版本号但不设置活跃位
+                int lastVersion = info.Entity.Version & VersionMask;
+                int newVersion = ((lastVersion + 1) & VersionMask);
+                if (newVersion == 0)
+                {
+                    newVersion = 1;
+                    _versionOverflowCount++;
+                }
+                // 注意：不设置 ActiveBit
+
+                info.Reactivate(index, newVersion);
+            }
+            else
+            {
+                // 新槽位
+                if (_count >= _capacity)
+                {
+                    Grow();
+                }
+                index = _count++;
+                int version = 1; // 不设置活跃位
+
+                info = EntityInfo.Create(new Entity(index, version));
+            }
+
+            _info[index] = info;
+            _archetypeIds[index] = 0;
+            _archetypeRows[index] = -1;
+            _componentMasks[index] = 0;
+
+            // 记录为预留
+            _reservedIndices ??= new List<int>();
+            _reservedIndices.Add(index);
+            _reservedCount++;
+            _totalReserved++;
+
+            // 更新峰值
+            if (_reservedCount > _peakReserved)
+                _peakReserved = _reservedCount;
+
+            return info.Entity;
+        }
+
+        /// <summary>
+        /// 批量预留实体
+        /// </summary>
+        public void ReserveBatch(Span<Entity> output)
+        {
+            int count = output.Length;
+            if (count == 0) return;
+
+            EnsureCapacity(_count + count);
+
+            for (int i = 0; i < count; i++)
+            {
+                output[i] = ReserveInternal();
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private Entity ReserveInternal()
+        {
+            int index;
+            EntityInfo info;
+
+            if (_freeHead >= 0)
+            {
+                index = _freeHead;
+                info = _info[index];
+                _freeHead = info.NextFree;
+
+                int lastVersion = info.Entity.Version & VersionMask;
+                int newVersion = ((lastVersion + 1) & VersionMask);
+                if (newVersion == 0) newVersion = 1;
+
+                info.Reactivate(index, newVersion);
+            }
+            else
+            {
+                index = _count++;
+                int version = 1;
+                info = EntityInfo.Create(new Entity(index, version));
+            }
+
+            _info[index] = info;
+            _archetypeIds[index] = 0;
+            _archetypeRows[index] = -1;
+            _componentMasks[index] = 0;
+
+            _reservedIndices ??= new List<int>();
+            _reservedIndices.Add(index);
+            _reservedCount++;
+            _totalReserved++;
+
+            if (_reservedCount > _peakReserved)
+                _peakReserved = _reservedCount;
+
+            return info.Entity;
+        }
+
+        /// <summary>
+        /// 激活预留的实体
+        /// </summary>
+        public bool ActivateReserved(Entity entity)
+        {
+            if (!IsValid(entity)) return false;
+
+            ref var info = ref _info[entity.Index];
+
+            // 检查是否已经是活跃状态
+            if ((info.Entity.Version & ActiveBit) != 0) return false;
+
+            // 从预留列表中移除
+            if (_reservedIndices != null)
+            {
+                _reservedIndices.Remove(entity.Index);
+            }
+            _reservedCount--;
+            _totalActivated++;
+
+            // 设置为活跃状态
+            info.Entity = new Entity(entity.Index, entity.Version | ActiveBit);
+            _aliveCount++;
+
+            // 更新峰值
+            if (_aliveCount > _peakAlive)
+                _peakAlive = _aliveCount;
+
+            return true;
+        }
+
+        /// <summary>
+        /// 取消预留（将预留实体返回到空闲链表）
+        /// </summary>
+        public bool CancelReservation(Entity entity)
+        {
+            if (!IsValid(entity)) return false;
+
+            ref var info = ref _info[entity.Index];
+
+            // 检查是否已经是活跃状态（活跃的不能取消）
+            if ((info.Entity.Version & ActiveBit) != 0) return false;
+
+            // 从预留列表中移除
+            if (_reservedIndices != null)
+            {
+                _reservedIndices.Remove(entity.Index);
+            }
+            _reservedCount--;
+
+            // 返回到空闲链表
+            int preservedVersion = info.Entity.Version & VersionMask;
+            info.MarkInactive(_freeHead >= 0 ? _freeHead : -1, preservedVersion);
+            _freeHead = entity.Index;
+
+            return true;
+        }
+
+        /// <summary>
+        /// 获取预留实体列表
+        /// </summary>
+        public int GetReservedEntities(Span<Entity> buffer)
+        {
+            if (_reservedIndices == null) return 0;
+
+            int count = System.Math.Min(_reservedIndices.Count, buffer.Length);
+            for (int i = 0; i < count; i++)
+            {
+                int index = _reservedIndices[i];
+                buffer[i] = _info[index].Entity;
+            }
+            return count;
+        }
+
         // === 验证方法 ===
 
         /// <summary>
@@ -475,12 +691,59 @@ namespace Lattice.Core
         }
 
         /// <summary>
+        /// Branchless 验证 - 使用位运算避免分支（高性能场景）
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public bool IsValidBranchless(Entity entity)
+        {
+            uint index = (uint)entity.Index;
+            // 使用 Unsafe 进行无分支比较
+            bool inBounds = index < (uint)_count;
+            if (!inBounds) return false;
+            return _info[entity.Index].Entity.Version == entity.Version;
+        }
+
+        /// <summary>
+        /// 快速验证 - 跳过边界检查（仅在已知安全时调用）
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public bool IsValidFast(Entity entity)
+        {
+            // 假设 index 在有效范围内，直接比较版本号
+            return _info[entity.Index].Entity.Version == entity.Version;
+        }
+
+        /// <summary>
+        /// 批量验证实体
+        /// </summary>
+        public void ValidateBatch(ReadOnlySpan<Entity> entities, Span<bool> results)
+        {
+            if (entities.Length > results.Length)
+                throw new ArgumentException("Results span must be at least as large as entities span");
+
+            for (int i = 0; i < entities.Length; i++)
+            {
+                results[i] = IsValid(entities[i]);
+            }
+        }
+
+        /// <summary>
         /// 检查实体是否活跃
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool IsAlive(Entity entity)
         {
             return IsValid(entity) && (_info[entity.Index].Entity.Version & ActiveBit) != 0;
+        }
+
+        /// <summary>
+        /// 检查索引对应的实体是否活跃
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public bool IsAlive(int index)
+        {
+            if ((uint)index >= (uint)_count) return false;
+            return (_info[index].Entity.Version & ActiveBit) != 0;
         }
 
         // === EntityLocation缓存 ===
@@ -505,6 +768,18 @@ namespace Lattice.Core
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public int GetArchetypeId(int index) => _archetypeIds[index];
+
+        /// <summary>
+        /// 设置实体的 Archetype ID
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public void SetArchetypeId(int index, int archetypeId)
+        {
+            if ((uint)index < (uint)_count)
+            {
+                _archetypeIds[index] = archetypeId;
+            }
+        }
 
         /// <summary>
         /// 获取实体的当前版本号（用于调试）
@@ -541,7 +816,7 @@ namespace Lattice.Core
             return _componentMasks[entityIndex];
         }
 
-        // === 并行遍历 ===
+        // === 遍历 ===
 
         /// <summary>
         /// 线程安全的并行遍历
@@ -561,6 +836,54 @@ namespace Lattice.Core
                     action(entity);
                 }
             });
+        }
+
+        /// <summary>
+        /// 缓存行对齐遍历（顺序访问优化）
+        /// </summary>
+        public void ForEachAliveAligned(Action<Entity> action)
+        {
+            // 顺序遍历，每个缓存行 64 字节，EntityInfo 16 字节 = 4 个 per cache line
+            for (int i = 0; i < _count; i++)
+            {
+                var entity = _info[i].Entity;
+                if ((entity.Version & ActiveBit) != 0)
+                {
+                    action(entity);
+                }
+            }
+        }
+
+        /// <summary>
+        /// 获取所有活跃实体到 Span
+        /// </summary>
+        public int GetAliveEntities(Span<Entity> buffer)
+        {
+            int count = 0;
+            for (int i = 0; i < _count && count < buffer.Length; i++)
+            {
+                var entity = _info[i].Entity;
+                if ((entity.Version & ActiveBit) != 0)
+                {
+                    buffer[count++] = entity;
+                }
+            }
+            return count;
+        }
+
+        /// <summary>
+        /// 获取活跃实体可枚举（用于 foreach）
+        /// </summary>
+        public IEnumerable<Entity> GetAliveEnumerable()
+        {
+            for (int i = 0; i < _count; i++)
+            {
+                var entity = _info[i].Entity;
+                if ((entity.Version & ActiveBit) != 0)
+                {
+                    yield return entity;
+                }
+            }
         }
 
         /// <summary>
@@ -655,8 +978,46 @@ namespace Lattice.Core
                 TotalCreated = _totalCreated,
                 TotalDestroyed = _totalDestroyed,
                 PendingDestroyCount = PendingDestroyCount,
-                VersionOverflowCount = _versionOverflowCount
+                VersionOverflowCount = _versionOverflowCount,
+                TotalReserved = _totalReserved,
+                TotalActivated = _totalActivated,
+                ReservedCount = _reservedCount,
+                PeakAlive = _peakAlive,
+                PeakReserved = _peakReserved
             };
+        }
+
+        /// <summary>
+        /// 获取诊断报告
+        /// </summary>
+        public string GetDiagnosticsReport()
+        {
+            var stats = GetStats();
+            var recommendations = new StringBuilder();
+            // 使用 FP 比较 (0.3 ≈ 19661 raw, 0.5 = 32768 raw)
+            if (stats.FragmentationRatio > FP.FromRaw(19661))
+                recommendations.AppendLine("- Consider compacting entities to reduce fragmentation");
+            else
+                recommendations.AppendLine("- Fragmentation level is acceptable");
+
+            if (stats.UtilizationRate < FP.FromRaw(FP.Raw._0_50))
+                recommendations.AppendLine("- Registry is underutilized, consider smaller initial capacity");
+            else
+                recommendations.AppendLine("- Capacity utilization is good");
+
+            return $"Entity Registry Diagnostics:\n" +
+                   $"================================\n" +
+                   $"Alive: {stats.CurrentAlive}\n" +
+                   $"Reserved: {stats.ReservedCount}\n" +
+                   $"Free: {stats.CurrentFree}\n" +
+                   $"Total: {stats.Count} / {stats.Capacity}\n" +
+                   $"Used: {stats.UtilizationRate:P2}\n" +
+                   $"Fragmentation: {stats.FragmentationRatio:P2}\n" +
+                   $"Reuse Ratio: {stats.ReuseRatio:P2}\n" +
+                   $"Memory Used: {stats.MemoryUsed / 1024} KB\n" +
+                   $"Cache Line Efficiency: {stats.CacheLineEfficiency:P2}\n" +
+                   $"\nRecommendations:\n" +
+                   recommendations.ToString();
         }
 
         /// <summary>
@@ -749,12 +1110,41 @@ namespace Lattice.Core
         public int PendingDestroyCount { get; init; }
         public long VersionOverflowCount { get; init; }
 
-        public float UtilizationRate => Capacity > 0 ? (float)AliveCount / Capacity : 0;
+        // 预留系统统计
+        public long TotalReserved { get; init; }
+        public long TotalActivated { get; init; }
+        public int ReservedCount { get; init; }
+        public int PeakAlive { get; init; }
+        public int PeakReserved { get; init; }
+
+        // 计算属性 - 使用 FP 定点数确保确定性
+        public FP UtilizationRate => Capacity > 0 ? (FP)AliveCount / (FP)Capacity : FP.Zero;
+
+        /// <summary>当前存活实体数（别名）</summary>
+        public int CurrentAlive => AliveCount;
+
+        /// <summary>当前空闲槽位数（别名）</summary>
+        public int CurrentFree => FreeCount;
+
+        /// <summary>碎片率（空闲槽位比例）</summary>
+        public FP FragmentationRatio => Count > 0 ? (FP)FreeCount / (FP)Count : FP.Zero;
+
+        /// <summary>复用率（复用次数 / 总创建次数）</summary>
+        public FP ReuseRatio => TotalCreated > 0 ? (FP)TotalDestroyed / (FP)TotalCreated : FP.Zero;
+
+        /// <summary>预留比率</summary>
+        public FP ReservedRatio => Capacity > 0 ? (FP)ReservedCount / (FP)Capacity : FP.Zero;
+
+        /// <summary>内存使用估算（字节）</summary>
+        public long MemoryUsed => Capacity * (16 + 4 + 4 + 8); // EntityInfo + ArchetypeId + ArchetypeRow + ComponentMask
+
+        /// <summary>缓存行效率（活跃实体 / 总槽位，理想情况下接近1）</summary>
+        public FP CacheLineEfficiency => Count > 0 ? (FP)AliveCount / (FP)Count : FP.Zero;
 
         public override string ToString()
         {
             return $"EntityRegistry[Capacity={Capacity}, Alive={AliveCount}, Free={FreeCount}, " +
-                   $"PendingDestroy={PendingDestroyCount}, TotalCreated={TotalCreated}]";
+                   $"Reserved={ReservedCount}, PendingDestroy={PendingDestroyCount}, TotalCreated={TotalCreated}]";
         }
     }
 

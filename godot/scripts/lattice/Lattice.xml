@@ -442,6 +442,11 @@
             待销毁实体数量
             </summary>
         </member>
+        <member name="P:Lattice.Core.EntityRegistry.ReservedCount">
+            <summary>
+            预留实体数量
+            </summary>
+        </member>
         <member name="P:Lattice.Core.EntityRegistry.TotalCreated">
             <summary>
             总创建实体数（统计用）
@@ -460,6 +465,11 @@
         <member name="M:Lattice.Core.EntityRegistry.CreateBatch(System.Span{Lattice.Core.Entity})">
             <summary>
             批量创建
+            </summary>
+        </member>
+        <member name="M:Lattice.Core.EntityRegistry.Destroy(Lattice.Core.Entity)">
+            <summary>
+            销毁实体（立即销毁的便捷API）
             </summary>
         </member>
         <member name="M:Lattice.Core.EntityRegistry.DestroyImmediate(Lattice.Core.Entity)">
@@ -493,14 +503,64 @@
             检查实体是否标记为待销毁
             </summary>
         </member>
+        <member name="M:Lattice.Core.EntityRegistry.Reserve">
+            <summary>
+            预留一个实体（非活跃状态，可后续激活）
+            </summary>
+        </member>
+        <member name="M:Lattice.Core.EntityRegistry.ReserveBatch(System.Span{Lattice.Core.Entity})">
+            <summary>
+            批量预留实体
+            </summary>
+        </member>
+        <member name="M:Lattice.Core.EntityRegistry.ActivateReserved(Lattice.Core.Entity)">
+            <summary>
+            激活预留的实体
+            </summary>
+        </member>
+        <member name="M:Lattice.Core.EntityRegistry.CancelReservation(Lattice.Core.Entity)">
+            <summary>
+            取消预留（将预留实体返回到空闲链表）
+            </summary>
+        </member>
+        <member name="M:Lattice.Core.EntityRegistry.GetReservedEntities(System.Span{Lattice.Core.Entity})">
+            <summary>
+            获取预留实体列表
+            </summary>
+        </member>
         <member name="M:Lattice.Core.EntityRegistry.IsValid(Lattice.Core.Entity)">
             <summary>
             验证实体是否有效（含边界检查）
             </summary>
         </member>
+        <member name="M:Lattice.Core.EntityRegistry.IsValidBranchless(Lattice.Core.Entity)">
+            <summary>
+            Branchless 验证 - 使用位运算避免分支（高性能场景）
+            </summary>
+        </member>
+        <member name="M:Lattice.Core.EntityRegistry.IsValidFast(Lattice.Core.Entity)">
+            <summary>
+            快速验证 - 跳过边界检查（仅在已知安全时调用）
+            </summary>
+        </member>
+        <member name="M:Lattice.Core.EntityRegistry.ValidateBatch(System.ReadOnlySpan{Lattice.Core.Entity},System.Span{System.Boolean})">
+            <summary>
+            批量验证实体
+            </summary>
+        </member>
         <member name="M:Lattice.Core.EntityRegistry.IsAlive(Lattice.Core.Entity)">
             <summary>
             检查实体是否活跃
+            </summary>
+        </member>
+        <member name="M:Lattice.Core.EntityRegistry.IsAlive(System.Int32)">
+            <summary>
+            检查索引对应的实体是否活跃
+            </summary>
+        </member>
+        <member name="M:Lattice.Core.EntityRegistry.SetArchetypeId(System.Int32,System.Int32)">
+            <summary>
+            设置实体的 Archetype ID
             </summary>
         </member>
         <member name="M:Lattice.Core.EntityRegistry.GetCurrentVersion(System.Int32)">
@@ -513,6 +573,21 @@
             线程安全的并行遍历
             </summary>
         </member>
+        <member name="M:Lattice.Core.EntityRegistry.ForEachAliveAligned(System.Action{Lattice.Core.Entity})">
+            <summary>
+            缓存行对齐遍历（顺序访问优化）
+            </summary>
+        </member>
+        <member name="M:Lattice.Core.EntityRegistry.GetAliveEntities(System.Span{Lattice.Core.Entity})">
+            <summary>
+            获取所有活跃实体到 Span
+            </summary>
+        </member>
+        <member name="M:Lattice.Core.EntityRegistry.GetAliveEnumerable">
+            <summary>
+            获取活跃实体可枚举（用于 foreach）
+            </summary>
+        </member>
         <member name="M:Lattice.Core.EntityRegistry.AsReadOnly">
             <summary>
             获取只读视图（线程安全）
@@ -521,6 +596,11 @@
         <member name="M:Lattice.Core.EntityRegistry.GetStats">
             <summary>
             获取注册表统计信息
+            </summary>
+        </member>
+        <member name="M:Lattice.Core.EntityRegistry.GetDiagnosticsReport">
+            <summary>
+            获取诊断报告
             </summary>
         </member>
         <member name="M:Lattice.Core.EntityRegistry.GetDebugInfo(Lattice.Core.Entity)">
@@ -547,6 +627,27 @@
             <summary>
             注册表统计信息
             </summary>
+        </member>
+        <member name="P:Lattice.Core.EntityRegistryStats.CurrentAlive">
+            <summary>当前存活实体数（别名）</summary>
+        </member>
+        <member name="P:Lattice.Core.EntityRegistryStats.CurrentFree">
+            <summary>当前空闲槽位数（别名）</summary>
+        </member>
+        <member name="P:Lattice.Core.EntityRegistryStats.FragmentationRatio">
+            <summary>碎片率（空闲槽位比例）</summary>
+        </member>
+        <member name="P:Lattice.Core.EntityRegistryStats.ReuseRatio">
+            <summary>复用率（复用次数 / 总创建次数）</summary>
+        </member>
+        <member name="P:Lattice.Core.EntityRegistryStats.ReservedRatio">
+            <summary>预留比率</summary>
+        </member>
+        <member name="P:Lattice.Core.EntityRegistryStats.MemoryUsed">
+            <summary>内存使用估算（字节）</summary>
+        </member>
+        <member name="P:Lattice.Core.EntityRegistryStats.CacheLineEfficiency">
+            <summary>缓存行效率（活跃实体 / 总槽位，理想情况下接近1）</summary>
         </member>
         <member name="T:Lattice.Core.RegistryReadOnly">
             <summary>

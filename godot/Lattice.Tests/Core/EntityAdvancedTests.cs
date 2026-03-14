@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Lattice.Core;
+using Lattice.Math;
 using Xunit;
 
 namespace Lattice.Tests.Core
@@ -312,7 +313,7 @@ namespace Lattice.Tests.Core
             var stats = registry.GetStats();
             
             // 所有实体活跃，缓存效率应为 1
-            Assert.Equal(1.0f, stats.CacheLineEfficiency);
+            Assert.True(stats.CacheLineEfficiency == (FP)1);
         }
 
         [Fact]
@@ -544,7 +545,7 @@ namespace Lattice.Tests.Core
             var stats = registry.GetStats();
             Assert.Equal(20, stats.TotalCreated); // 每个循环创建 2 个
             Assert.Equal(20, stats.TotalDestroyed); // 每个循环销毁 2 个
-            Assert.True(stats.ReuseRatio > 0.9);
+            Assert.True(stats.ReuseRatio > FP.FromRaw(58982)); // 0.9 in FP raw
         }
     }
 }
