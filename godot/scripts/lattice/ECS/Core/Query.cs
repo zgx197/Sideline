@@ -57,7 +57,7 @@ namespace Lattice.ECS.Core
             public bool MoveNext()
             {
                 if (_storage == null) return false;
-                
+
                 while (_storageEnumerator.MoveNext())
                 {
                     var item = _storageEnumerator.Current;
@@ -81,8 +81,8 @@ namespace Lattice.ECS.Core
     /// <summary>
     /// 双类型组件查询
     /// </summary>
-    public readonly ref struct Query<T1, T2> 
-        where T1 : struct 
+    public readonly ref struct Query<T1, T2>
+        where T1 : struct
         where T2 : struct
     {
         private readonly Frame _frame;
@@ -97,7 +97,7 @@ namespace Lattice.ECS.Core
             _typeId1 = frame.GetTypeId<T1>();
             _typeId2 = frame.GetTypeId<T2>();
             frame.TryGetStorage(out _storage1);
-            
+
             // 构建所需的组件集合
             _requiredSet = ComponentSet.Empty;
             _requiredSet.Add(_typeId1);

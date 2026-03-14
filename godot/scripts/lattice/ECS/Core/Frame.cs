@@ -20,8 +20,8 @@ namespace Lattice.ECS.Core
     {
         #region 字段
 
-        /// <summary>帧号（从 0 开始）</summary>
-        public int Tick { get; internal set; }
+        /// <summary>帧号（从 0 开始，只读）</summary>
+        public int Tick { get; }
 
         /// <summary>固定时间步长</summary>
         public FP DeltaTime { get; private set; }
@@ -53,10 +53,10 @@ namespace Lattice.ECS.Core
             Tick = tick;
             DeltaTime = deltaTime;
             _typeRegistry = typeRegistry;
-            
+
             Entities = new EntityRegistry(initialEntityCapacity);
             _storages = new Dictionary<int, object>();
-            
+
             // 初始化组件集合数组
             _entityComponentSets = new ComponentSet[initialEntityCapacity];
             for (int i = 0; i < initialEntityCapacity; i++)
@@ -92,7 +92,7 @@ namespace Lattice.ECS.Core
 
             // 获取实体的组件集合
             var componentSet = _entityComponentSets[entity.Index];
-            
+
             // 移除该实体的所有组件
             for (int typeId = 0; typeId < ComponentSet.MaxComponents; typeId++)
             {
@@ -132,9 +132,9 @@ namespace Lattice.ECS.Core
 
             int typeId = _typeRegistry.GetTypeId<T>();
             var storage = GetOrCreateStorage<T>(typeId);
-            
+
             storage.Add(entity, component);
-            
+
             // 更新实体的组件集合
             _entityComponentSets[entity.Index].Add(typeId);
         }
@@ -163,7 +163,7 @@ namespace Lattice.ECS.Core
             int typeId = _typeRegistry.GetTypeId<T>();
             if (!_storages.TryGetValue(typeId, out var storage))
                 throw new KeyNotFoundException($"Component type {typeof(T).Name} not found");
-            
+
             return ref ((ComponentStorage<T>)storage).Get(entity);
         }
 
@@ -216,15 +216,15 @@ namespace Lattice.ECS.Core
                 return false;
 
             var entitySet = _entityComponentSets[entity.Index];
-            
+
             // 必须包含所有 required 组件
             if (!entitySet.IsSupersetOf(required))
                 return false;
-            
+
             // 必须不包含任何 excluded 组件
             if (!excluded.IsEmpty && entitySet.Overlaps(excluded))
                 return false;
-            
+
             return true;
         }
 
@@ -292,7 +292,7 @@ namespace Lattice.ECS.Core
         public long CalculateChecksum()
         {
             long checksum = Tick;
-            
+
             // 包含所有组件数据的哈希
             foreach (var (typeId, storage) in _storages)
             {
@@ -300,10 +300,10 @@ namespace Lattice.ECS.Core
                 // 实际实现需要序列化所有组件数据
                 checksum = HashCode.Combine(checksum, typeId);
             }
-            
+
             // 包含实体数量
             checksum = HashCode.Combine(checksum, Entities.AliveCount);
-            
+
             return checksum;
         }
 
@@ -317,10 +317,10 @@ namespace Lattice.ECS.Core
         public Frame Clone()
         {
             var clone = new Frame(Tick, DeltaTime, _typeRegistry, Entities.Capacity);
-            
+
             // 复制实体状态
             // 注意：这需要 EntityRegistry 支持克隆，简化起见先不实现完整克隆
-            
+
             return clone;
         }
 
@@ -331,7 +331,7 @@ namespace Lattice.ECS.Core
         {
             if (other.Tick != Tick)
                 throw new InvalidOperationException("Cannot copy from frame with different tick");
-            
+
             // 复制实体状态
             // 复制组件数据
             // 简化实现，实际需要深拷贝所有存储
@@ -359,7 +359,7 @@ namespace Lattice.ECS.Core
 
             // 使用反射或动态调用，这里简化处理
             // 实际应该根据 typeId 获取对应的存储类型
-            
+
             _entityComponentSets[entity.Index].Remove(typeId);
             return true;
         }

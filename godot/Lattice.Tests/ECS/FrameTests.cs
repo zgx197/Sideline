@@ -1,6 +1,7 @@
 using System;
 using Lattice.Core;
 using Lattice.ECS.Core;
+using Lattice.ECS.Session;
 using Xunit;
 
 namespace Lattice.Tests.ECS

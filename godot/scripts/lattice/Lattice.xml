@@ -809,6 +809,21 @@
             线程安全的实体访问范围
             </summary>
         </member>
+        <member name="T:Lattice.ECS.Core.RingBuffer`1">
+            <summary>
+            环形缓冲区 - ECS 内部使用
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.RingBuffer`1.GetAt(System.Int32)">
+            <summary>
+            获取指定索引的元素
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.RingBuffer`1.SetAt(System.Int32,`0)">
+            <summary>
+            设置指定索引的元素
+            </summary>
+        </member>
         <member name="T:Lattice.ECS.Core.ComponentSet">
             <summary>
             组件集合位图 - FrameSync 风格
@@ -1113,7 +1128,7 @@
             </summary>
         </member>
         <member name="P:Lattice.ECS.Core.Frame.Tick">
-            <summary>帧号（从 0 开始）</summary>
+            <summary>帧号（从 0 开始，只读）</summary>
         </member>
         <member name="P:Lattice.ECS.Core.Frame.DeltaTime">
             <summary>固定时间步长</summary>
@@ -1266,6 +1281,26 @@
             生成 0-1 范围内的定点数
             </summary>
         </member>
+        <member name="T:Lattice.ECS.Core.ISystem">
+            <summary>
+            系统接口 - 操作 Frame 状态
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.ISystem.OnInit(Lattice.ECS.Core.Frame)">
+            <summary>
+            系统初始化
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.ISystem.OnUpdate(Lattice.ECS.Core.Frame,Lattice.Math.FP)">
+            <summary>
+            系统更新
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.ISystem.OnDestroy(Lattice.ECS.Core.Frame)">
+            <summary>
+            系统销毁
+            </summary>
+        </member>
         <member name="T:Lattice.ECS.Core.Query`1">
             <summary>
             单类型组件查询
@@ -1326,166 +1361,186 @@
             三类型查询结果项
             </summary>
         </member>
-        <member name="T:Lattice.ECS.Core.World">
+        <member name="T:Lattice.ECS.Session.Session">
             <summary>
-            ECS 世界 - 管理多帧状态（Verified / Predicted / Previous）
+            ECS 会话管理器 - FrameSync 风格分层架构
             
-            FrameSync 风格设计：
-            - VerifiedFrame: 服务器确认帧（权威状态）
-            - PredictedFrame: 本地预测帧（可能回滚）
-            - PreviousFrame: 上一帧（插值用）
-            - History: 历史帧缓冲区（用于回滚）
+            职责：
+            1. 多帧管理（Verified / Predicted / History）
+            2. 网络同步（验证帧、处理回滚）
+            3. 输入管理（收集、预测、应用）
+            4. 协调 World 的更新
             </summary>
         </member>
-        <member name="F:Lattice.ECS.Core.World.MaxPredictionFrames">
+        <member name="F:Lattice.ECS.Session.Session.MaxPredictionFrames">
             <summary>最大预测帧数（超过需要回滚）</summary>
         </member>
-        <member name="F:Lattice.ECS.Core.World.HistorySize">
-            <summary>历史帧保留数量（用于回滚）</summary>
+        <member name="F:Lattice.ECS.Session.Session.HistorySize">
+            <summary>历史帧保留数量</summary>
         </member>
-        <member name="F:Lattice.ECS.Core.World._typeRegistry">
+        <member name="F:Lattice.ECS.Session.Session._typeRegistry">
             <summary>组件类型注册表</summary>
         </member>
-        <member name="P:Lattice.ECS.Core.World.TotalTime">
-            <summary>当前游戏时间（累计）</summary>
-        </member>
-        <member name="P:Lattice.ECS.Core.World.DeltaTime">
+        <member name="P:Lattice.ECS.Session.Session.DeltaTime">
             <summary>固定时间步长</summary>
         </member>
-        <member name="P:Lattice.ECS.Core.World.CurrentTick">
+        <member name="P:Lattice.ECS.Session.Session.LocalPlayerId">
+            <summary>本地玩家 ID</summary>
+        </member>
+        <member name="P:Lattice.ECS.Session.Session.CurrentTick">
             <summary>当前帧号（Verified 帧号）</summary>
         </member>
-        <member name="P:Lattice.ECS.Core.World.VerifiedFrame">
+        <member name="P:Lattice.ECS.Session.Session.VerifiedFrame">
             <summary>最新验证帧（服务器确认）</summary>
         </member>
-        <member name="P:Lattice.ECS.Core.World.PredictedFrame">
+        <member name="P:Lattice.ECS.Session.Session.PredictedFrame">
             <summary>预测帧（本地模拟）</summary>
         </member>
-        <member name="P:Lattice.ECS.Core.World.PreviousFrame">
+        <member name="P:Lattice.ECS.Session.Session.PreviousFrame">
             <summary>上一帧（用于插值）</summary>
         </member>
-        <member name="F:Lattice.ECS.Core.World._history">
+        <member name="F:Lattice.ECS.Session.Session._history">
             <summary>历史帧环形缓冲区</summary>
         </member>
-        <member name="P:Lattice.ECS.Core.World.IsRollingBack">
+        <member name="P:Lattice.ECS.Session.Session.IsRollingBack">
             <summary>是否正在回滚中</summary>
         </member>
-        <member name="F:Lattice.ECS.Core.World._systems">
+        <member name="P:Lattice.ECS.Session.Session.IsRunning">
+            <summary>是否已启动</summary>
+        </member>
+        <member name="F:Lattice.ECS.Session.Session._systems">
             <summary>系统列表</summary>
         </member>
-        <member name="M:Lattice.ECS.Core.World.Initialize">
+        <member name="F:Lattice.ECS.Session.Session._inputBuffers">
+            <summary>输入缓冲区</summary>
+        </member>
+        <member name="E:Lattice.ECS.Session.Session.OnFrameUpdate">
+            <summary>帧更新事件</summary>
+        </member>
+        <member name="E:Lattice.ECS.Session.Session.OnRollback">
+            <summary>发生回滚事件</summary>
+        </member>
+        <member name="E:Lattice.ECS.Session.Session.OnFrameVerified">
+            <summary>帧验证事件</summary>
+        </member>
+        <member name="M:Lattice.ECS.Session.Session.Start">
             <summary>
-            初始化世界（创建第一帧）
+            启动会话
             </summary>
         </member>
-        <member name="M:Lattice.ECS.Core.World.CreateEntity">
+        <member name="M:Lattice.ECS.Session.Session.Stop">
             <summary>
-            创建实体（在预测帧中）
+            停止会话
             </summary>
         </member>
-        <member name="M:Lattice.ECS.Core.World.DestroyEntity(Lattice.Core.Entity)">
-            <summary>
-            销毁实体（在预测帧中）
-            </summary>
-        </member>
-        <member name="M:Lattice.ECS.Core.World.AddComponent``1(Lattice.Core.Entity,``0@)">
-            <summary>
-            添加组件
-            </summary>
-        </member>
-        <member name="M:Lattice.ECS.Core.World.RemoveComponent``1(Lattice.Core.Entity)">
-            <summary>
-            移除组件
-            </summary>
-        </member>
-        <member name="M:Lattice.ECS.Core.World.GetComponent``1(Lattice.Core.Entity)">
-            <summary>
-            获取组件引用
-            </summary>
-        </member>
-        <member name="M:Lattice.ECS.Core.World.TryGetComponent``1(Lattice.Core.Entity,``0@)">
-            <summary>
-            尝试获取组件
-            </summary>
-        </member>
-        <member name="M:Lattice.ECS.Core.World.HasComponent``1(Lattice.Core.Entity)">
-            <summary>
-            检查是否有组件
-            </summary>
-        </member>
-        <member name="M:Lattice.ECS.Core.World.Query``1">
-            <summary>
-            创建单类型查询
-            </summary>
-        </member>
-        <member name="M:Lattice.ECS.Core.World.Query``2">
-            <summary>
-            创建双类型查询
-            </summary>
-        </member>
-        <member name="M:Lattice.ECS.Core.World.Query``3">
-            <summary>
-            创建三类型查询
-            </summary>
-        </member>
-        <member name="M:Lattice.ECS.Core.World.RegisterSystem(Lattice.ECS.Core.ISystem)">
-            <summary>
-            注册系统
-            </summary>
-        </member>
-        <member name="M:Lattice.ECS.Core.World.UnregisterSystem(Lattice.ECS.Core.ISystem)">
-            <summary>
-            注销系统
-            </summary>
-        </member>
-        <member name="M:Lattice.ECS.Core.World.Tick">
+        <member name="M:Lattice.ECS.Session.Session.Update">
             <summary>
             单步更新（FixedUpdate）
             </summary>
         </member>
-        <member name="M:Lattice.ECS.Core.World.VerifyFrame(System.Int32,System.Int64)">
+        <member name="M:Lattice.ECS.Session.Session.RegisterSystem(Lattice.ECS.Core.ISystem)">
+            <summary>
+            注册系统
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Session.Session.UnregisterSystem(Lattice.ECS.Core.ISystem)">
+            <summary>
+            注销系统
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Session.Session.UpdateSystems(Lattice.ECS.Core.Frame,Lattice.Math.FP)">
+            <summary>
+            执行系统更新
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Session.Session.SetPlayerInput(System.Int32,System.Int32,Lattice.ECS.Session.IInputCommand)">
+            <summary>
+            设置玩家输入
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Session.Session.GetPlayerInput(System.Int32,System.Int32)">
+            <summary>
+            获取玩家输入
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Session.Session.ApplyInputs(Lattice.ECS.Core.Frame)">
+            <summary>
+            应用输入到帧
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Session.Session.VerifyFrame(System.Int32,System.Int64,System.Byte[])">
             <summary>
             验证帧（服务器确认）
             </summary>
         </member>
-        <member name="M:Lattice.ECS.Core.World.RollbackTo(System.Int32)">
+        <member name="M:Lattice.ECS.Session.Session.RollbackTo(System.Int32,System.Byte[])">
             <summary>
             回滚到指定帧
             </summary>
         </member>
-        <member name="M:Lattice.ECS.Core.World.GetHistoricalFrame(System.Int32)">
+        <member name="M:Lattice.ECS.Session.Session.Resimulate(System.Int32,System.Int32)">
+            <summary>
+            重新模拟帧
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Session.Session.GetTargetTick">
+            <summary>
+            获取目标帧号（用于预测）
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Session.Session.GetHistoricalFrame(System.Int32)">
             <summary>
             获取历史帧
             </summary>
         </member>
-        <member name="M:Lattice.ECS.Core.World.Rewind(System.Int32)">
+        <member name="M:Lattice.ECS.Session.Session.UpdateHistory(Lattice.ECS.Core.Frame)">
+            <summary>
+            更新历史中的帧
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Session.Session.Rewind(System.Int32)">
             <summary>
             回退指定帧数（单机时光倒流）
             </summary>
         </member>
-        <member name="M:Lattice.ECS.Core.World.CreateCheckpoint">
+        <member name="M:Lattice.ECS.Session.Session.CreateCheckpoint">
             <summary>
-            创建当前状态的检查点（用于 SL）
+            创建检查点
             </summary>
         </member>
-        <member name="M:Lattice.ECS.Core.World.RestoreFromCheckpoint(Lattice.ECS.Core.WorldSnapshot)">
+        <member name="M:Lattice.ECS.Session.Session.RestoreFromCheckpoint(Lattice.ECS.Session.SessionCheckpoint)">
             <summary>
             从检查点恢复
             </summary>
         </member>
-        <member name="T:Lattice.ECS.Core.ISystem">
+        <member name="M:Lattice.ECS.Session.Session.CreateFrame(System.Int32)">
             <summary>
-            系统接口
+            创建新帧
             </summary>
         </member>
-        <member name="T:Lattice.ECS.Core.WorldSnapshot">
+        <member name="M:Lattice.ECS.Session.Session.AdvanceFrame(Lattice.ECS.Core.Frame)">
             <summary>
-            世界快照（用于存档/读档）
+            推进到下一帧
             </summary>
         </member>
-        <member name="T:Lattice.ECS.Core.RingBuffer`1">
+        <member name="M:Lattice.ECS.Session.Session.ApplyCorrectedInput(Lattice.ECS.Core.Frame,System.Byte[])">
             <summary>
-            环形缓冲区
+            应用修正的输入
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Session.SessionCheckpoint">
+            <summary>
+            会话检查点
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Session.IInputCommand">
+            <summary>
+            输入命令接口
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Session.InputBuffer">
+            <summary>
+            输入缓冲区
             </summary>
         </member>
         <member name="T:Lattice.Math.FP">
