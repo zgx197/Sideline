@@ -956,6 +956,151 @@
             从 Span 读取集合（用于快照反序列化）
             </summary>
         </member>
+        <member name="T:Lattice.ECS.Core.ComponentStorage`1">
+            <summary>
+            FrameSync 风格组件存储 - Block-based 密集存储
+            
+            特性：
+            1. Block 分块存储（缓存友好）
+            2. 稀疏数组映射（O(1) 查找）
+            3. 版本控制（支持快照/变更检测）
+            4. 密集数组遍历（SIMD 友好）
+            </summary>
+        </member>
+        <member name="F:Lattice.ECS.Core.ComponentStorage`1.BlockCapacity">
+            <summary>每个 Block 容纳的实体数（缓存行对齐）</summary>
+        </member>
+        <member name="F:Lattice.ECS.Core.ComponentStorage`1.SparseGrowthFactor">
+            <summary>稀疏数组扩容因子</summary>
+        </member>
+        <member name="T:Lattice.ECS.Core.ComponentStorage`1.Block">
+            <summary>
+            组件数据块 - 密集存储，缓存友好
+            </summary>
+        </member>
+        <member name="F:Lattice.ECS.Core.ComponentStorage`1.Block.Entities">
+            <summary>实体引用数组（与组件一一对应）</summary>
+        </member>
+        <member name="F:Lattice.ECS.Core.ComponentStorage`1.Block.Components">
+            <summary>组件数据数组（SoA 布局）</summary>
+        </member>
+        <member name="F:Lattice.ECS.Core.ComponentStorage`1.Block.Count">
+            <summary>当前已使用槽位数</summary>
+        </member>
+        <member name="F:Lattice.ECS.Core.ComponentStorage`1.Block.BlockIndex">
+            <summary>当前 Block 在 _blocks 数组中的索引</summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.ComponentStorage`1.Block.Initialize(System.Int32)">
+            <summary>初始化 Block</summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.ComponentStorage`1.Block.Dispose">
+            <summary>归还数组到池</summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.ComponentStorage`1.Block.Add(Lattice.Core.Entity,`0@)">
+            <summary>添加组件到 Block</summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.ComponentStorage`1.Block.RemoveAt(System.Int32,Lattice.Core.Entity@,System.Int32@)">
+            <summary>删除 Block 内指定索引的元素（与末尾交换）</summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.ComponentStorage`1.Block.GetComponent(System.Int32)">
+            <summary>获取组件引用（允许修改）</summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.ComponentStorage`1.Block.GetEntity(System.Int32)">
+            <summary>获取实体</summary>
+        </member>
+        <member name="P:Lattice.ECS.Core.ComponentStorage`1.Count">
+            <summary>当前存储的组件数量</summary>
+        </member>
+        <member name="P:Lattice.ECS.Core.ComponentStorage`1.Capacity">
+            <summary>总容量</summary>
+        </member>
+        <member name="P:Lattice.ECS.Core.ComponentStorage`1.Version">
+            <summary>当前版本号（每次修改递增）</summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.ComponentStorage`1.Has(Lattice.Core.Entity)">
+            <summary>是否存在指定实体的组件</summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.ComponentStorage`1.Add(Lattice.Core.Entity,`0@)">
+            <summary>
+            添加组件
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.ComponentStorage`1.Remove(Lattice.Core.Entity)">
+            <summary>
+            删除组件（与末尾交换保持密集）
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.ComponentStorage`1.Get(Lattice.Core.Entity)">
+            <summary>
+            获取组件引用（可修改）
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.ComponentStorage`1.TryGet(Lattice.Core.Entity,`0@)">
+            <summary>
+            尝试获取组件
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.ComponentStorage`1.TryGetRef(Lattice.Core.Entity,Lattice.ECS.Core.Ref{`0}@)">
+            <summary>
+            尝试获取组件引用（高性能）
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Core.ComponentStorage`1.ComponentIteratorCallback">
+            <summary>
+            组件迭代器回调委托
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Core.ComponentStorage`1.ForEachSpanCallback">
+            <summary>
+            Span 遍历回调委托
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.ComponentStorage`1.ForEach(Lattice.ECS.Core.ComponentStorage{`0}.ComponentIteratorCallback)">
+            <summary>
+            遍历所有组件（回调方式，零分配）
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.ComponentStorage`1.ForEachSpan(Lattice.ECS.Core.ComponentStorage{`0}.ForEachSpanCallback)">
+            <summary>
+            遍历所有组件（Span 方式）
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.ComponentStorage`1.GetAllComponents(System.Span{`0})">
+            <summary>
+            获取所有组件到 Span
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.ComponentStorage`1.GetAllEntities(System.Span{Lattice.Core.Entity})">
+            <summary>
+            获取所有实体到 Span
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.ComponentStorage`1.GetEnumerator">
+            <summary>
+            获取组件枚举器（支持 foreach）
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.ComponentStorage`1.GetVersion(Lattice.Core.Entity)">
+            <summary>
+            获取实体的组件版本号
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.ComponentStorage`1.MarkChanged(Lattice.Core.Entity)">
+            <summary>
+            标记组件为已修改
+            </summary>
+        </member>
+        <!-- Badly formed XML comment ignored for member "T:Lattice.ECS.Core.ComponentStorage`1.ComponentEnumeratorItem" -->
+        <member name="T:Lattice.ECS.Core.ComponentStorage`1.ComponentEnumerator">
+            <summary>
+            ref struct 迭代器 - 支持 foreach
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Core.Ref`1">
+            <summary>
+            用于返回 ref 的包装结构
+            </summary>
+        </member>
         <member name="T:Lattice.Math.FP">
             <summary>
             定点数 (Q48.16)：48位整数 + 16位小数
