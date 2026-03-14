@@ -1101,6 +1101,393 @@
             用于返回 ref 的包装结构
             </summary>
         </member>
+        <member name="T:Lattice.ECS.Core.Frame">
+            <summary>
+            单帧完整状态 - FrameSync 风格
+            
+            包含某一时刻的所有 ECS 数据：
+            - 实体管理（EntityRegistry）
+            - 组件存储（ComponentStorage 字典）
+            - 每个实体的组件集合（ComponentSet 数组）
+            - 全局数据（Tick、DeltaTime、随机种子等）
+            </summary>
+        </member>
+        <member name="P:Lattice.ECS.Core.Frame.Tick">
+            <summary>帧号（从 0 开始）</summary>
+        </member>
+        <member name="P:Lattice.ECS.Core.Frame.DeltaTime">
+            <summary>固定时间步长</summary>
+        </member>
+        <member name="P:Lattice.ECS.Core.Frame.Entities">
+            <summary>实体管理器</summary>
+        </member>
+        <member name="F:Lattice.ECS.Core.Frame._typeRegistry">
+            <summary>组件类型注册表</summary>
+        </member>
+        <member name="F:Lattice.ECS.Core.Frame._storages">
+            <summary>组件存储字典：TypeId -> Storage</summary>
+        </member>
+        <member name="F:Lattice.ECS.Core.Frame._entityComponentSets">
+            <summary>每个实体的组件集合（稀疏数组）</summary>
+        </member>
+        <member name="P:Lattice.ECS.Core.Frame.Random">
+            <summary>全局随机数生成器（确定性）</summary>
+        </member>
+        <member name="P:Lattice.ECS.Core.Frame.IsVerified">
+            <summary>帧是否已验证（服务器确认）</summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.Frame.CreateEntity">
+            <summary>
+            创建新实体
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.Frame.DestroyEntity(Lattice.Core.Entity)">
+            <summary>
+            销毁实体（及所有组件）
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.Frame.IsValid(Lattice.Core.Entity)">
+            <summary>
+            检查实体是否存在且有效
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.Frame.AddComponent``1(Lattice.Core.Entity,``0@)">
+            <summary>
+            添加组件
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.Frame.RemoveComponent``1(Lattice.Core.Entity)">
+            <summary>
+            移除组件
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.Frame.GetComponent``1(Lattice.Core.Entity)">
+            <summary>
+            获取组件引用
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.Frame.TryGetComponent``1(Lattice.Core.Entity,``0@)">
+            <summary>
+            尝试获取组件
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.Frame.HasComponent``1(Lattice.Core.Entity)">
+            <summary>
+            检查实体是否有指定组件
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.Frame.GetComponentSet(Lattice.Core.Entity)">
+            <summary>
+            获取实体的组件集合
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.Frame.MatchesQuery(Lattice.Core.Entity,Lattice.ECS.Core.ComponentSet@,Lattice.ECS.Core.ComponentSet@)">
+            <summary>
+            检查实体是否匹配组件查询条件
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.Frame.GetTypeId``1">
+            <summary>
+            获取组件类型 ID
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.Frame.GetStorage``1">
+            <summary>
+            获取指定类型的所有组件存储
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.Frame.TryGetStorage``1(Lattice.ECS.Core.ComponentStorage{``0}@)">
+            <summary>
+            尝试获取存储（可能不存在）
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.Frame.GetAllEntities(System.Span{Lattice.Core.Entity})">
+            <summary>
+            获取所有实体的 Span（用于遍历）
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.Frame.CalculateChecksum">
+            <summary>
+            计算帧的校验和（用于确定性验证）
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.Frame.Clone">
+            <summary>
+            创建当前帧的浅拷贝（用于预测/回滚）
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.Frame.CopyFrom(Lattice.ECS.Core.Frame)">
+            <summary>
+            从另一帧复制状态（用于回滚）
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Core.ComponentTypeRegistry">
+            <summary>
+            组件类型注册表 - 管理组件类型到 ID 的映射
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.ComponentTypeRegistry.Register``1">
+            <summary>
+            注册组件类型，返回类型 ID
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.ComponentTypeRegistry.GetTypeId``1">
+            <summary>
+            获取组件类型 ID（必须已注册）
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.ComponentTypeRegistry.GetType(System.Int32)">
+            <summary>
+            根据 ID 获取类型
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.ComponentTypeRegistry.IsRegistered``1">
+            <summary>
+            检查类型是否已注册
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Core.DeterministicRandom">
+            <summary>
+            确定性随机数生成器
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.DeterministicRandom.Next">
+            <summary>
+            生成下一个随机数（0 到 int.MaxValue）
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.DeterministicRandom.Next(System.Int32,System.Int32)">
+            <summary>
+            生成指定范围内的随机数
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.DeterministicRandom.NextFP">
+            <summary>
+            生成 0-1 范围内的定点数
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Core.Query`1">
+            <summary>
+            单类型组件查询
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.Query`1.GetEnumerator">
+            <summary>
+            遍历所有匹配的实体和组件
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Core.Query`1.Enumerator">
+            <summary>
+            ref struct 迭代器
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Core.Query`2">
+            <summary>
+            双类型组件查询
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.Query`2.GetEnumerator">
+            <summary>
+            遍历所有同时包含两种组件的实体
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Core.Query`2.Enumerator">
+            <summary>
+            ref struct 迭代器
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Core.Query`3">
+            <summary>
+            三类型组件查询
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.Query`3.GetEnumerator">
+            <summary>
+            遍历所有同时包含三种组件的实体
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Core.Query`3.Enumerator">
+            <summary>
+            ref struct 迭代器
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Core.QueryItem`1">
+            <summary>
+            单类型查询结果项
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Core.QueryItem`2">
+            <summary>
+            双类型查询结果项
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Core.QueryItem`3">
+            <summary>
+            三类型查询结果项
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Core.World">
+            <summary>
+            ECS 世界 - 管理多帧状态（Verified / Predicted / Previous）
+            
+            FrameSync 风格设计：
+            - VerifiedFrame: 服务器确认帧（权威状态）
+            - PredictedFrame: 本地预测帧（可能回滚）
+            - PreviousFrame: 上一帧（插值用）
+            - History: 历史帧缓冲区（用于回滚）
+            </summary>
+        </member>
+        <member name="F:Lattice.ECS.Core.World.MaxPredictionFrames">
+            <summary>最大预测帧数（超过需要回滚）</summary>
+        </member>
+        <member name="F:Lattice.ECS.Core.World.HistorySize">
+            <summary>历史帧保留数量（用于回滚）</summary>
+        </member>
+        <member name="F:Lattice.ECS.Core.World._typeRegistry">
+            <summary>组件类型注册表</summary>
+        </member>
+        <member name="P:Lattice.ECS.Core.World.TotalTime">
+            <summary>当前游戏时间（累计）</summary>
+        </member>
+        <member name="P:Lattice.ECS.Core.World.DeltaTime">
+            <summary>固定时间步长</summary>
+        </member>
+        <member name="P:Lattice.ECS.Core.World.CurrentTick">
+            <summary>当前帧号（Verified 帧号）</summary>
+        </member>
+        <member name="P:Lattice.ECS.Core.World.VerifiedFrame">
+            <summary>最新验证帧（服务器确认）</summary>
+        </member>
+        <member name="P:Lattice.ECS.Core.World.PredictedFrame">
+            <summary>预测帧（本地模拟）</summary>
+        </member>
+        <member name="P:Lattice.ECS.Core.World.PreviousFrame">
+            <summary>上一帧（用于插值）</summary>
+        </member>
+        <member name="F:Lattice.ECS.Core.World._history">
+            <summary>历史帧环形缓冲区</summary>
+        </member>
+        <member name="P:Lattice.ECS.Core.World.IsRollingBack">
+            <summary>是否正在回滚中</summary>
+        </member>
+        <member name="F:Lattice.ECS.Core.World._systems">
+            <summary>系统列表</summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.World.Initialize">
+            <summary>
+            初始化世界（创建第一帧）
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.World.CreateEntity">
+            <summary>
+            创建实体（在预测帧中）
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.World.DestroyEntity(Lattice.Core.Entity)">
+            <summary>
+            销毁实体（在预测帧中）
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.World.AddComponent``1(Lattice.Core.Entity,``0@)">
+            <summary>
+            添加组件
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.World.RemoveComponent``1(Lattice.Core.Entity)">
+            <summary>
+            移除组件
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.World.GetComponent``1(Lattice.Core.Entity)">
+            <summary>
+            获取组件引用
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.World.TryGetComponent``1(Lattice.Core.Entity,``0@)">
+            <summary>
+            尝试获取组件
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.World.HasComponent``1(Lattice.Core.Entity)">
+            <summary>
+            检查是否有组件
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.World.Query``1">
+            <summary>
+            创建单类型查询
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.World.Query``2">
+            <summary>
+            创建双类型查询
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.World.Query``3">
+            <summary>
+            创建三类型查询
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.World.RegisterSystem(Lattice.ECS.Core.ISystem)">
+            <summary>
+            注册系统
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.World.UnregisterSystem(Lattice.ECS.Core.ISystem)">
+            <summary>
+            注销系统
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.World.Tick">
+            <summary>
+            单步更新（FixedUpdate）
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.World.VerifyFrame(System.Int32,System.Int64)">
+            <summary>
+            验证帧（服务器确认）
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.World.RollbackTo(System.Int32)">
+            <summary>
+            回滚到指定帧
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.World.GetHistoricalFrame(System.Int32)">
+            <summary>
+            获取历史帧
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.World.Rewind(System.Int32)">
+            <summary>
+            回退指定帧数（单机时光倒流）
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.World.CreateCheckpoint">
+            <summary>
+            创建当前状态的检查点（用于 SL）
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.World.RestoreFromCheckpoint(Lattice.ECS.Core.WorldSnapshot)">
+            <summary>
+            从检查点恢复
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Core.ISystem">
+            <summary>
+            系统接口
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Core.WorldSnapshot">
+            <summary>
+            世界快照（用于存档/读档）
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Core.RingBuffer`1">
+            <summary>
+            环形缓冲区
+            </summary>
+        </member>
         <member name="T:Lattice.Math.FP">
             <summary>
             定点数 (Q48.16)：48位整数 + 16位小数
