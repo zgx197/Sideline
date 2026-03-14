@@ -130,21 +130,21 @@ namespace Lattice.Core
         public static bool TryParse(ReadOnlySpan<char> str, out Entity result)
         {
             result = None;
-            
+
             if (str.Length < 3 || str[0] != 'E' || str[1] != '.')
                 return false;
 
             // 解析 Index
             int indexEnd = str.Slice(2).IndexOf('.');
             if (indexEnd < 0) return false;
-            
+
             if (!int.TryParse(str.Slice(2, indexEnd), out int index))
                 return false;
 
             // 解析 Version
             var versionSpan = str.Slice(2 + indexEnd + 1);
             int versionLen = versionSpan.Length;
-            
+
             // 检查是否有非活跃标记
             bool isActive = true;
             if (versionLen > 0 && versionSpan[versionLen - 1] == '-')
@@ -162,7 +162,7 @@ namespace Lattice.Core
             result = new Entity(index, version);
             return true;
         }
-        
+
         /// <summary>
         /// 尝试从字符串解析（字符串重载）
         /// </summary>

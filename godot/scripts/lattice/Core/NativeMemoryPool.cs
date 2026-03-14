@@ -17,47 +17,47 @@ namespace Lattice.Core
     {
         private readonly int _pageSize;
         private readonly int _elementSize;
-        
+
         // 空闲链表
         private IntPtr* _freeList;
         private int _freeCount;
         private int _freeCapacity;
-        
+
         // 已分配页
         private byte[][] _pages = null!;
         private int _pageCount;
         private int _pageCapacity;
-        
+
         // GCHandles保持数组固定
         private GCHandle[] _handles = null!;
-        
+
         // 当前页和偏移
         private byte[]? _currentPage;
         private int _currentOffset;
         private GCHandle _currentHandle;
         private byte* _currentPtr;
-        
+
         // 统计
         private int _allocatedCount;
         private int _peakAllocatedCount;
-        
+
         public NativeMemoryPool(int elementSize, int pageSize = 64 * 1024) // 默认64KB一页
         {
             if (elementSize <= 0) throw new ArgumentException("Element size must be positive", nameof(elementSize));
             if (pageSize <= 0) throw new ArgumentException("Page size must be positive", nameof(pageSize));
-            
+
             _elementSize = elementSize;
             _pageSize = pageSize;
-            
+
             _freeList = (IntPtr*)NativeMemory.Alloc((nuint)(1024 * sizeof(IntPtr)));
             _freeCapacity = 1024;
-            
+
             // 初始化页数组
             _pages = new byte[4][];
             _handles = new GCHandle[4];
             _pageCapacity = 4;
         }
-        
+
         /// <summary>
         /// 分配内存
         /// </summary>
@@ -70,32 +70,32 @@ namespace Lattice.Core
                 _allocatedCount++;
                 return ptr;
             }
-            
+
             // 检查当前页是否有空间
             if (_currentPage == null || _currentOffset + _elementSize > _pageSize)
             {
                 AllocateNewPage();
             }
-            
+
             var result = _currentPtr + _currentOffset;
             _currentOffset += _elementSize;
-            
+
             _allocatedCount++;
             if (_allocatedCount > _peakAllocatedCount)
             {
                 _peakAllocatedCount = _allocatedCount;
             }
-            
+
             return result;
         }
-        
+
         /// <summary>
         /// 释放内存（返回到池中）
         /// </summary>
         public void Free(byte* ptr)
         {
             if (ptr == null) return;
-            
+
             // 扩容空闲链表
             if (_freeCount >= _freeCapacity)
             {
@@ -106,11 +106,11 @@ namespace Lattice.Core
                 _freeList = newList;
                 _freeCapacity = newCapacity;
             }
-            
+
             _freeList[_freeCount++] = (IntPtr)ptr;
             _allocatedCount--;
         }
-        
+
         /// <summary>
         /// 分配新页
         /// </summary>
@@ -124,22 +124,22 @@ namespace Lattice.Core
                 Array.Resize(ref _handles, newCapacity);
                 _pageCapacity = newCapacity;
             }
-            
+
             // 释放当前页的GCHandle
             if (_currentPage != null && _pageCount > 0)
             {
                 _handles[_pageCount - 1] = _currentHandle;
             }
-            
+
             // 分配新页（固定）
             _currentPage = GC.AllocateArray<byte>(_pageSize, pinned: true);
             _currentHandle = GCHandle.Alloc(_currentPage, GCHandleType.Pinned);
             _currentPtr = (byte*)_currentHandle.AddrOfPinnedObject();
             _currentOffset = 0;
-            
+
             _pages[_pageCount++] = _currentPage;
         }
-        
+
         /// <summary>
         /// 获取统计信息
         /// </summary>
@@ -155,7 +155,7 @@ namespace Lattice.Core
                 ElementSize = _elementSize
             };
         }
-        
+
         public void Dispose()
         {
             // 释放GCHandles
@@ -169,27 +169,27 @@ namespace Lattice.Core
                     }
                 }
             }
-            
+
             // 释放当前页
             if (_currentHandle.IsAllocated)
             {
                 _currentHandle.Free();
             }
-            
+
             // 释放空闲链表
             if (_freeList != null)
             {
                 NativeMemory.Free(_freeList);
                 _freeList = null;
             }
-            
+
             _pages = null!;
             _handles = null!;
             _currentPage = null;
             _currentPtr = null;
         }
     }
-    
+
     /// <summary>
     /// 内存池统计
     /// </summary>
@@ -201,16 +201,16 @@ namespace Lattice.Core
         public int PeakAllocatedCount { get; init; }
         public int FreeCount { get; init; }
         public int ElementSize { get; init; }
-        
+
         public float UtilizationRate => TotalBytes > 0 ? (float)AllocatedCount * ElementSize / TotalBytes : 0;
-        
+
         public override string ToString()
         {
             return $"MemoryPool[Pages={PageCount}, Allocated={AllocatedCount}, Free={FreeCount}, " +
                    $"Util={UtilizationRate:P1}, Total={TotalBytes}B]";
         }
     }
-    
+
     /// <summary>
     /// 数组池包装器 - 提供固定数组
     /// </summary>
@@ -224,7 +224,7 @@ namespace Lattice.Core
             var array = GC.AllocateArray<T>(minimumLength, pinned: true);
             return new PinnedArray<T>(array);
         }
-        
+
         /// <summary>
         /// 归还数组
         /// </summary>
@@ -233,7 +233,7 @@ namespace Lattice.Core
             pinnedArray.Dispose();
         }
     }
-    
+
     /// <summary>
     /// 固定数组包装
     /// </summary>
@@ -242,20 +242,20 @@ namespace Lattice.Core
         private readonly T[] _array;
         private readonly GCHandle _handle;
         private readonly T* _ptr;
-        
+
         public PinnedArray(T[] array)
         {
             _array = array;
             _handle = GCHandle.Alloc(array, GCHandleType.Pinned);
             _ptr = (T*)_handle.AddrOfPinnedObject();
         }
-        
+
         public int Length => _array.Length;
         public T[] Array => _array;
         public T* Pointer => _ptr;
-        
+
         public ref T this[int index] => ref _array[index];
-        
+
         public void Dispose()
         {
             if (_handle.IsAllocated)

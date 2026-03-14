@@ -1,6 +1,6 @@
 using System;
-using System.Runtime.CompilerServices;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 
 namespace Lattice.Core
 {
@@ -12,33 +12,33 @@ namespace Lattice.Core
     public sealed class CommandBuffer
     {
         private readonly EntityRegistry _registry;
-        
+
         // 延迟销毁队列
         private Entity[] _destroyQueue;
         private int _destroyCount;
-        
+
         // 默认初始容量
         private const int DefaultCapacity = 64;
-        
+
         /// <summary>
         /// 待销毁实体数量
         /// </summary>
         public int PendingDestroyCount => _destroyCount;
-        
+
         /// <summary>
         /// 是否有待执行命令
         /// </summary>
         public bool HasPendingCommands => _destroyCount > 0;
-        
+
         public CommandBuffer(EntityRegistry registry)
         {
             _registry = registry ?? throw new ArgumentNullException(nameof(registry));
             _destroyQueue = new Entity[DefaultCapacity];
             _destroyCount = 0;
         }
-        
+
         // === 实体操作 ===
-        
+
         /// <summary>
         /// 延迟销毁实体
         /// </summary>
@@ -50,7 +50,7 @@ namespace Lattice.Core
             }
             _destroyQueue[_destroyCount++] = entity;
         }
-        
+
         /// <summary>
         /// 批量延迟销毁
         /// </summary>
@@ -63,13 +63,13 @@ namespace Lattice.Core
                 while (newSize < newCount) newSize *= 2;
                 Array.Resize(ref _destroyQueue, newSize);
             }
-            
+
             for (int i = 0; i < entities.Length; i++)
             {
                 _destroyQueue[_destroyCount++] = entities[i];
             }
         }
-        
+
         /// <summary>
         /// 创建并立即返回实体（延迟销毁可用）
         /// </summary>
@@ -77,7 +77,7 @@ namespace Lattice.Core
         {
             return _registry.Create();
         }
-        
+
         /// <summary>
         /// 批量创建实体
         /// </summary>
@@ -85,9 +85,9 @@ namespace Lattice.Core
         {
             _registry.CreateBatch(output);
         }
-        
+
         // === 命令执行 ===
-        
+
         /// <summary>
         /// 执行所有缓冲的命令
         /// </summary>
@@ -95,7 +95,7 @@ namespace Lattice.Core
         {
             ExecuteDestroys();
         }
-        
+
         /// <summary>
         /// 执行销毁命令（通常在帧末调用）
         /// </summary>
@@ -103,7 +103,7 @@ namespace Lattice.Core
         public void ExecuteDestroys()
         {
             if (_destroyCount == 0) return;
-            
+
             for (int i = 0; i < _destroyCount; i++)
             {
                 _registry.DestroyImmediate(_destroyQueue[i]);
@@ -111,7 +111,7 @@ namespace Lattice.Core
             }
             _destroyCount = 0;
         }
-        
+
         /// <summary>
         /// 清空所有命令（不执行）
         /// </summary>
@@ -123,7 +123,7 @@ namespace Lattice.Core
             }
             _destroyCount = 0;
         }
-        
+
         /// <summary>
         /// 创建并添加组件（扩展接口，待实现）
         /// </summary>
@@ -134,7 +134,7 @@ namespace Lattice.Core
             return entity;
         }
     }
-    
+
     /// <summary>
     /// 命令缓冲区扩展方法
     /// </summary>
@@ -150,7 +150,7 @@ namespace Lattice.Core
                 commands.Destroy(entity);
             }
         }
-        
+
         /// <summary>
         /// 销毁满足条件的实体
         /// </summary>
@@ -164,7 +164,7 @@ namespace Lattice.Core
                 }
             }
         }
-        
+
         /// <summary>
         /// 创建指定数量的实体
         /// </summary>

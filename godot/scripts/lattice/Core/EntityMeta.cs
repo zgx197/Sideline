@@ -85,22 +85,22 @@ namespace Lattice.Core
     public enum EntityFlags : byte
     {
         None = 0,
-        
+
         /// <summary>
         /// 实体已被标记为待销毁
         /// </summary>
         DestroyPending = 1 << 0,
-        
+
         /// <summary>
         /// 实体不可被裁剪（Culling）
         /// </summary>
         NotCullable = 1 << 1,
-        
+
         /// <summary>
         /// 实体是静态的（不会移动）
         /// </summary>
         Static = 1 << 2,
-        
+
         /// <summary>
         /// 实体已禁用（不参与更新但保留数据）
         /// </summary>
