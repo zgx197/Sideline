@@ -809,6 +809,153 @@
             线程安全的实体访问范围
             </summary>
         </member>
+        <member name="T:Lattice.ECS.Core.ComponentSet">
+            <summary>
+            组件集合位图 - FrameSync 风格
+            
+            使用 512 位位图表示实体拥有的组件类型。
+            支持高效的集合操作（交集、并集、子集判断）。
+            </summary>
+        </member>
+        <member name="F:Lattice.ECS.Core.ComponentSet.MaxComponents">
+            <summary>最大支持的组件类型数</summary>
+        </member>
+        <member name="F:Lattice.ECS.Core.ComponentSet.BitsPerBlock">
+            <summary>每个 ulong 块包含的位数</summary>
+        </member>
+        <member name="F:Lattice.ECS.Core.ComponentSet.BlockCount">
+            <summary>需要的 ulong 块数</summary>
+        </member>
+        <member name="F:Lattice.ECS.Core.ComponentSet.Bits">
+            <summary>
+            位图数据 - 8 个 ulong 覆盖 512 位
+            </summary>
+        </member>
+        <member name="P:Lattice.ECS.Core.ComponentSet.Empty">
+            <summary>
+            创建空的组件集合
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.ComponentSet.Create(System.Int32)">
+            <summary>
+            创建包含单个组件的集合
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.ComponentSet.Create(System.Int32,System.Int32)">
+            <summary>
+            创建包含两个组件的集合
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.ComponentSet.Create(System.Int32,System.Int32,System.Int32)">
+            <summary>
+            创建包含三个组件的集合
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.ComponentSet.Create(System.Int32,System.Int32,System.Int32,System.Int32)">
+            <summary>
+            创建包含四个组件的集合
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.ComponentSet.Create(System.Int32,System.Int32,System.Int32,System.Int32,System.Int32)">
+            <summary>
+            创建包含五个组件的集合
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.ComponentSet.Contains(System.Int32)">
+            <summary>
+            检查是否包含指定组件
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.ComponentSet.Add(System.Int32)">
+            <summary>
+            添加组件到集合
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.ComponentSet.Remove(System.Int32)">
+            <summary>
+            从集合移除组件
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.ComponentSet.Toggle(System.Int32)">
+            <summary>
+            切换组件存在性
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.ComponentSet.Clear">
+            <summary>
+            清空集合
+            </summary>
+        </member>
+        <member name="P:Lattice.ECS.Core.ComponentSet.IsEmpty">
+            <summary>
+            是否为空集合
+            </summary>
+        </member>
+        <member name="P:Lattice.ECS.Core.ComponentSet.Count">
+            <summary>
+            集合中组件数量
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.ComponentSet.IsSupersetOf(Lattice.ECS.Core.ComponentSet@)">
+            <summary>
+            检查是否包含另一个集合的所有组件（子集判断）
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.ComponentSet.IsSubsetOf(Lattice.ECS.Core.ComponentSet@)">
+            <summary>
+            检查是否是另一个集合的子集
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.ComponentSet.Overlaps(Lattice.ECS.Core.ComponentSet@)">
+            <summary>
+            检查两个集合是否有交集
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.ComponentSet.UnionWith(Lattice.ECS.Core.ComponentSet@)">
+            <summary>
+            并集：添加另一个集合的所有组件
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.ComponentSet.IntersectWith(Lattice.ECS.Core.ComponentSet@)">
+            <summary>
+            交集：只保留两个集合共有的组件
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.ComponentSet.ExceptWith(Lattice.ECS.Core.ComponentSet@)">
+            <summary>
+            差集：移除另一个集合中存在的组件
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.ComponentSet.SymmetricExceptWith(Lattice.ECS.Core.ComponentSet@)">
+            <summary>
+            对称差集：保留只存在于一个集合中的组件
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.ComponentSet.Union(Lattice.ECS.Core.ComponentSet,Lattice.ECS.Core.ComponentSet)">
+            <summary>
+            计算并集（返回新集合）
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.ComponentSet.Intersection(Lattice.ECS.Core.ComponentSet,Lattice.ECS.Core.ComponentSet)">
+            <summary>
+            计算交集（返回新集合）
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.ComponentSet.Difference(Lattice.ECS.Core.ComponentSet,Lattice.ECS.Core.ComponentSet)">
+            <summary>
+            计算差集（返回新集合）
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.ComponentSet.WriteTo(System.Span{System.UInt64})">
+            <summary>
+            将集合写入 Span（用于快照序列化）
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.ComponentSet.ReadFrom(System.ReadOnlySpan{System.UInt64})">
+            <summary>
+            从 Span 读取集合（用于快照反序列化）
+            </summary>
+        </member>
         <member name="T:Lattice.Math.FP">
             <summary>
             定点数 (Q48.16)：48位整数 + 16位小数
