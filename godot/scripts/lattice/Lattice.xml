@@ -994,10 +994,10 @@
             </summary>
         </member>
         <member name="F:Lattice.ECS.Core.ComponentStorage`1.Block.Entities">
-            <summary>实体引用数组（与组件一一对应）</summary>
+            <summary>实体引用数组（与组件一一对应，Dispose 后置 null）</summary>
         </member>
         <member name="F:Lattice.ECS.Core.ComponentStorage`1.Block.Components">
-            <summary>组件数据数组（SoA 布局）</summary>
+            <summary>组件数据数组（SoA 布局，Dispose 后置 null）</summary>
         </member>
         <member name="F:Lattice.ECS.Core.ComponentStorage`1.Block.Count">
             <summary>当前已使用槽位数</summary>
@@ -1105,7 +1105,11 @@
             标记组件为已修改
             </summary>
         </member>
-        <!-- Badly formed XML comment ignored for member "T:Lattice.ECS.Core.ComponentStorage`1.ComponentEnumeratorItem" -->
+        <member name="T:Lattice.ECS.Core.ComponentStorage`1.ComponentEnumeratorItem">
+            <summary>
+            迭代器当前项结构（避免使用 ValueTuple 与 Ref of T）
+            </summary>
+        </member>
         <member name="T:Lattice.ECS.Core.ComponentStorage`1.ComponentEnumerator">
             <summary>
             ref struct 迭代器 - 支持 foreach

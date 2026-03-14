@@ -128,9 +128,12 @@ namespace Lattice.ECS.Session
             if (!IsRunning) return;
 
             // 销毁系统
-            foreach (var system in _systems)
+            if (PredictedFrame != null)
             {
-                system.OnDestroy(PredictedFrame);
+                foreach (var system in _systems)
+                {
+                    system.OnDestroy(PredictedFrame);
+                }
             }
 
             IsRunning = false;

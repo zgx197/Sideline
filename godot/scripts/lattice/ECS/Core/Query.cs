@@ -4,14 +4,11 @@ using Lattice.Core;
 
 namespace Lattice.ECS.Core
 {
-    /// <summary>
-    /// ECS 查询系统 - 支持多组件联合查询
-    /// 
-    /// 性能特点：
-    /// - ref struct 迭代器（零分配）
-    /// - 密集数组遍历（缓存友好）
-    /// - 位图快速过滤（ComponentSet）
-    /// </summary>
+    // ECS 查询系统 - 支持多组件联合查询
+    // 性能特点：
+    // - ref struct 迭代器（零分配）
+    // - 密集数组遍历（缓存友好）
+    // - 位图快速过滤（ComponentSet）
 
     #region 单类型查询
 

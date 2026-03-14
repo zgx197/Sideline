@@ -35,11 +35,11 @@ namespace Lattice.ECS.Core
         /// </summary>
         internal struct Block
         {
-            /// <summary>实体引用数组（与组件一一对应）</summary>
-            public Entity[] Entities;
+            /// <summary>实体引用数组（与组件一一对应，Dispose 后置 null）</summary>
+            public Entity[]? Entities;
 
-            /// <summary>组件数据数组（SoA 布局）</summary>
-            public T[] Components;
+            /// <summary>组件数据数组（SoA 布局，Dispose 后置 null）</summary>
+            public T[]? Components;
 
             /// <summary>当前已使用槽位数</summary>
             public int Count;
@@ -82,8 +82,8 @@ namespace Lattice.ECS.Core
             public int Add(Entity entity, in T component)
             {
                 int index = Count++;
-                Entities[index] = entity;
-                Components[index] = component;
+                Entities![index] = entity;
+                Components![index] = component;
                 return index;
             }
 
@@ -96,8 +96,8 @@ namespace Lattice.ECS.Core
                 if (index != lastIndex)
                 {
                     // 与末尾元素交换（保持密集）
-                    Entities[index] = Entities[lastIndex];
-                    Components[index] = Components[lastIndex];
+                    Entities![index] = Entities[lastIndex];
+                    Components![index] = Components[lastIndex];
 
                     movedEntity = Entities[lastIndex];
                     movedNewIndex = index;
@@ -109,17 +109,17 @@ namespace Lattice.ECS.Core
                 }
 
                 // 清空末尾
-                Entities[lastIndex] = Entity.None;
-                Components[lastIndex] = default;
+                Entities![lastIndex] = Entity.None;
+                Components![lastIndex] = default;
             }
 
             /// <summary>获取组件引用（允许修改）</summary>
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            public ref T GetComponent(int index) => ref Components[index];
+            public ref T GetComponent(int index) => ref Components![index];
 
             /// <summary>获取实体</summary>
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            public Entity GetEntity(int index) => Entities[index];
+            public Entity GetEntity(int index) => Entities![index];
         }
 
         #endregion
@@ -349,7 +349,7 @@ namespace Lattice.ECS.Core
 
                 for (int j = 0; j < block.Count; j++)
                 {
-                    callback(block.Entities[j], ref block.Components[j]);
+                    callback(block.Entities![j], ref block.Components![j]);
                 }
             }
         }
@@ -508,7 +508,7 @@ namespace Lattice.ECS.Core
         #region 迭代器
 
         /// <summary>
-        /// 迭代器当前项结构（避免使用 ValueTuple 与 Ref<T>）
+        /// 迭代器当前项结构（避免使用 ValueTuple 与 Ref of T）
         /// </summary>
         public readonly ref struct ComponentEnumeratorItem
         {
@@ -553,8 +553,8 @@ namespace Lattice.ECS.Core
                     _elementIndex++;
                     if (_elementIndex < block.Count)
                     {
-                        _currentEntity = block.Entities[_elementIndex];
-                        _currentComponent = new Ref<T>(ref block.Components[_elementIndex]);
+                        _currentEntity = block.Entities![_elementIndex];
+                        _currentComponent = new Ref<T>(ref block.Components![_elementIndex]);
                         return true;
                     }
 
