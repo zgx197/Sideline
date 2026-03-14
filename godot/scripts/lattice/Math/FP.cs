@@ -147,6 +147,7 @@ public readonly partial struct FP : IEquatable<FP>, IComparable<FP>
 
         // ==================== 小数常量 (0.01 ~ 0.99) ====================
         public const long _0_01 = 655L;        // 0.01
+        public const long _0_016 = 1049L;      // 0.016 ≈ 1/60s (60fps)
         public const long _0_02 = 1311L;       // 0.02
         public const long _0_03 = 1966L;       // 0.03
         public const long _0_04 = 2621L;       // 0.04

@@ -3,5 +3,17 @@
     <TargetFramework>net8.0</TargetFramework>
     <TargetFramework Condition=" '$(GodotTargetPlatform)' == 'android' ">net9.0</TargetFramework>
     <EnableDynamicLoading>true</EnableDynamicLoading>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
+  
+  <ItemGroup>
+    <!-- 排除工具目录，它们有自己的项目文件 -->
+    <Compile Remove="scripts/lattice/Tools/**" />
+    <Compile Remove="scripts/lattice/Properties/**" />
+    <!-- 排除测试和基准目录，它们有自己的项目文件 -->
+    <Compile Remove="Lattice.Tests/**" />
+    <Compile Remove="Lattice.Benchmarks/**" />
+    <!-- 排除 Godot 生成的临时文件 -->
+    <Compile Remove=".godot/mono/temp/obj/**" />
+  </ItemGroup>
 </Project>

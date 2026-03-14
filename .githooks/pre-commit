@@ -1,39 +1,35 @@
-#!/bin/bash
-#
-# Git pre-commit hook
+#!/bin/sh
+# Pre-commit hook for Sideline
 # 在提交前自动检查代码格式
-#
 
-echo "=== 代码格式检查 ==="
+echo "=== 检查代码格式 ==="
 
-# 检查是否在正确的目录
-if [ ! -f "godot/scripts/lattice/Lattice.csproj" ]; then
-    echo "❌ 错误：请在项目根目录运行"
-    exit 1
-fi
-
-# 检查 dotnet 是否可用
-if ! command -v dotnet &> /dev/null; then
-    echo "❌ 错误：未找到 dotnet 命令"
-    exit 1
-fi
-
-# 运行格式检查
+# 进入 Lattice 项目目录
 cd godot/scripts/lattice
 
-if dotnet format --verify-no-changes --verbosity quiet; then
-    echo "✅ 代码格式检查通过"
+# 检查 dotnet format 是否可用
+if ! command -v dotnet format >/dev/null 2>&1; then
+    echo "警告: dotnet format 未找到，跳过格式检查"
     exit 0
-else
+fi
+
+# 检查是否有格式问题
+dotnet format --verify-no-changes --verbosity quiet
+
+if [ $? -ne 0 ]; then
     echo ""
     echo "❌ 代码格式检查失败！"
     echo ""
-    echo "请运行以下命令修复格式："
-    echo ""
+    echo "请运行以下命令修复格式问题："
     echo "  cd godot/scripts/lattice"
     echo "  dotnet format"
     echo ""
-    echo "然后重新提交。"
+    echo "然后重新添加文件并提交："
+    echo "  git add ."
+    echo "  git commit -m '你的提交信息'"
     echo ""
     exit 1
 fi
+
+echo "✓ 代码格式检查通过"
+exit 0
