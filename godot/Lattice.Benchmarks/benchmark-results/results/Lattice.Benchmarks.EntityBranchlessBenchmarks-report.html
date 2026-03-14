@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang='en'>
+<head>
+<meta charset='utf-8' />
+<title>Lattice.Benchmarks.EntityBranchlessBenchmarks-20260314-142149</title>
+
+<style type="text/css">
+	table { border-collapse: collapse; display: block; width: 100%; overflow: auto; }
+	td, th { padding: 6px 13px; border: 1px solid #ddd; text-align: right; }
+	tr { background-color: #fff; border-top: 1px solid #ccc; }
+	tr:nth-child(even) { background: #f8f8f8; }
+</style>
+</head>
+<body>
+<pre><code>
+BenchmarkDotNet v0.13.11, Windows 10 (10.0.19045.6466/22H2/2022Update)
+13th Gen Intel Core i9-13900KF, 1 CPU, 32 logical and 24 physical cores
+.NET SDK 9.0.312
+  [Host]     : .NET 8.0.25 (8.0.2526.11203), X64 RyuJIT AVX2
+  Job-PNBJWX : .NET 8.0.25 (8.0.2526.11203), X64 RyuJIT AVX2
+  ShortRun   : .NET 8.0.25 (8.0.2526.11203), X64 RyuJIT AVX2
+</code></pre>
+<pre><code>Runtime=.NET 8.0  LaunchCount=1  WarmupCount=3  
+</code></pre>
+
+<table>
+<thead><tr><th>Method      </th><th>Job </th><th>IterationCount</th><th>EntityCount</th><th>Mean </th><th>Error </th><th>StdDev</th><th>Ratio</th><th>RatioSD</th><th>Rank</th><th>Allocated</th><th>Alloc Ratio</th>
+</tr>
+</thead><tbody><tr><td>ValidateStandard</td><td>Job-PNBJWX</td><td>5</td><td>100</td><td>73.60 ns</td><td>4.946 ns</td><td>1.284 ns</td><td>1.00</td><td>0.00</td><td>2</td><td>-</td><td>NA</td>
+</tr><tr><td>ValidateFast</td><td>Job-PNBJWX</td><td>5</td><td>100</td><td>49.14 ns</td><td>1.549 ns</td><td>0.402 ns</td><td>0.67</td><td>0.01</td><td>1</td><td>-</td><td>NA</td>
+</tr><tr><td>ValidateBranchless</td><td>Job-PNBJWX</td><td>5</td><td>100</td><td>73.99 ns</td><td>5.190 ns</td><td>1.348 ns</td><td>1.01</td><td>0.02</td><td>2</td><td>-</td><td>NA</td>
+</tr><tr><td>ValidateBatch</td><td>Job-PNBJWX</td><td>5</td><td>100</td><td>72.86 ns</td><td>6.559 ns</td><td>1.703 ns</td><td>0.99</td><td>0.04</td><td>2</td><td>-</td><td>NA</td>
+</tr><tr><td>ValidateStandard</td><td>ShortRun</td><td>3</td><td>100</td><td>74.06 ns</td><td>8.759 ns</td><td>0.480 ns</td><td>1.00</td><td>0.00</td><td>3</td><td>-</td><td>NA</td>
+</tr><tr><td>ValidateFast</td><td>ShortRun</td><td>3</td><td>100</td><td>50.53 ns</td><td>11.592 ns</td><td>0.635 ns</td><td>0.68</td><td>0.00</td><td>1</td><td>-</td><td>NA</td>
+</tr><tr><td>ValidateBranchless</td><td>ShortRun</td><td>3</td><td>100</td><td>71.96 ns</td><td>9.536 ns</td><td>0.523 ns</td><td>0.97</td><td>0.01</td><td>2</td><td>-</td><td>NA</td>
+</tr><tr><td>ValidateBatch</td><td>ShortRun</td><td>3</td><td>100</td><td>76.40 ns</td><td>23.447 ns</td><td>1.285 ns</td><td>1.03</td><td>0.02</td><td>4</td><td>-</td><td>NA</td>
+</tr><tr><td>ValidateStandard</td><td>Job-PNBJWX</td><td>5</td><td>1000</td><td>725.88 ns</td><td>36.653 ns</td><td>9.519 ns</td><td>1.00</td><td>0.00</td><td>3</td><td>-</td><td>NA</td>
+</tr><tr><td>ValidateFast</td><td>Job-PNBJWX</td><td>5</td><td>1000</td><td>428.39 ns</td><td>5.549 ns</td><td>1.441 ns</td><td>0.59</td><td>0.01</td><td>1</td><td>-</td><td>NA</td>
+</tr><tr><td>ValidateBranchless</td><td>Job-PNBJWX</td><td>5</td><td>1000</td><td>728.87 ns</td><td>40.142 ns</td><td>10.425 ns</td><td>1.00</td><td>0.00</td><td>3</td><td>-</td><td>NA</td>
+</tr><tr><td>ValidateBatch</td><td>Job-PNBJWX</td><td>5</td><td>1000</td><td>698.22 ns</td><td>37.091 ns</td><td>9.632 ns</td><td>0.96</td><td>0.02</td><td>2</td><td>-</td><td>NA</td>
+</tr><tr><td>ValidateStandard</td><td>ShortRun</td><td>3</td><td>1000</td><td>696.01 ns</td><td>27.849 ns</td><td>1.526 ns</td><td>1.00</td><td>0.00</td><td>2</td><td>-</td><td>NA</td>
+</tr><tr><td>ValidateFast</td><td>ShortRun</td><td>3</td><td>1000</td><td>439.15 ns</td><td>61.654 ns</td><td>3.379 ns</td><td>0.63</td><td>0.01</td><td>1</td><td>-</td><td>NA</td>
+</tr><tr><td>ValidateBranchless</td><td>ShortRun</td><td>3</td><td>1000</td><td>685.40 ns</td><td>145.626 ns</td><td>7.982 ns</td><td>0.98</td><td>0.01</td><td>2</td><td>-</td><td>NA</td>
+</tr><tr><td>ValidateBatch</td><td>ShortRun</td><td>3</td><td>1000</td><td>689.73 ns</td><td>195.755 ns</td><td>10.730 ns</td><td>0.99</td><td>0.01</td><td>2</td><td>-</td><td>NA</td>
+</tr><tr><td>ValidateStandard</td><td>Job-PNBJWX</td><td>5</td><td>10000</td><td>7,204.65 ns</td><td>489.578 ns</td><td>127.142 ns</td><td>1.00</td><td>0.00</td><td>3</td><td>-</td><td>NA</td>
+</tr><tr><td>ValidateFast</td><td>Job-PNBJWX</td><td>5</td><td>10000</td><td>4,462.71 ns</td><td>250.327 ns</td><td>65.009 ns</td><td>0.62</td><td>0.01</td><td>1</td><td>-</td><td>NA</td>
+</tr><tr><td>ValidateBranchless</td><td>Job-PNBJWX</td><td>5</td><td>10000</td><td>6,854.66 ns</td><td>353.158 ns</td><td>54.652 ns</td><td>0.95</td><td>0.02</td><td>2</td><td>-</td><td>NA</td>
+</tr><tr><td>ValidateBatch</td><td>Job-PNBJWX</td><td>5</td><td>10000</td><td>6,848.88 ns</td><td>253.378 ns</td><td>65.802 ns</td><td>0.95</td><td>0.02</td><td>2</td><td>-</td><td>NA</td>
+</tr><tr><td>ValidateStandard</td><td>ShortRun</td><td>3</td><td>10000</td><td>7,075.95 ns</td><td>1,740.325 ns</td><td>95.393 ns</td><td>1.00</td><td>0.00</td><td>2</td><td>-</td><td>NA</td>
+</tr><tr><td>ValidateFast</td><td>ShortRun</td><td>3</td><td>10000</td><td>4,282.79 ns</td><td>152.832 ns</td><td>8.377 ns</td><td>0.61</td><td>0.01</td><td>1</td><td>-</td><td>NA</td>
+</tr><tr><td>ValidateBranchless</td><td>ShortRun</td><td>3</td><td>10000</td><td>7,095.05 ns</td><td>3,538.605 ns</td><td>193.963 ns</td><td>1.00</td><td>0.04</td><td>2</td><td>-</td><td>NA</td>
+</tr><tr><td>ValidateBatch</td><td>ShortRun</td><td>3</td><td>10000</td><td>7,060.43 ns</td><td>2,036.386 ns</td><td>111.621 ns</td><td>1.00</td><td>0.02</td><td>2</td><td>-</td><td>NA</td>
+</tr></tbody></table>
+</body>
+</html>

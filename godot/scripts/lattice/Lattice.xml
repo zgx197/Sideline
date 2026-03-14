@@ -4,6 +4,710 @@
         <name>Lattice</name>
     </assembly>
     <members>
+        <member name="T:Lattice.Core.CommandBuffer">
+            <summary>
+            命令缓冲区 - 延迟执行实体和组件操作
+            
+            设计参考：FrameSync的延迟销毁、Bevy的Commands
+            </summary>
+        </member>
+        <member name="P:Lattice.Core.CommandBuffer.PendingDestroyCount">
+            <summary>
+            待销毁实体数量
+            </summary>
+        </member>
+        <member name="P:Lattice.Core.CommandBuffer.HasPendingCommands">
+            <summary>
+            是否有待执行命令
+            </summary>
+        </member>
+        <member name="M:Lattice.Core.CommandBuffer.Destroy(Lattice.Core.Entity)">
+            <summary>
+            延迟销毁实体
+            </summary>
+        </member>
+        <member name="M:Lattice.Core.CommandBuffer.DestroyBatch(System.ReadOnlySpan{Lattice.Core.Entity})">
+            <summary>
+            批量延迟销毁
+            </summary>
+        </member>
+        <member name="M:Lattice.Core.CommandBuffer.Create">
+            <summary>
+            创建并立即返回实体（延迟销毁可用）
+            </summary>
+        </member>
+        <member name="M:Lattice.Core.CommandBuffer.CreateBatch(System.Span{Lattice.Core.Entity})">
+            <summary>
+            批量创建实体
+            </summary>
+        </member>
+        <member name="M:Lattice.Core.CommandBuffer.Execute">
+            <summary>
+            执行所有缓冲的命令
+            </summary>
+        </member>
+        <member name="M:Lattice.Core.CommandBuffer.ExecuteDestroys">
+            <summary>
+            执行销毁命令（通常在帧末调用）
+            </summary>
+        </member>
+        <member name="M:Lattice.Core.CommandBuffer.Clear">
+            <summary>
+            清空所有命令（不执行）
+            </summary>
+        </member>
+        <member name="M:Lattice.Core.CommandBuffer.CreateWithComponents(System.Type[])">
+            <summary>
+            创建并添加组件（扩展接口，待实现）
+            </summary>
+        </member>
+        <member name="T:Lattice.Core.CommandBufferExtensions">
+            <summary>
+            命令缓冲区扩展方法
+            </summary>
+        </member>
+        <member name="M:Lattice.Core.CommandBufferExtensions.Destroy(Lattice.Core.CommandBuffer,System.Collections.Generic.IEnumerable{Lattice.Core.Entity})">
+            <summary>
+            批量销毁多个实体
+            </summary>
+        </member>
+        <member name="M:Lattice.Core.CommandBufferExtensions.DestroyWhere(Lattice.Core.CommandBuffer,System.Collections.Generic.IEnumerable{Lattice.Core.Entity},System.Predicate{Lattice.Core.Entity})">
+            <summary>
+            销毁满足条件的实体
+            </summary>
+        </member>
+        <member name="M:Lattice.Core.CommandBufferExtensions.CreateMany(Lattice.Core.CommandBuffer,System.Int32)">
+            <summary>
+            创建指定数量的实体
+            </summary>
+        </member>
+        <member name="T:Lattice.Core.Entity">
+            <summary>
+            实体标识符：使用代际索引（Generational Index）实现
+            
+            内存布局（8 字节）：
+            [0-3]   Index: int    - 实体在数组中的索引位置
+            [4-7]   Version: int  - 版本号（最高位为活跃标志）
+            [0-7]   Raw: ulong    - 原始值（用于快速比较）
+            
+            设计参考：Bevy ECS, FrameSync (Quantum), Entitas
+            
+            .NET 8 优化：
+            - StructLayout.Explicit 精确控制内存布局
+            - AggressiveInlining 强制内联关键方法
+            - readonly 修饰符确保不可变性
+            </summary>
+        </member>
+        <member name="F:Lattice.Core.Entity.Size">
+            <summary>
+            实体结构体的字节大小（8字节）
+            </summary>
+        </member>
+        <member name="F:Lattice.Core.Entity.Index">
+            <summary>
+            实体在内部数组中的索引位置
+            </summary>
+        </member>
+        <member name="F:Lattice.Core.Entity.Version">
+            <summary>
+            版本号：槽位复用时递增，用于检测失效引用
+            最高位同时用作活跃标志位（参见 EntityRegistry.ActiveBit）
+            </summary>
+        </member>
+        <member name="F:Lattice.Core.Entity.Raw">
+            <summary>
+            原始64位值，用于快速比较和哈希计算
+            </summary>
+        </member>
+        <member name="F:Lattice.Core.Entity.None">
+            <summary>
+            表示无效实体的静态实例（Index=0, Version=0）
+            </summary>
+        </member>
+        <member name="P:Lattice.Core.Entity.IsValid">
+            <summary>
+            判断此实体标识符是否有效（非零）
+            </summary>
+        </member>
+        <member name="M:Lattice.Core.Entity.#ctor(System.Int32,System.Int32)">
+            <summary>
+            创建一个新的实体标识符
+            </summary>
+        </member>
+        <member name="M:Lattice.Core.Entity.#ctor(System.UInt64)">
+            <summary>
+            从原始值创建实体标识符（用于序列化）
+            </summary>
+        </member>
+        <member name="M:Lattice.Core.Entity.Equals(Lattice.Core.Entity)">
+            <summary>
+            相等性比较：比较原始64位值
+            </summary>
+        </member>
+        <member name="M:Lattice.Core.Entity.Equals(System.Object)">
+            <summary>
+            对象相等性比较
+            </summary>
+        </member>
+        <member name="M:Lattice.Core.Entity.GetHashCode">
+            <summary>
+            获取哈希码：混合高低32位（FNV-1a 风格）
+            </summary>
+        </member>
+        <member name="M:Lattice.Core.Entity.op_Equality(Lattice.Core.Entity,Lattice.Core.Entity)">
+            <summary>
+            相等运算符
+            </summary>
+        </member>
+        <member name="M:Lattice.Core.Entity.op_Inequality(Lattice.Core.Entity,Lattice.Core.Entity)">
+            <summary>
+            不等运算符
+            </summary>
+        </member>
+        <member name="M:Lattice.Core.Entity.ToString">
+            <summary>
+            返回格式化的字符串表示：E.{Index}.{Version}
+            活跃实体的 Version 显示为数值，非活跃显示为 "-"
+            </summary>
+        </member>
+        <member name="M:Lattice.Core.Entity.TryParse(System.ReadOnlySpan{System.Char},Lattice.Core.Entity@)">
+            <summary>
+            尝试从字符串解析 Entity（用于调试和序列化）
+            </summary>
+        </member>
+        <member name="M:Lattice.Core.Entity.TryParse(System.String,Lattice.Core.Entity@)">
+            <summary>
+            尝试从字符串解析（字符串重载）
+            </summary>
+        </member>
+        <member name="T:Lattice.Core.EntityDebugger">
+            <summary>
+            实体调试代理 - 提供丰富的调试体验
+            
+            设计参考：FrameSync的DebuggerProxy
+            </summary>
+        </member>
+        <member name="T:Lattice.Core.EntityDebugger.EntityNameProviderDelegate">
+            <summary>
+            获取实体名称的自定义委托
+            可由用户设置以提供更有意义的实体名称
+            </summary>
+        </member>
+        <member name="P:Lattice.Core.EntityDebugger.EntityNameProvider">
+            <summary>
+            全局实体名称提供器
+            </summary>
+        </member>
+        <member name="M:Lattice.Core.EntityDebugger.GetName(Lattice.Core.Entity,Lattice.Core.EntityRegistry)">
+            <summary>
+            获取实体的显示名称
+            </summary>
+        </member>
+        <member name="M:Lattice.Core.EntityDebugger.GetDetailedInfo(Lattice.Core.Entity,Lattice.Core.EntityRegistry)">
+            <summary>
+            获取实体的详细调试信息
+            </summary>
+        </member>
+        <member name="M:Lattice.Core.EntityDebugger.DumpRegistry(Lattice.Core.EntityRegistry,System.IO.TextWriter)">
+            <summary>
+            打印注册表中所有实体的状态（调试辅助）
+            </summary>
+        </member>
+        <member name="M:Lattice.Core.EntityDebugger.ValidateConsistency(Lattice.Core.EntityRegistry,System.String@)">
+            <summary>
+            验证注册表的一致性（调试用）
+            </summary>
+        </member>
+        <member name="T:Lattice.Core.EntitySerializer">
+            <summary>
+            实体序列化工具
+            </summary>
+        </member>
+        <member name="M:Lattice.Core.EntitySerializer.Serialize(Lattice.Core.Entity,System.Span{System.Byte})">
+            <summary>
+            将Entity序列化为原始字节
+            </summary>
+        </member>
+        <member name="M:Lattice.Core.EntitySerializer.Deserialize(System.ReadOnlySpan{System.Byte})">
+            <summary>
+            从原始字节反序列化Entity
+            </summary>
+        </member>
+        <member name="M:Lattice.Core.EntitySerializer.SerializeToPtr(Lattice.Core.Entity,System.Void*)">
+            <summary>
+            序列化到指针（用于网络/帧同步）
+            </summary>
+        </member>
+        <member name="M:Lattice.Core.EntitySerializer.DeserializeFromPtr(System.Void*)">
+            <summary>
+            从指针反序列化
+            </summary>
+        </member>
+        <member name="M:Lattice.Core.EntitySerializer.SerializeBatch(System.ReadOnlySpan{Lattice.Core.Entity})">
+            <summary>
+            序列化实体数组
+            </summary>
+        </member>
+        <member name="M:Lattice.Core.EntitySerializer.DeserializeBatch(System.ReadOnlySpan{System.Byte},System.Span{Lattice.Core.Entity})">
+            <summary>
+            反序列化实体数组
+            </summary>
+        </member>
+        <member name="T:Lattice.Core.EntityDebugView">
+            <summary>
+            调试点视窗属性（用于IDE调试器）
+            </summary>
+        </member>
+        <member name="P:Lattice.Core.EntityDebugView.Generation">
+            <summary>
+            版本号（去除ActiveBit）
+            </summary>
+        </member>
+        <member name="P:Lattice.Core.EntityDebugView.IsActive">
+            <summary>
+            是否活跃（最高位标志）
+            </summary>
+        </member>
+        <member name="T:Lattice.Core.EntityMeta">
+            <summary>
+            实体元数据访问器：SOA 布局下的便捷访问结构
+            
+            注意：这不是实际的存储格式，而是对 EntityRegistry 中 SOA 数组的聚合视图。
+            仅用于需要同时访问多个字段的场景，高频操作应直接访问 registry 的方法。
+            </summary>
+        </member>
+        <member name="P:Lattice.Core.EntityMeta.Ref">
+            <summary>
+            实体引用
+            </summary>
+        </member>
+        <member name="P:Lattice.Core.EntityMeta.ArchetypeId">
+            <summary>
+            实体所在的 Archetype ID
+            </summary>
+        </member>
+        <member name="P:Lattice.Core.EntityMeta.ArchetypeRow">
+            <summary>
+            实体在 Archetype 内的行索引
+            </summary>
+        </member>
+        <member name="P:Lattice.Core.EntityMeta.Flags">
+            <summary>
+            实体标志位
+            </summary>
+        </member>
+        <member name="P:Lattice.Core.EntityMeta.IsActive">
+            <summary>
+            判断实体是否处于活跃状态
+            </summary>
+        </member>
+        <member name="P:Lattice.Core.EntityMeta.Generation">
+            <summary>
+            获取纯版本号（去除活跃标志位）
+            </summary>
+        </member>
+        <member name="M:Lattice.Core.EntityMeta.FromRegistry(Lattice.Core.EntityRegistry,System.Int32)">
+            <summary>
+            从 EntityRegistry 获取实体元数据
+            </summary>
+        </member>
+        <member name="M:Lattice.Core.EntityMeta.FromRegistry(Lattice.Core.EntityRegistry,Lattice.Core.Entity)">
+            <summary>
+            从 EntityRegistry 获取实体元数据
+            </summary>
+        </member>
+        <member name="T:Lattice.Core.EntityFlags">
+            <summary>
+            实体标志位枚举
+            </summary>
+        </member>
+        <member name="F:Lattice.Core.EntityFlags.DestroyPending">
+            <summary>
+            实体已被标记为待销毁
+            </summary>
+        </member>
+        <member name="F:Lattice.Core.EntityFlags.NotCullable">
+            <summary>
+            实体不可被裁剪（Culling）
+            </summary>
+        </member>
+        <member name="F:Lattice.Core.EntityFlags.Static">
+            <summary>
+            实体是静态的（不会移动）
+            </summary>
+        </member>
+        <member name="F:Lattice.Core.EntityFlags.Disabled">
+            <summary>
+            实体已禁用（不参与更新但保留数据）
+            </summary>
+        </member>
+        <member name="T:Lattice.Core.EntityInfo">
+            <summary>
+            实体信息 - FrameSync风格设计，内存优化版本
+            
+            内存布局（16字节，缓存行对齐）：
+            [0-7]   Entity: ulong     - 实体引用（Index + Version）
+            [8-11]  NextFree: int     - 空闲链表指针（非活跃时有效）
+            [12]    Flags: byte       - 实体标志
+            [13-15] Padding: byte[3]  - 对齐填充
+            
+            设计优化：
+            1. 使用Explicit布局精确控制内存
+            2. 复用Entity.Index作为链表指针（FrameSync风格）
+            3. 版本号持久化存储，销毁时不丢失
+            </summary>
+        </member>
+        <member name="F:Lattice.Core.EntityInfo.Entity">
+            <summary>
+            实体引用（8字节）- 同时包含Index和Version
+            </summary>
+        </member>
+        <member name="F:Lattice.Core.EntityInfo._rawEntity">
+            <summary>
+            当实体非活跃时，Entity.Index字段被复用为下一个空闲索引
+            注意：通过Entity.Index访问，无需额外字段
+            </summary>
+        </member>
+        <member name="F:Lattice.Core.EntityInfo.Flags">
+            <summary>
+            实体标志（1字节）
+            </summary>
+        </member>
+        <member name="F:Lattice.Core.EntityInfo._padding1">
+            <summary>
+            对齐填充（7字节）
+            </summary>
+        </member>
+        <member name="P:Lattice.Core.EntityInfo.NextFree">
+            <summary>
+            获取/设置空闲链表指针（仅非活跃时有效）
+            直接操作Entity.Index字段，无需额外存储
+            </summary>
+        </member>
+        <member name="M:Lattice.Core.EntityInfo.Create(Lattice.Core.Entity,Lattice.Core.EntityFlags)">
+            <summary>
+            创建新的EntityInfo
+            </summary>
+        </member>
+        <member name="M:Lattice.Core.EntityInfo.MarkInactive(System.Int32,System.Int32)">
+            <summary>
+            标记为非活跃，保留版本号，设置链表指针
+            </summary>
+        </member>
+        <member name="M:Lattice.Core.EntityInfo.Reactivate(System.Int32,System.Int32)">
+            <summary>
+            重新激活，恢复正确的Index，递增版本号
+            </summary>
+        </member>
+        <member name="T:Lattice.Core.PendingDestroyEntry">
+            <summary>
+            延迟销毁条目 - 包含实体和销毁原因
+            TODO: 后续添加组件系统时，需要在此存储组件清理回调
+            </summary>
+        </member>
+        <member name="T:Lattice.Core.DestroyReason">
+            <summary>
+            销毁原因枚举
+            </summary>
+        </member>
+        <member name="T:Lattice.Core.EntityRegistry">
+            <summary>
+            实体注册表 - 高性能版本（FrameSync风格优化）
+            
+            优化特性：
+            1. 版本号持久化（EntityInfo模式）
+            2. 延迟销毁 + 去重（HashSet）
+            3. 无符号边界检查（.NET 8优化）
+            4. 缓存行对齐的EntityInfo（16字节）
+            5. 复用Entity.Index作为链表指针
+            
+            TODO: 后续需要添加的功能：
+            - 组件系统集成（CommitDestroys时清理组件）
+            - 事件回调（OnEntityCreated/OnEntityDestroyed）
+            - 快照序列化支持
+            </summary>
+        </member>
+        <member name="M:Lattice.Core.EntityRegistry.#ctor(System.Int32)">
+            <summary>
+            创建注册表
+            </summary>
+        </member>
+        <member name="P:Lattice.Core.EntityRegistry.HasPendingDestroys">
+            <summary>
+            是否有待销毁的实体
+            </summary>
+        </member>
+        <member name="P:Lattice.Core.EntityRegistry.PendingDestroyCount">
+            <summary>
+            待销毁实体数量
+            </summary>
+        </member>
+        <member name="P:Lattice.Core.EntityRegistry.TotalCreated">
+            <summary>
+            总创建实体数（统计用）
+            </summary>
+        </member>
+        <member name="P:Lattice.Core.EntityRegistry.TotalDestroyed">
+            <summary>
+            总销毁实体数（统计用）
+            </summary>
+        </member>
+        <member name="M:Lattice.Core.EntityRegistry.Create">
+            <summary>
+            创建新实体
+            </summary>
+        </member>
+        <member name="M:Lattice.Core.EntityRegistry.CreateBatch(System.Span{Lattice.Core.Entity})">
+            <summary>
+            批量创建
+            </summary>
+        </member>
+        <member name="M:Lattice.Core.EntityRegistry.DestroyImmediate(Lattice.Core.Entity)">
+            <summary>
+            立即销毁实体（内部使用，外部推荐用DestroyDelayed）
+            </summary>
+        </member>
+        <member name="M:Lattice.Core.EntityRegistry.DestroyDelayed(Lattice.Core.Entity,Lattice.Core.DestroyReason)">
+            <summary>
+            延迟销毁（推荐API）- 带去重检查
+            </summary>
+        </member>
+        <member name="M:Lattice.Core.EntityRegistry.CommitDestroys">
+            <summary>
+            执行所有延迟销毁
+            
+            TODO: 组件系统实现后，需要在此添加：
+            1. 组件清理（遍历ComponentMask，移除所有组件）
+            2. 触发组件移除回调
+            3. 触发实体销毁回调
+            参考FrameSync的CommitDestroys实现
+            </summary>
+        </member>
+        <member name="M:Lattice.Core.EntityRegistry.ClearPendingDestroys">
+            <summary>
+            清除所有延迟销毁（不执行）
+            </summary>
+        </member>
+        <member name="M:Lattice.Core.EntityRegistry.IsDestroyPending(Lattice.Core.Entity)">
+            <summary>
+            检查实体是否标记为待销毁
+            </summary>
+        </member>
+        <member name="M:Lattice.Core.EntityRegistry.IsValid(Lattice.Core.Entity)">
+            <summary>
+            验证实体是否有效（含边界检查）
+            </summary>
+        </member>
+        <member name="M:Lattice.Core.EntityRegistry.IsAlive(Lattice.Core.Entity)">
+            <summary>
+            检查实体是否活跃
+            </summary>
+        </member>
+        <member name="M:Lattice.Core.EntityRegistry.GetCurrentVersion(System.Int32)">
+            <summary>
+            获取实体的当前版本号（用于调试）
+            </summary>
+        </member>
+        <member name="M:Lattice.Core.EntityRegistry.ForEachParallel(System.Action{Lattice.Core.Entity},System.Int32)">
+            <summary>
+            线程安全的并行遍历
+            </summary>
+        </member>
+        <member name="M:Lattice.Core.EntityRegistry.AsReadOnly">
+            <summary>
+            获取只读视图（线程安全）
+            </summary>
+        </member>
+        <member name="M:Lattice.Core.EntityRegistry.GetStats">
+            <summary>
+            获取注册表统计信息
+            </summary>
+        </member>
+        <member name="M:Lattice.Core.EntityRegistry.GetDebugInfo(Lattice.Core.Entity)">
+            <summary>
+            获取实体调试信息
+            </summary>
+        </member>
+        <member name="M:Lattice.Core.EntityRegistry.GetAllAliveEntities">
+            <summary>
+            获取所有活跃实体（用于调试）
+            </summary>
+        </member>
+        <member name="T:Lattice.Core.EntityLocation">
+            <summary>
+            实体位置信息
+            </summary>
+        </member>
+        <member name="T:Lattice.Core.EntityDebugInfo">
+            <summary>
+            实体调试信息
+            </summary>
+        </member>
+        <member name="T:Lattice.Core.EntityRegistryStats">
+            <summary>
+            注册表统计信息
+            </summary>
+        </member>
+        <member name="T:Lattice.Core.RegistryReadOnly">
+            <summary>
+            只读视图 - 线程安全
+            </summary>
+        </member>
+        <member name="T:Lattice.Core.EntityValidationTest">
+            <summary>
+            Entity版本号正确性验证测试
+            </summary>
+        </member>
+        <member name="M:Lattice.Core.EntityValidationTest.Test_CreateAndDestroy">
+            <summary>
+            测试1：基本创建和销毁
+            </summary>
+        </member>
+        <member name="M:Lattice.Core.EntityValidationTest.Test_VersionIncrement">
+            <summary>
+            测试2：版本号正确递增（核心测试）
+            </summary>
+        </member>
+        <member name="M:Lattice.Core.EntityValidationTest.Test_ReuseDetection">
+            <summary>
+            测试3：多次复用检测
+            </summary>
+        </member>
+        <member name="M:Lattice.Core.EntityValidationTest.Test_DelayedDestroy">
+            <summary>
+            测试4：延迟销毁
+            </summary>
+        </member>
+        <member name="M:Lattice.Core.EntityValidationTest.Test_BatchOperations">
+            <summary>
+            测试5：批量操作
+            </summary>
+        </member>
+        <member name="M:Lattice.Core.EntityValidationTest.Test_BoundaryCheck">
+            <summary>
+            测试6：边界检查
+            </summary>
+        </member>
+        <member name="M:Lattice.Core.EntityValidationTest.RunBenchmark(System.Int32)">
+            <summary>
+            运行性能基准测试
+            </summary>
+        </member>
+        <member name="T:Lattice.Core.NativeMemoryPool">
+            <summary>
+            原生内存池 - 高性能内存管理
+            
+            特性：
+            1. 使用GC.AllocateArray(pinned: true)避免GC移动
+            2. 按页分配减少分配开销
+            3. 零内存清除（重用时不清零）
+            </summary>
+        </member>
+        <member name="M:Lattice.Core.NativeMemoryPool.Alloc">
+            <summary>
+            分配内存
+            </summary>
+        </member>
+        <member name="M:Lattice.Core.NativeMemoryPool.Free(System.Byte*)">
+            <summary>
+            释放内存（返回到池中）
+            </summary>
+        </member>
+        <member name="M:Lattice.Core.NativeMemoryPool.AllocateNewPage">
+            <summary>
+            分配新页
+            </summary>
+        </member>
+        <member name="M:Lattice.Core.NativeMemoryPool.GetStats">
+            <summary>
+            获取统计信息
+            </summary>
+        </member>
+        <member name="T:Lattice.Core.MemoryPoolStats">
+            <summary>
+            内存池统计
+            </summary>
+        </member>
+        <member name="T:Lattice.Core.PinnedArrayPool">
+            <summary>
+            数组池包装器 - 提供固定数组
+            </summary>
+        </member>
+        <member name="M:Lattice.Core.PinnedArrayPool.Rent``1(System.Int32)">
+            <summary>
+            租用固定数组
+            </summary>
+        </member>
+        <member name="M:Lattice.Core.PinnedArrayPool.Return``1(Lattice.Core.PinnedArray{``0})">
+            <summary>
+            归还数组
+            </summary>
+        </member>
+        <member name="T:Lattice.Core.PinnedArray`1">
+            <summary>
+            固定数组包装
+            </summary>
+        </member>
+        <member name="T:Lattice.Core.ThreadSafeValidator">
+            <summary>
+            线程安全验证器 - 检测多线程访问冲突
+            
+            功能：
+            1. 检测读写冲突
+            2. 检测并发修改
+            3. 调试模式下的详细日志
+            </summary>
+        </member>
+        <member name="M:Lattice.Core.ThreadSafeValidator.VerifyRead(System.Int32,System.String)">
+            <summary>
+            验证读访问
+            </summary>
+        </member>
+        <member name="M:Lattice.Core.ThreadSafeValidator.VerifyWrite(System.Int32,System.String)">
+            <summary>
+            验证写访问
+            </summary>
+        </member>
+        <member name="M:Lattice.Core.ThreadSafeValidator.ReleaseRead(System.Int32)">
+            <summary>
+            释放读锁
+            </summary>
+        </member>
+        <member name="M:Lattice.Core.ThreadSafeValidator.ReleaseWrite(System.Int32)">
+            <summary>
+            释放写锁
+            </summary>
+        </member>
+        <member name="M:Lattice.Core.ThreadSafeValidator.Reset">
+            <summary>
+            重置所有状态
+            </summary>
+        </member>
+        <member name="T:Lattice.Core.ValidationMode">
+            <summary>
+            验证模式
+            </summary>
+        </member>
+        <member name="F:Lattice.Core.ValidationMode.None">
+            <summary>
+            不验证（生产环境最高性能）
+            </summary>
+        </member>
+        <member name="F:Lattice.Core.ValidationMode.Debug">
+            <summary>
+            调试模式（断言失败）
+            </summary>
+        </member>
+        <member name="F:Lattice.Core.ValidationMode.Release">
+            <summary>
+            Release模式（抛出异常）
+            </summary>
+        </member>
+        <member name="T:Lattice.Core.ThreadSafeReadScope">
+            <summary>
+            线程安全的实体访问范围
+            </summary>
+        </member>
         <member name="T:Lattice.Math.FP">
             <summary>
             定点数 (Q48.16)：48位整数 + 16位小数

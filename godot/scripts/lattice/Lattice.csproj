@@ -22,10 +22,14 @@
 
   <!-- 纯 C# 库，不依赖 Godot -->
   <ItemGroup>
-    <!-- 排除工具目录 -->
+    <!-- 排除工具目录和测试文件 -->
     <Compile Remove="Tools\**" />
+    <Compile Remove="Test*.cs" />
+    <Compile Remove="EntityValidationTest.cs" />
     <EmbeddedResource Remove="Tools\**" />
     <None Remove="Tools\**" />
+    <None Remove="Test*.cs" />
+    <None Remove="EntityValidationTest.cs" />
   </ItemGroup>
 
   <!-- LUT 生成目标（可选，取消注释以启用自动 LUT 生成） -->
