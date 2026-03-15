@@ -1,600 +1,504 @@
 using System;
-using System.Buffers;
-using System.Collections;
 using System.Runtime.CompilerServices;
-using Lattice.Core;
-
+using System.Runtime.InteropServices;
 
 namespace Lattice.ECS.Core
 {
     /// <summary>
-    /// FrameSync 风格组件存储 - Block-based 密集存储
-    /// 
-    /// 特性：
-    /// 1. Block 分块存储（缓存友好）
-    /// 2. 稀疏数组映射（O(1) 查找）
-    /// 3. 版本控制（支持快照/变更检测）
-    /// 4. 密集数组遍历（SIMD 友好）
+    /// 组件数据块，对应 FrameSync 的 ComponentDataBlock
+    /// 存储固定数量的组件和对应的实体引用
     /// </summary>
-    public sealed class ComponentStorage<T> : IDisposable where T : struct
+    internal unsafe struct ComponentDataBlock
     {
-        #region 常量配置
+        /// <summary>组件数据原始内存指针</summary>
+        public byte* Data;
 
-        /// <summary>每个 Block 容纳的实体数（缓存行对齐）</summary>
-        public const int BlockCapacity = 64;
+        /// <summary>实体引用数组指针</summary>
+        public Entity* Entities;
 
-        /// <summary>稀疏数组扩容因子</summary>
-        private const int SparseGrowthFactor = 2;
+        /// <summary>块容量（默认 128）</summary>
+        public int Capacity;
+    }
 
-        #endregion
+    /// <summary>
+    /// 组件存储缓冲区，完全对齐 FrameSync 的 ComponentDataBuffer 设计
+    /// 使用不安全代码和原始内存管理实现极致性能
+    /// </summary>
+    /// <typeparam name="T">组件类型，必须是 unmanaged 结构体</typeparam>
+    public unsafe class ComponentStorage<T> where T : unmanaged
+    {
+        // 常量配置
+        public const int DEFAULT_BLOCK_CAPACITY = 128;
+        public const int INITIAL_BLOCK_COUNT = 8;
 
-        #region Block 结构
+        // 组件元数据
+        private readonly int _stride;                    // sizeof(T)
+        private readonly int _elementsPerBlock;          // 每块组件数量（原 _blockCapacity，避免命名冲突）
 
-        /// <summary>
-        /// 组件数据块 - 密集存储，缓存友好
-        /// </summary>
-        internal struct Block
-        {
-            /// <summary>实体引用数组（与组件一一对应，Dispose 后置 null）</summary>
-            public Entity[]? Entities;
+        // 计数器
+        private int _count;                              // 总数量（含待删除）
+        private int _usedCount;                          // 实际使用数量
 
-            /// <summary>组件数据数组（SoA 布局，Dispose 后置 null）</summary>
-            public T[]? Components;
+        // 块管理
+        private ComponentDataBlock* _blocks;             // 块数组指针
+        private int _blockCount;                         // 当前块数量
+        private int _blockArrayCapacity;                 // 块数组容量（可容纳的块描述符数量）
 
-            /// <summary>当前已使用槽位数</summary>
-            public int Count;
+        // 空闲列表（槽位复用）
+        private int* _freeList;                          // 空闲槽位索引数组
+        private int _freeListCount;                      // 空闲槽位数量
+        private int _freeListCapacity;                   // 空闲列表容量
 
-            /// <summary>当前 Block 在 _blocks 数组中的索引</summary>
-            public int BlockIndex;
+        // 实体到索引的映射（类似 FrameSync 的 EntityInfo）
+        // 使用稀疏数组，索引为 Entity.Index，值为存储索引（-1 表示无组件）
+        private int* _entityToIndex;
+        private int _entityMapCapacity;
 
-            /// <summary>初始化 Block</summary>
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            public void Initialize(int blockIndex)
-            {
-                Entities = ArrayPool<Entity>.Shared.Rent(BlockCapacity);
-                Components = ArrayPool<T>.Shared.Rent(BlockCapacity);
-                Count = 0;
-                BlockIndex = blockIndex;
+        // 版本追踪（Lattice 原有功能保留）
+        private int* _versions;
 
-                // 清空实体数组（避免脏数据）
-                Array.Clear(Entities, 0, BlockCapacity);
-            }
-
-            /// <summary>归还数组到池</summary>
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            public void Dispose()
-            {
-                if (Entities != null)
-                {
-                    ArrayPool<Entity>.Shared.Return(Entities, clearArray: true);
-                    Entities = null;
-                }
-                if (Components != null)
-                {
-                    ArrayPool<T>.Shared.Return(Components, clearArray: true);
-                    Components = null;
-                }
-                Count = 0;
-            }
-
-            /// <summary>添加组件到 Block</summary>
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            public int Add(Entity entity, in T component)
-            {
-                int index = Count++;
-                Entities![index] = entity;
-                Components![index] = component;
-                return index;
-            }
-
-            /// <summary>删除 Block 内指定索引的元素（与末尾交换）</summary>
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            public void RemoveAt(int index, out Entity movedEntity, out int movedNewIndex)
-            {
-                int lastIndex = --Count;
-
-                if (index != lastIndex)
-                {
-                    // 与末尾元素交换（保持密集）
-                    Entities![index] = Entities[lastIndex];
-                    Components![index] = Components[lastIndex];
-
-                    movedEntity = Entities[lastIndex];
-                    movedNewIndex = index;
-                }
-                else
-                {
-                    movedEntity = Entity.None;
-                    movedNewIndex = -1;
-                }
-
-                // 清空末尾
-                Entities![lastIndex] = Entity.None;
-                Components![lastIndex] = default;
-            }
-
-            /// <summary>获取组件引用（允许修改）</summary>
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            public ref T GetComponent(int index) => ref Components![index];
-
-            /// <summary>获取实体</summary>
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            public Entity GetEntity(int index) => Entities![index];
-        }
-
-        #endregion
-
-        #region 字段
-
-        // Block 管理
-        private Block[] _blocks;
-        private int _blockCount;
-
-        // 稀疏映射：Entity.Index → (BlockIndex, ElementIndex)
-        // 使用两个并行数组，避免 struct 装箱
-        private int[] _sparseBlockIndex;   // -1 表示不存在
-        private int[] _sparseElementIndex; // 在 Block 内的索引
-
-        // 版本控制（用于快照/变更检测）
-        private int[] _versions;
-        private int _currentVersion;  // 当前全局版本号
-
-        // 存在性标记（快速检查）
-        private BitArray _exists;
-
-        // 统计
-        private int _count;           // 活跃组件数
-        private int _capacity;        // 总容量（BlockCount * BlockCapacity）
-
-        #endregion
-
-        #region 属性
-
-        /// <summary>当前存储的组件数量</summary>
+        /// <summary>当前存储的组件总数（含待删除）</summary>
         public int Count => _count;
 
-        /// <summary>总容量</summary>
-        public int Capacity => _capacity;
+        /// <summary>实际使用的组件数量</summary>
+        public int UsedCount => _usedCount;
 
-        /// <summary>当前版本号（每次修改递增）</summary>
-        public int Version => _currentVersion;
+        /// <summary>当前分配的块数量</summary>
+        public int BlockCount => _blockCount;
 
-        /// <summary>是否存在指定实体的组件</summary>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public bool Has(Entity entity)
+        public ComponentStorage(int blockCapacity = DEFAULT_BLOCK_CAPACITY, int initialEntityCapacity = 1024)
         {
-            uint index = (uint)entity.Index;
-            if (index >= (uint)_sparseBlockIndex.Length) return false;
-            return _sparseBlockIndex[entity.Index] >= 0;
-        }
-
-        #endregion
-
-        #region 构造函数
-
-        public ComponentStorage(int initialCapacity = 256)
-        {
-            // 计算初始 Block 数
-            int initialBlocks = System.Math.Max(1, (initialCapacity + BlockCapacity - 1) / BlockCapacity);
-
-            _blocks = new Block[initialBlocks];
-            _blockCount = 0;
-
-            // 稀疏数组初始大小
-            int sparseSize = 256;
-            _sparseBlockIndex = new int[sparseSize];
-            _sparseElementIndex = new int[sparseSize];
-            Array.Fill(_sparseBlockIndex, -1);  // -1 表示不存在
-
-            _versions = new int[sparseSize];
-            _exists = new BitArray(sparseSize);
-
+            _stride = sizeof(T);
+            _elementsPerBlock = global::System.Math.Max(1, blockCapacity);
             _count = 0;
-            _capacity = 0;
-            _currentVersion = 1;
+            _usedCount = 0;
+            _blockCount = 0;
+            _blockArrayCapacity = INITIAL_BLOCK_COUNT;
+            _freeListCount = 0;
+            _freeListCapacity = global::System.Math.Max(16, _elementsPerBlock * 2);
+            _entityMapCapacity = global::System.Math.Max(16, initialEntityCapacity);
+
+            // 分配块数组
+            _blocks = (ComponentDataBlock*)NativeMemory.AllocZeroed((nuint)(_blockArrayCapacity * sizeof(ComponentDataBlock)));
+
+            // 分配空闲列表
+            _freeList = (int*)NativeMemory.AllocZeroed((nuint)(_freeListCapacity * sizeof(int)));
+
+            // 分配实体映射数组
+            _entityToIndex = (int*)NativeMemory.AllocZeroed((nuint)(_entityMapCapacity * sizeof(int)));
+
+            // 初始化为 -1（表示无组件）
+            for (int i = 0; i < _entityMapCapacity; i++)
+            {
+                _entityToIndex[i] = -1;
+            }
+
+            // 分配版本数组
+            _versions = (int*)NativeMemory.AllocZeroed((nuint)(_entityMapCapacity * sizeof(int)));
         }
-
-        #endregion
-
-        #region 核心操作
 
         /// <summary>
-        /// 添加组件
+        /// 确保实体映射数组容量足够
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void Add(Entity entity, in T component)
+        private void EnsureEntityMapCapacity(int entityIndex)
         {
-            // 确保稀疏数组足够大
-            EnsureSparseCapacity(entity.Index + 1);
+            if (entityIndex < _entityMapCapacity) return;
+
+            int newCapacity = _entityMapCapacity * 2;
+            while (newCapacity <= entityIndex)
+            {
+                newCapacity *= 2;
+            }
+
+            // 重新分配并复制
+            int* newEntityToIndex = (int*)NativeMemory.AllocZeroed((nuint)(newCapacity * sizeof(int)));
+            int* newVersions = (int*)NativeMemory.AllocZeroed((nuint)(newCapacity * sizeof(int)));
+
+            // 复制旧数据
+            Buffer.MemoryCopy(_entityToIndex, newEntityToIndex, _entityMapCapacity * sizeof(int), _entityMapCapacity * sizeof(int));
+            Buffer.MemoryCopy(_versions, newVersions, _entityMapCapacity * sizeof(int), _entityMapCapacity * sizeof(int));
+
+            // 初始化新区域为 -1
+            for (int i = _entityMapCapacity; i < newCapacity; i++)
+            {
+                newEntityToIndex[i] = -1;
+            }
+
+            // 释放旧内存
+            NativeMemory.Free(_entityToIndex);
+            NativeMemory.Free(_versions);
+
+            _entityToIndex = newEntityToIndex;
+            _versions = newVersions;
+            _entityMapCapacity = newCapacity;
+        }
+
+        /// <summary>
+        /// 确保块数组容量足够
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void EnsureBlockCapacity()
+        {
+            if (_blockCount < _blockArrayCapacity) return;
+
+            int newCapacity = _blockArrayCapacity * 2;
+            var newBlocks = (ComponentDataBlock*)NativeMemory.AllocZeroed((nuint)(newCapacity * sizeof(ComponentDataBlock)));
+
+            // 复制旧块指针（注意：块数据本身不动，只复制块描述符）
+            Buffer.MemoryCopy(_blocks, newBlocks, _blockCount * sizeof(ComponentDataBlock), _blockCount * sizeof(ComponentDataBlock));
+
+            NativeMemory.Free(_blocks);
+            _blocks = newBlocks;
+            _blockArrayCapacity = newCapacity;
+        }
+
+        /// <summary>
+        /// 分配新块
+        /// </summary>
+        private void AllocateBlock()
+        {
+            EnsureBlockCapacity();
+
+            ref var block = ref _blocks[_blockCount];
+            block.Capacity = _elementsPerBlock;
+
+            // 分配组件数据内存（对齐到 8 字节）
+            nuint dataSize = (nuint)(_elementsPerBlock * _stride);
+            block.Data = (byte*)NativeMemory.AlignedAlloc(dataSize, 8);
+
+            // 分配实体引用数组
+            block.Entities = (Entity*)NativeMemory.AlignedAlloc((nuint)(_elementsPerBlock * sizeof(Entity)), 8);
+
+            // 清零
+            NativeMemory.Clear(block.Data, dataSize);
+            NativeMemory.Clear(block.Entities, (nuint)(_elementsPerBlock * sizeof(Entity)));
+
+            _blockCount++;
+        }
+
+        /// <summary>
+        /// 添加组件到实体
+        /// </summary>
+        public int Add(Entity entity, in T component)
+        {
+            int entityIndex = entity.Index;
+            EnsureEntityMapCapacity(entityIndex);
 
             // 检查是否已存在
-            if (_sparseBlockIndex[entity.Index] >= 0)
+            if (_entityToIndex[entityIndex] >= 0)
             {
-                throw new InvalidOperationException(
-                    $"Entity {entity} already has component {typeof(T).Name}");
+                throw new InvalidOperationException($"Entity {entity} already has component {typeof(T).Name}");
             }
 
-            // 获取或创建 Block
-            int blockIndex = AcquireBlock();
-            ref Block block = ref _blocks[blockIndex];
+            int index;
 
-            // 添加到 Block
-            int elementIndex = block.Add(entity, component);
+            // 优先复用空闲槽位
+            if (_freeListCount > 0)
+            {
+                index = _freeList[--_freeListCount];
+                _versions[entityIndex] = entity.Version;
+            }
+            else
+            {
+                // 分配新槽位
+                index = _count;
 
-            // 更新稀疏映射
-            _sparseBlockIndex[entity.Index] = blockIndex;
-            _sparseElementIndex[entity.Index] = elementIndex;
-            _exists[entity.Index] = true;
-            _versions[entity.Index] = ++_currentVersion;
+                // 检查是否需要新块
+                int blockIndex = index / _elementsPerBlock;
+                int elementIndex = index % _elementsPerBlock;
 
-            _count++;
+                // 按需分配块
+                while (blockIndex >= _blockCount)
+                {
+                    EnsureBlockCapacity();
+                    AllocateBlock();
+                }
+
+                _count++;
+                _versions[entityIndex] = entity.Version;
+            }
+
+            // 写入数据
+            SetComponent(index, entity, component);
+            _entityToIndex[entityIndex] = index;
+            _usedCount++;
+
+            return index;
         }
 
         /// <summary>
-        /// 删除组件（与末尾交换保持密集）
+        /// 获取组件索引（供内部使用）
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public int GetIndex(Entity entity)
+        {
+            int entityIndex = entity.Index;
+            if (entityIndex >= _entityMapCapacity) return -1;
+
+            int index = _entityToIndex[entityIndex];
+            if (index < 0) return -1;
+
+            // 验证版本
+            if (_versions[entityIndex] != entity.Version) return -1;
+
+            return index;
+        }
+
+        /// <summary>
+        /// 检查实体是否有此组件
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public bool Contains(Entity entity)
+        {
+            return GetIndex(entity) >= 0;
+        }
+
+        /// <summary>
+        /// 获取组件指针（unsafe，最高性能）
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public T* GetPointer(Entity entity)
+        {
+            int index = GetIndex(entity);
+            if (index < 0)
+            {
+                throw new InvalidOperationException($"Entity {entity} does not have component {typeof(T).Name}");
+            }
+            return GetPointerByIndex(index);
+        }
+
+        /// <summary>
+        /// 尝试获取组件指针
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public bool TryGetPointer(Entity entity, out T* pointer)
+        {
+            int index = GetIndex(entity);
+            if (index < 0)
+            {
+                pointer = null;
+                return false;
+            }
+            pointer = GetPointerByIndex(index);
+            return true;
+        }
+
+        /// <summary>
+        /// 通过存储索引获取组件指针
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public T* GetPointerByIndex(int index)
+        {
+            int blockIndex = index / _elementsPerBlock;
+            int elementIndex = index % _elementsPerBlock;
+            return (T*)(_blocks[blockIndex].Data + elementIndex * _stride);
+        }
+
+        /// <summary>
+        /// 通过存储索引获取实体
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public Entity GetEntityByIndex(int index)
+        {
+            int blockIndex = index / _elementsPerBlock;
+            int elementIndex = index % _elementsPerBlock;
+            return _blocks[blockIndex].Entities[elementIndex];
+        }
+
+        /// <summary>
+        /// 获取组件值（复制）
+        /// </summary>
+        public T Get(Entity entity)
+        {
+            return *GetPointer(entity);
+        }
+
+        /// <summary>
+        /// 设置组件值
+        /// </summary>
+        public void Set(Entity entity, in T component)
+        {
+            int index = GetIndex(entity);
+            if (index < 0)
+            {
+                throw new InvalidOperationException($"Entity {entity} does not have component {typeof(T).Name}");
+            }
+            *GetPointerByIndex(index) = component;
+        }
+
+        /// <summary>
+        /// 通过索引设置组件（内部使用）
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void SetComponent(int index, Entity entity, in T component)
+        {
+            int blockIndex = index / _elementsPerBlock;
+            int elementIndex = index % _elementsPerBlock;
+
+            ref var block = ref _blocks[blockIndex];
+            block.Entities[elementIndex] = entity;
+            *(T*)(block.Data + elementIndex * _stride) = component;
+        }
+
+        /// <summary>
+        /// 移除组件
+        /// </summary>
         public bool Remove(Entity entity)
         {
-            if ((uint)entity.Index >= (uint)_sparseBlockIndex.Length)
-                return false;
+            int entityIndex = entity.Index;
+            if (entityIndex >= _entityMapCapacity) return false;
 
-            int blockIndex = _sparseBlockIndex[entity.Index];
-            if (blockIndex < 0)
-                return false;  // 不存在
+            int index = _entityToIndex[entityIndex];
+            if (index < 0) return false;
 
-            int elementIndex = _sparseElementIndex[entity.Index];
-            ref Block block = ref _blocks[blockIndex];
+            // 验证版本
+            if (_versions[entityIndex] != entity.Version) return false;
 
-            // 从 Block 删除（交换）
-            block.RemoveAt(elementIndex, out Entity movedEntity, out int movedNewIndex);
+            // 标记为已删除（增加版本）
+            _versions[entityIndex] = -1;  // -1 表示已删除
+            _entityToIndex[entityIndex] = -1;
 
-            // 如果删除的不是最后一个，更新被移动实体的稀疏映射
-            if (movedNewIndex >= 0)
-            {
-                _sparseElementIndex[movedEntity.Index] = movedNewIndex;
-            }
-
-            // 清除当前实体的映射
-            _sparseBlockIndex[entity.Index] = -1;
-            _sparseElementIndex[entity.Index] = -1;
-            _exists[entity.Index] = false;
-            _versions[entity.Index] = ++_currentVersion;
-
-            _count--;
-
-            // 检查是否需要回收 Block
-            if (block.Count == 0)
-            {
-                ReleaseBlock(blockIndex);
-            }
+            // 加入空闲列表
+            EnsureFreeListCapacity();
+            _freeList[_freeListCount++] = index;
+            _usedCount--;
 
             return true;
         }
 
         /// <summary>
-        /// 获取组件引用（可修改）
+        /// 确保空闲列表容量
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public ref T Get(Entity entity)
+        private void EnsureFreeListCapacity()
         {
-            int blockIndex = GetBlockIndex(entity);
-            if (blockIndex < 0)
-                throw new KeyNotFoundException(
-                    $"Entity {entity} does not have component {typeof(T).Name}");
+            if (_freeListCount < _freeListCapacity) return;
 
-            int elementIndex = _sparseElementIndex[entity.Index];
-            return ref _blocks[blockIndex].GetComponent(elementIndex);
+            int newCapacity = _freeListCapacity * 2;
+            int* newFreeList = (int*)NativeMemory.AllocZeroed((nuint)(newCapacity * sizeof(int)));
+            Buffer.MemoryCopy(_freeList, newFreeList, _freeListCount * sizeof(int), _freeListCount * sizeof(int));
+            NativeMemory.Free(_freeList);
+            _freeList = newFreeList;
+            _freeListCapacity = newCapacity;
         }
 
         /// <summary>
-        /// 尝试获取组件
-        /// </summary>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public bool TryGet(Entity entity, out T component)
-        {
-            int blockIndex = GetBlockIndex(entity);
-            if (blockIndex < 0)
-            {
-                component = default;
-                return false;
-            }
-
-            int elementIndex = _sparseElementIndex[entity.Index];
-            component = _blocks[blockIndex].GetComponent(elementIndex);
-            return true;
-        }
-
-        /// <summary>
-        /// 尝试获取组件引用（高性能）
-        /// </summary>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public bool TryGetRef(Entity entity, out Ref<T> component)
-        {
-            int blockIndex = GetBlockIndex(entity);
-            if (blockIndex < 0)
-            {
-                component = default;
-                return false;
-            }
-
-            int elementIndex = _sparseElementIndex[entity.Index];
-            component = new Ref<T>(ref _blocks[blockIndex].GetComponent(elementIndex));
-            return true;
-        }
-
-        #endregion
-
-        #region 遍历支持
-
-        /// <summary>
-        /// 组件迭代器回调委托
-        /// </summary>
-        public delegate void ComponentIteratorCallback(Entity entity, ref T component);
-
-        /// <summary>
-        /// Span 遍历回调委托
-        /// </summary>
-        public delegate void ForEachSpanCallback(ReadOnlySpan<Entity> entities, Span<T> components);
-
-        /// <summary>
-        /// 遍历所有组件（回调方式，零分配）
-        /// </summary>
-        public void ForEach(ComponentIteratorCallback callback)
-        {
-            for (int i = 0; i < _blockCount; i++)
-            {
-                ref Block block = ref _blocks[i];
-                if (block.Count == 0) continue;
-
-                for (int j = 0; j < block.Count; j++)
-                {
-                    callback(block.Entities![j], ref block.Components![j]);
-                }
-            }
-        }
-
-        /// <summary>
-        /// 遍历所有组件（Span 方式）
-        /// </summary>
-        public void ForEachSpan(ForEachSpanCallback callback)
-        {
-            for (int i = 0; i < _blockCount; i++)
-            {
-                ref Block block = ref _blocks[i];
-                if (block.Count == 0) continue;
-
-                var entities = block.Entities.AsSpan(0, block.Count);
-                var components = block.Components.AsSpan(0, block.Count);
-
-                callback(entities, components);
-            }
-        }
-
-        /// <summary>
-        /// 获取所有组件到 Span
-        /// </summary>
-        public int GetAllComponents(Span<T> buffer)
-        {
-            int count = 0;
-            for (int i = 0; i < _blockCount; i++)
-            {
-                ref Block block = ref _blocks[i];
-                if (block.Count == 0) continue;
-
-                var span = block.Components.AsSpan(0, block.Count);
-                span.CopyTo(buffer.Slice(count));
-                count += block.Count;
-            }
-            return count;
-        }
-
-        /// <summary>
-        /// 获取所有实体到 Span
-        /// </summary>
-        public int GetAllEntities(Span<Entity> buffer)
-        {
-            int count = 0;
-            for (int i = 0; i < _blockCount; i++)
-            {
-                ref Block block = ref _blocks[i];
-                if (block.Count == 0) continue;
-
-                var span = block.Entities.AsSpan(0, block.Count);
-                span.CopyTo(buffer.Slice(count));
-                count += block.Count;
-            }
-            return count;
-        }
-
-        /// <summary>
-        /// 获取组件枚举器（支持 foreach）
-        /// </summary>
-        public ComponentEnumerator GetEnumerator() => new ComponentEnumerator(this);
-
-        #endregion
-
-        #region 版本控制
-
-        /// <summary>
-        /// 获取实体的组件版本号
+        /// 获取组件版本（用于变更检测）
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public int GetVersion(Entity entity)
         {
-            if ((uint)entity.Index >= (uint)_versions.Length)
-                return 0;
-            return _versions[entity.Index];
+            int entityIndex = entity.Index;
+            if (entityIndex >= _entityMapCapacity) return -1;
+            if (_entityToIndex[entityIndex] < 0) return -1;
+            return _versions[entityIndex];
         }
 
         /// <summary>
-        /// 标记组件为已修改
+        /// 释放所有资源
         /// </summary>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void MarkChanged(Entity entity)
+        public void Dispose()
         {
-            if ((uint)entity.Index < (uint)_versions.Length && _exists[entity.Index])
+            // 释放所有块数据
+            for (int i = 0; i < _blockCount; i++)
             {
-                _versions[entity.Index] = ++_currentVersion;
-            }
-        }
-
-        #endregion
-
-        #region 辅助方法
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private int GetBlockIndex(Entity entity)
-        {
-            uint index = (uint)entity.Index;
-            if (index >= (uint)_sparseBlockIndex.Length)
-                return -1;
-            return _sparseBlockIndex[entity.Index];
-        }
-
-        private void EnsureSparseCapacity(int required)
-        {
-            if (required <= _sparseBlockIndex.Length)
-                return;
-
-            int newSize = System.Math.Max(required, _sparseBlockIndex.Length * SparseGrowthFactor);
-
-            Array.Resize(ref _sparseBlockIndex, newSize);
-            Array.Resize(ref _sparseElementIndex, newSize);
-            Array.Resize(ref _versions, newSize);
-
-            // 新扩容的部分初始化为 -1（不存在）
-            for (int i = _sparseBlockIndex.Length / SparseGrowthFactor; i < newSize; i++)
-            {
-                _sparseBlockIndex[i] = -1;
-            }
-
-            // BitArray 需要重新创建
-            var newExists = new BitArray(newSize);
-            for (int i = 0; i < _exists.Length; i++)
-                newExists[i] = _exists[i];
-            _exists = newExists;
-        }
-
-        private int AcquireBlock()
-        {
-            // 检查是否有未初始化的 Block
-            if (_blockCount < _blocks.Length)
-            {
-                int index = _blockCount++;
-                _blocks[index].Initialize(index);
-                _capacity += BlockCapacity;
-                return index;
-            }
-
-            // 扩容 Block 数组
-            Array.Resize(ref _blocks, _blocks.Length * 2);
-            int newIndex = _blockCount++;
-            _blocks[newIndex].Initialize(newIndex);
-            _capacity += BlockCapacity;
-            return newIndex;
-        }
-
-        private void ReleaseBlock(int blockIndex)
-        {
-            // 暂时不真正释放，只做标记
-            // 后续可以维护空闲链表
-            _blocks[blockIndex].Dispose();
-            _capacity -= BlockCapacity;
-        }
-
-        #endregion
-
-        #region 迭代器
-
-        /// <summary>
-        /// 迭代器当前项结构（避免使用 ValueTuple 与 Ref of T）
-        /// </summary>
-        public readonly ref struct ComponentEnumeratorItem
-        {
-            public readonly Entity Entity;
-            private readonly Ref<T> _component;
-
-            public ComponentEnumeratorItem(Entity entity, Ref<T> component)
-            {
-                Entity = entity;
-                _component = component;
-            }
-
-            public ref T Component => ref _component.Value;
-        }
-
-        /// <summary>
-        /// ref struct 迭代器 - 支持 foreach
-        /// </summary>
-        public ref struct ComponentEnumerator
-        {
-            private readonly ComponentStorage<T> _storage;
-            private int _blockIndex;
-            private int _elementIndex;
-            private Entity _currentEntity;
-            private Ref<T> _currentComponent;
-
-            public ComponentEnumerator(ComponentStorage<T> storage)
-            {
-                _storage = storage;
-                _blockIndex = 0;
-                _elementIndex = -1;
-                _currentEntity = Entity.None;
-                _currentComponent = default;
-            }
-
-            public bool MoveNext()
-            {
-                while (_blockIndex < _storage._blockCount)
+                ref var block = ref _blocks[i];
+                if (block.Data != null)
                 {
-                    ref var block = ref _storage._blocks[_blockIndex];
-
-                    _elementIndex++;
-                    if (_elementIndex < block.Count)
-                    {
-                        _currentEntity = block.Entities![_elementIndex];
-                        _currentComponent = new Ref<T>(ref block.Components![_elementIndex]);
-                        return true;
-                    }
-
-                    _blockIndex++;
-                    _elementIndex = -1;
+                    NativeMemory.AlignedFree(block.Data);
+                    block.Data = null;
                 }
+                if (block.Entities != null)
+                {
+                    NativeMemory.AlignedFree(block.Entities);
+                    block.Entities = null;
+                }
+            }
+
+            if (_blocks != null)
+            {
+                NativeMemory.Free(_blocks);
+                _blocks = null;
+            }
+
+            if (_freeList != null)
+            {
+                NativeMemory.Free(_freeList);
+                _freeList = null;
+            }
+
+            if (_entityToIndex != null)
+            {
+                NativeMemory.Free(_entityToIndex);
+                _entityToIndex = null;
+            }
+
+            if (_versions != null)
+            {
+                NativeMemory.Free(_versions);
+                _versions = null;
+            }
+
+            _blockCount = 0;
+            _count = 0;
+            _usedCount = 0;
+            _freeListCount = 0;
+        }
+
+        /// <summary>
+        /// 获取块数据（用于批量遍历）
+        /// </summary>
+        public bool GetBlockData(int blockIndex, out Entity* entities, out T* components, out int capacity)
+        {
+            if (blockIndex < 0 || blockIndex >= _blockCount)
+            {
+                entities = null;
+                components = null;
+                capacity = 0;
                 return false;
             }
 
-            public readonly ComponentEnumeratorItem Current =>
-                new ComponentEnumeratorItem(_currentEntity, _currentComponent);
+            ref var block = ref _blocks[blockIndex];
+            entities = block.Entities;
+            components = (T*)block.Data;
+            capacity = _elementsPerBlock;
+            return true;
         }
 
-        #endregion
-
-        #region IDisposable
-
-        public void Dispose()
+        /// <summary>
+        /// 尝试获取块数据（对齐 FrameSync ComponentBlockIterator）
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal bool TryGetBlock(int blockIndex, out byte* data, out Entity* entities, out int count)
         {
-            for (int i = 0; i < _blockCount; i++)
+            if (blockIndex < 0 || blockIndex >= _blockCount)
             {
-                _blocks[i].Dispose();
+                data = null;
+                entities = null;
+                count = 0;
+                return false;
             }
-            _blocks = null!;
-            _blockCount = 0;
-            _count = 0;
-        }
 
-        #endregion
+            ref var block = ref _blocks[blockIndex];
+            data = block.Data;
+            entities = block.Entities;
+
+            // 计算块中的有效元素数量
+            int startIndex = blockIndex * _elementsPerBlock;
+            int endIndex = global::System.Math.Min(startIndex + _elementsPerBlock, _count);
+            count = endIndex - startIndex;
+
+            return count > 0;
+        }
     }
 
     /// <summary>
-    /// 用于返回 ref 的包装结构
+    /// 组件存储异常
     /// </summary>
-    public readonly ref struct Ref<T>
+    public class ComponentStorageException : Exception
     {
-        private readonly ref T _value;
-        public Ref(ref T value) => _value = ref value;
-        public ref T Value => ref _value;
-
-        public static implicit operator T(Ref<T> r) => r._value;
+        public ComponentStorageException(string message) : base(message) { }
+        public ComponentStorageException(string message, Exception inner) : base(message, inner) { }
     }
 }

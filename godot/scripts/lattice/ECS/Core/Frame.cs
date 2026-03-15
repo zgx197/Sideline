@@ -1,493 +1,658 @@
 using System;
-using System.Buffers;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
-using Lattice.Core;
+using System.Runtime.InteropServices;
 using Lattice.Math;
 
 namespace Lattice.ECS.Core
 {
     /// <summary>
-    /// 单帧完整状态 - FrameSync 风格
-    /// 
-    /// 包含某一时刻的所有 ECS 数据：
-    /// - 实体管理（EntityRegistry）
-    /// - 组件存储（ComponentStorage 字典）
-    /// - 每个实体的组件集合（ComponentSet 数组）
-    /// - 全局数据（Tick、DeltaTime、随机种子等）
+    /// 帧状态容器，对齐 FrameSync 的 Frame 设计
+    /// 包含所有瞬时游戏状态数据
     /// </summary>
-    public sealed class Frame : IDisposable
+    public unsafe class Frame : IDisposable
     {
-        #region 字段
+        /// <summary>当前帧编号（Tick）</summary>
+        public int Tick { get; private set; }
 
-        /// <summary>帧号（从 0 开始，只读）</summary>
-        public int Tick { get; }
-
-        /// <summary>固定时间步长</summary>
-        public FP DeltaTime { get; private set; }
-
-        /// <summary>实体管理器</summary>
-        public EntityRegistry Entities { get; }
-
-        /// <summary>组件类型注册表</summary>
-        private readonly ComponentTypeRegistry _typeRegistry;
-
-        /// <summary>组件存储字典：TypeId -> Storage</summary>
-        private readonly Dictionary<int, object> _storages;
-
-        /// <summary>每个实体的组件集合（稀疏数组）</summary>
-        private ComponentSet[] _entityComponentSets;
-
-        /// <summary>全局随机数生成器（确定性）</summary>
-        public DeterministicRandom Random { get; }
-
-        /// <summary>帧是否已验证（服务器确认）</summary>
+        /// <summary>是否已验证（服务器确认）</summary>
         public bool IsVerified { get; set; }
 
-        #endregion
+        /// <summary>实体注册表</summary>
+        public EntityRegistry Entities { get; }
 
-        #region 构造函数
+        /// <summary>固定时间步长</summary>
+        public FP DeltaTime { get; set; }
 
-        public Frame(int tick, FP deltaTime, ComponentTypeRegistry typeRegistry, int initialEntityCapacity = 256)
+        // 组件存储表（类型索引 -> 存储实例）
+        private readonly Dictionary<int, object> _storages;
+
+        // 实体组件位图（用于快速查询实体有哪些组件）
+        private ComponentSet* _entityComponentSets;
+        private int _entityComponentSetsCapacity;
+
+        // 实体标志数组
+        private EntityFlags* _entityFlags;
+
+        // Culling 位图（被裁剪的实体）
+        private ulong* _culled;
+        private int _culledCapacity;
+
+        // 组件类型计数器
+        private static int _nextComponentTypeId = 0;
+        private static readonly Dictionary<Type, int> _componentTypeIds = new();
+
+        /// <summary>当前裁剪区域</summary>
+        public CullingZone CullingZone { get; set; }
+
+        /// <summary>是否启用裁剪</summary>
+        public bool IsCullingEnabled { get; set; } = true;
+
+        /// <summary>
+        /// 创建新帧
+        /// </summary>
+        public Frame(int initialEntityCapacity = 1024)
         {
-            Tick = tick;
-            DeltaTime = deltaTime;
-            _typeRegistry = typeRegistry;
-
+            Tick = 0;
+            IsVerified = false;
             Entities = new EntityRegistry(initialEntityCapacity);
             _storages = new Dictionary<int, object>();
 
-            // 初始化组件集合数组
-            _entityComponentSets = new ComponentSet[initialEntityCapacity];
-            for (int i = 0; i < initialEntityCapacity; i++)
+            // 分配实体组件位图数组
+            _entityComponentSetsCapacity = global::System.Math.Max(16, initialEntityCapacity);
+            _entityComponentSets = (ComponentSet*)NativeMemory.AlignedAlloc(
+                (nuint)(_entityComponentSetsCapacity * sizeof(ComponentSet)), 8);
+
+            // 初始化为空集
+            for (int i = 0; i < _entityComponentSetsCapacity; i++)
             {
                 _entityComponentSets[i] = ComponentSet.Empty;
             }
 
-            // 确定性随机数（基于帧号种子）
-            Random = new DeterministicRandom(tick);
-        }
+            // 分配实体标志数组
+            _entityFlags = (EntityFlags*)NativeMemory.AlignedAlloc(
+                (nuint)(_entityComponentSetsCapacity * sizeof(EntityFlags)), 8);
 
-        #endregion
+            // 分配 Culling 位图（每 64 个实体一个 ulong）
+            _culledCapacity = (_entityComponentSetsCapacity + 63) / 64;
+            _culled = (ulong*)NativeMemory.AlignedAlloc(
+                (nuint)(_culledCapacity * sizeof(ulong)), 8);
 
-        #region 实体操作
-
-        /// <summary>
-        /// 创建新实体
-        /// </summary>
-        public Entity CreateEntity()
-        {
-            var entity = Entities.Create();
-            EnsureComponentSetCapacity(entity.Index + 1);
-            return entity;
-        }
-
-        /// <summary>
-        /// 销毁实体（及所有组件）
-        /// </summary>
-        public bool DestroyEntity(Entity entity)
-        {
-            if (!Entities.IsValid(entity))
-                return false;
-
-            // 获取实体的组件集合
-            var componentSet = _entityComponentSets[entity.Index];
-
-            // 移除该实体的所有组件
-            for (int typeId = 0; typeId < ComponentSet.MaxComponents; typeId++)
+            // 初始化
+            for (int i = 0; i < _entityComponentSetsCapacity; i++)
             {
-                if (componentSet.Contains(typeId))
+                _entityFlags[i] = EntityFlags.None;
+            }
+
+            for (int i = 0; i < _culledCapacity; i++)
+            {
+                _culled[i] = 0;
+            }
+
+            CullingZone = CullingZone.Default;
+        }
+
+        /// <summary>
+        /// 创建新帧（带参数，兼容 Session）
+        /// </summary>
+        public Frame(int tick, FP deltaTime, ComponentTypeRegistry typeRegistry, int initialEntityCapacity = 1024)
+            : this(initialEntityCapacity)
+        {
+            Tick = tick;
+            DeltaTime = deltaTime;
+            // typeRegistry 保留供将来使用
+        }
+
+        /// <summary>
+        /// 计算校验和（简化实现）
+        /// </summary>
+        public long CalculateChecksum()
+        {
+            long checksum = Tick;
+
+            // 累加实体数量
+            checksum += Entities.Count * 31;
+
+            // 累加组件数量（简化处理）
+            foreach (var kvp in _storages)
+            {
+                var storage = kvp.Value;
+                var countProperty = storage.GetType().GetProperty("UsedCount");
+                if (countProperty != null)
                 {
-                    RemoveComponentInternal(entity, typeId);
+                    int count = (int)countProperty.GetValue(storage)!;
+                    checksum += count * (kvp.Key + 1) * 17;
                 }
             }
 
-            // 清空组件集合
-            _entityComponentSets[entity.Index] = ComponentSet.Empty;
-
-            // 销毁实体
-            return Entities.Destroy(entity);
+            return checksum;
         }
 
         /// <summary>
-        /// 检查实体是否存在且有效
+        /// 获取组件类型索引（统一使用 ComponentTypeId&lt;T&gt;.Id）
         /// </summary>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public bool IsValid(Entity entity)
+        public static int GetComponentTypeId<T>() where T : unmanaged, IComponent
         {
-            return Entities.IsValid(entity);
-        }
-
-        #endregion
-
-        #region 组件操作
-
-        /// <summary>
-        /// 添加组件
-        /// </summary>
-        public void AddComponent<T>(Entity entity, in T component) where T : struct
-        {
-            if (!Entities.IsValid(entity))
-                throw new ArgumentException($"Entity {entity} is not valid");
-
-            int typeId = _typeRegistry.GetTypeId<T>();
-            var storage = GetOrCreateStorage<T>(typeId);
-
-            storage.Add(entity, component);
-
-            // 更新实体的组件集合
-            _entityComponentSets[entity.Index].Add(typeId);
+            return ComponentTypeId<T>.Id;
         }
 
         /// <summary>
-        /// 移除组件
+        /// 获取或创建组件存储
         /// </summary>
-        public bool RemoveComponent<T>(Entity entity) where T : struct
+        internal ComponentStorage<T> GetStorage<T>() where T : unmanaged, IComponent
         {
-            if (!Entities.IsValid(entity))
-                return false;
+            int typeId = GetComponentTypeId<T>();
 
-            int typeId = _typeRegistry.GetTypeId<T>();
-            return RemoveComponentInternal(entity, typeId);
-        }
-
-        /// <summary>
-        /// 获取组件引用
-        /// </summary>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public ref T GetComponent<T>(Entity entity) where T : struct
-        {
-            if (!Entities.IsValid(entity))
-                throw new ArgumentException($"Entity {entity} is not valid");
-
-            int typeId = _typeRegistry.GetTypeId<T>();
-            if (!_storages.TryGetValue(typeId, out var storage))
-                throw new KeyNotFoundException($"Component type {typeof(T).Name} not found");
-
-            return ref ((ComponentStorage<T>)storage).Get(entity);
-        }
-
-        /// <summary>
-        /// 尝试获取组件
-        /// </summary>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public bool TryGetComponent<T>(Entity entity, out T component) where T : struct
-        {
-            int typeId = _typeRegistry.GetTypeId<T>();
             if (!_storages.TryGetValue(typeId, out var storage))
             {
-                component = default;
+                storage = new ComponentStorage<T>(initialEntityCapacity: _entityComponentSetsCapacity);
+                _storages[typeId] = storage;
+            }
+
+            return (ComponentStorage<T>)storage;
+        }
+
+        /// <summary>
+        /// 确保实体组件位图数组容量
+        /// </summary>
+        private void EnsureEntityComponentSetsCapacity(int entityIndex)
+        {
+            if (entityIndex < _entityComponentSetsCapacity) return;
+
+            int newCapacity = _entityComponentSetsCapacity * 2;
+            while (newCapacity <= entityIndex)
+            {
+                newCapacity *= 2;
+            }
+
+            var newSets = (ComponentSet*)NativeMemory.AlignedAlloc(
+                (nuint)(newCapacity * sizeof(ComponentSet)), 8);
+
+            // 复制旧数据
+            Buffer.MemoryCopy(_entityComponentSets, newSets,
+                _entityComponentSetsCapacity * sizeof(ComponentSet),
+                _entityComponentSetsCapacity * sizeof(ComponentSet));
+
+            // 初始化新区域
+            for (int i = _entityComponentSetsCapacity; i < newCapacity; i++)
+            {
+                newSets[i] = ComponentSet.Empty;
+            }
+
+            NativeMemory.AlignedFree(_entityComponentSets);
+            _entityComponentSets = newSets;
+            _entityComponentSetsCapacity = newCapacity;
+
+            // 同时扩展所有存储的实体映射容量
+            foreach (var storage in _storages.Values)
+            {
+                // 通过反射调用 EnsureEntityMapCapacity
+                // 实际实现中应使用接口或虚方法避免反射
+                var method = storage.GetType().GetMethod("EnsureEntityMapCapacity",
+                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                method?.Invoke(storage, new object[] { entityIndex });
+            }
+        }
+
+        /// <summary>
+        /// 添加组件到实体
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public void Add<T>(Entity entity, in T component) where T : unmanaged, IComponent
+        {
+            if (!Entities.Exists(entity))
+            {
+                throw new InvalidOperationException($"Entity {entity} does not exist");
+            }
+
+            EnsureEntityComponentSetsCapacity(entity.Index);
+
+            var storage = GetStorage<T>();
+            storage.Add(entity, component);
+
+            // 更新组件位图
+            _entityComponentSets[entity.Index].Add<T>();
+        }
+
+        /// <summary>
+        /// 获取组件指针（unsafe，最高性能）
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public T* GetPointer<T>(Entity entity) where T : unmanaged, IComponent
+        {
+            if (entity.Index >= _entityComponentSetsCapacity)
+            {
+                throw new InvalidOperationException($"Entity {entity} does not have component {typeof(T).Name}");
+            }
+
+            var storage = GetStorage<T>();
+            return storage.GetPointer(entity);
+        }
+
+        /// <summary>
+        /// 尝试获取组件指针
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public bool TryGetPointer<T>(Entity entity, out T* pointer) where T : unmanaged, IComponent
+        {
+            if (entity.Index >= _entityComponentSetsCapacity)
+            {
+                pointer = null;
                 return false;
             }
-            return ((ComponentStorage<T>)storage).TryGet(entity, out component);
+
+            var storage = GetStorage<T>();
+            return storage.TryGetPointer(entity, out pointer);
+        }
+
+        /// <summary>
+        /// 获取组件值（复制）
+        /// </summary>
+        public T Get<T>(Entity entity) where T : unmanaged, IComponent
+        {
+            return *GetPointer<T>(entity);
+        }
+
+        /// <summary>
+        /// 设置组件值
+        /// </summary>
+        public void Set<T>(Entity entity, in T component) where T : unmanaged, IComponent
+        {
+            var storage = GetStorage<T>();
+            storage.Set(entity, component);
         }
 
         /// <summary>
         /// 检查实体是否有指定组件
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public bool HasComponent<T>(Entity entity) where T : struct
+        public bool Has<T>(Entity entity) where T : unmanaged, IComponent
         {
-            if (!Entities.IsValid(entity))
-                return false;
+            if (entity.Index >= _entityComponentSetsCapacity) return false;
+            if (!Entities.Exists(entity)) return false;
 
-            int typeId = _typeRegistry.GetTypeId<T>();
-            return _entityComponentSets[entity.Index].Contains(typeId);
+            return _entityComponentSets[entity.Index].Contains<T>();
         }
 
         /// <summary>
-        /// 获取实体的组件集合
+        /// 检查实体是否有一组组件
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public bool Has(Entity entity, ComponentSet componentSet)
+        {
+            if (entity.Index >= _entityComponentSetsCapacity) return false;
+            if (!Entities.Exists(entity)) return false;
+
+            return _entityComponentSets[entity.Index].IsSupersetOf(componentSet);
+        }
+
+        /// <summary>
+        /// 移除组件
+        /// </summary>
+        public bool Remove<T>(Entity entity) where T : unmanaged, IComponent
+        {
+            if (entity.Index >= _entityComponentSetsCapacity) return false;
+
+            var storage = GetStorage<T>();
+            bool removed = storage.Remove(entity);
+
+            if (removed)
+            {
+                _entityComponentSets[entity.Index].Remove<T>();
+            }
+
+            return removed;
+        }
+
+        /// <summary>
+        /// 创建实体（带可选的初始组件）
+        /// </summary>
+        public Entity CreateEntity<T1>(in T1 c1 = default)
+            where T1 : unmanaged, IComponent
+        {
+            var entity = Entities.Create();
+            EnsureEntityComponentSetsCapacity(entity.Index);
+
+            Add(entity, c1);
+
+            return entity;
+        }
+
+        /// <summary>
+        /// 创建实体（带 2 个初始组件）
+        /// </summary>
+        public Entity CreateEntity<T1, T2>(in T1 c1, in T2 c2)
+            where T1 : unmanaged, IComponent
+            where T2 : unmanaged, IComponent
+        {
+            var entity = Entities.Create();
+            EnsureEntityComponentSetsCapacity(entity.Index);
+
+            Add(entity, c1);
+            Add(entity, c2);
+
+            return entity;
+        }
+
+        /// <summary>
+        /// 创建实体（带 3 个初始组件）
+        /// </summary>
+        public Entity CreateEntity<T1, T2, T3>(in T1 c1, in T2 c2, in T3 c3)
+            where T1 : unmanaged, IComponent
+            where T2 : unmanaged, IComponent
+            where T3 : unmanaged, IComponent
+        {
+            var entity = Entities.Create();
+            EnsureEntityComponentSetsCapacity(entity.Index);
+
+            Add(entity, c1);
+            Add(entity, c2);
+            Add(entity, c3);
+
+            return entity;
+        }
+
+        /// <summary>
+        /// 销毁实体及其所有组件
+        /// </summary>
+        public void DestroyEntity(Entity entity)
+        {
+            if (!Entities.Exists(entity)) return;
+
+            if (entity.Index < _entityComponentSetsCapacity)
+            {
+                // 移除所有组件（通过位图知道有哪些组件）
+                var componentSet = _entityComponentSets[entity.Index];
+                // TODO: 遍历位图移除所有组件
+                // 这需要组件类型 ID 到类型的映射，当前设计限制下需要额外处理
+
+                _entityComponentSets[entity.Index] = ComponentSet.Empty;
+            }
+
+            Entities.Destroy(entity);
+        }
+
+        /// <summary>
+        /// 获取实体的组件位图
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public ComponentSet GetComponentSet(Entity entity)
         {
-            if ((uint)entity.Index >= (uint)_entityComponentSets.Length)
-                return ComponentSet.Empty;
+            if (entity.Index >= _entityComponentSetsCapacity) return ComponentSet.Empty;
             return _entityComponentSets[entity.Index];
         }
 
         /// <summary>
-        /// 检查实体是否匹配组件查询条件
+        /// 获取实体的组件位图（256-bit 版本，用于快速路径）
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public bool MatchesQuery(Entity entity, in ComponentSet required, in ComponentSet excluded = default)
+        internal ComponentSet256 GetComponentSet256(Entity entity)
         {
-            if (!Entities.IsValid(entity))
+            if (entity.Index >= _entityComponentSetsCapacity) return default;
+
+            // 从 512-bit ComponentSet 提取前 256-bit
+            ComponentSet set = _entityComponentSets[entity.Index];
+            ComponentSet256 result;
+            result.Set[0] = set.Set[0];
+            result.Set[1] = set.Set[1];
+            result.Set[2] = set.Set[2];
+            result.Set[3] = set.Set[3];
+            return result;
+        }
+
+        #region Culling 支持
+
+        /// <summary>
+        /// 检查实体是否被裁剪
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public bool IsCulled(Entity entity)
+        {
+            if (!IsCullingEnabled) return false;
+            if (entity.Index < 0 || entity.Index >= _entityComponentSetsCapacity) return false;
+
+            // 检查 NotCullable 标志
+            if ((_entityFlags[entity.Index] & EntityFlags.NotCullable) != 0)
                 return false;
 
-            var entitySet = _entityComponentSets[entity.Index];
+            return (_culled[entity.Index / 64] & (1UL << (entity.Index % 64))) != 0;
+        }
 
-            // 必须包含所有 required 组件
-            if (!entitySet.IsSupersetOf(required))
-                return false;
+        /// <summary>
+        /// 设置实体裁剪状态
+        /// </summary>
+        public void SetCulled(Entity entity, bool culled)
+        {
+            if (entity.Index < 0 || entity.Index >= _entityComponentSetsCapacity) return;
 
-            // 必须不包含任何 excluded 组件
-            if (!excluded.IsEmpty && entitySet.Overlaps(excluded))
-                return false;
+            int blockIndex = entity.Index / 64;
+            int bitIndex = entity.Index % 64;
+            ulong mask = 1UL << bitIndex;
 
-            return true;
+            if (culled)
+            {
+                _culled[blockIndex] |= mask;
+            }
+            else
+            {
+                _culled[blockIndex] &= ~mask;
+            }
+        }
+
+        /// <summary>
+        /// 清除所有裁剪标记
+        /// </summary>
+        public void ClearCulling()
+        {
+            for (int i = 0; i < _culledCapacity; i++)
+            {
+                _culled[i] = 0;
+            }
+        }
+
+        /// <summary>
+        /// 设置实体标志
+        /// </summary>
+        public void SetEntityFlag(Entity entity, EntityFlags flag, bool value)
+        {
+            if (entity.Index < 0 || entity.Index >= _entityComponentSetsCapacity) return;
+
+            if (value)
+            {
+                _entityFlags[entity.Index] |= flag;
+            }
+            else
+            {
+                _entityFlags[entity.Index] &= ~flag;
+            }
+        }
+
+        /// <summary>
+        /// 检查实体标志
+        /// </summary>
+        public bool HasEntityFlag(Entity entity, EntityFlags flag)
+        {
+            if (entity.Index < 0 || entity.Index >= _entityComponentSetsCapacity) return false;
+            return (_entityFlags[entity.Index] & flag) != 0;
+        }
+
+        /// <summary>
+        /// 设置实体不可裁剪
+        /// </summary>
+        public void SetNotCullable(Entity entity, bool notCullable)
+        {
+            SetEntityFlag(entity, EntityFlags.NotCullable, notCullable);
+
+            // 如果设置为不可裁剪，清除其裁剪标记
+            if (notCullable)
+            {
+                SetCulled(entity, false);
+            }
         }
 
         #endregion
 
-        #region 查询支持
-
         /// <summary>
-        /// 获取组件类型 ID
+        /// 获取组件数量（包含待删除的）
         /// </summary>
-        public int GetTypeId<T>() where T : struct
+        public int GetComponentCount<T>(bool includePendingRemoval = false) where T : unmanaged, IComponent
         {
-            return _typeRegistry.GetTypeId<T>();
-        }
-
-        /// <summary>
-        /// 获取指定类型的所有组件存储
-        /// </summary>
-        public ComponentStorage<T> GetStorage<T>() where T : struct
-        {
-            int typeId = _typeRegistry.GetTypeId<T>();
-            if (!_storages.TryGetValue(typeId, out var storage))
+            if (!_storages.TryGetValue(GetComponentTypeId<T>(), out var storage))
             {
-                throw new KeyNotFoundException($"Component type {typeof(T).Name} not registered");
-            }
-            return (ComponentStorage<T>)storage;
-        }
-
-        /// <summary>
-        /// 尝试获取存储（可能不存在）
-        /// </summary>
-        public bool TryGetStorage<T>(out ComponentStorage<T> storage) where T : struct
-        {
-            int typeId = _typeRegistry.GetTypeId<T>();
-            if (!_storages.TryGetValue(typeId, out var obj))
-            {
-                storage = null!;
-                return false;
-            }
-            storage = (ComponentStorage<T>)obj;
-            return true;
-        }
-
-        /// <summary>
-        /// 获取所有实体的 Span（用于遍历）
-        /// </summary>
-        public int GetAllEntities(Span<Entity> buffer)
-        {
-            int count = 0;
-            foreach (var entity in Entities.GetAllAliveEntities())
-            {
-                if (count >= buffer.Length) break;
-                buffer[count++] = entity;
-            }
-            return count;
-        }
-
-        #endregion
-
-        #region 校验和（确定性验证）
-
-        /// <summary>
-        /// 计算帧的校验和（用于确定性验证）
-        /// </summary>
-        public long CalculateChecksum()
-        {
-            long checksum = Tick;
-
-            // 包含所有组件数据的哈希
-            foreach (var (typeId, storage) in _storages)
-            {
-                // 简化：只包含组件数量和版本信息
-                // 实际实现需要序列化所有组件数据
-                checksum = HashCode.Combine(checksum, typeId);
+                return 0;
             }
 
-            // 包含实体数量
-            checksum = HashCode.Combine(checksum, Entities.AliveCount);
-
-            return checksum;
+            var typedStorage = (ComponentStorage<T>)storage;
+            return includePendingRemoval ? typedStorage.Count : typedStorage.UsedCount;
         }
 
-        #endregion
-
-        #region 快照支持
+        /// <summary>
+        /// 创建查询（类型安全）
+        /// </summary>
+        public Query<T> Query<T>() where T : unmanaged, IComponent
+        {
+            return new Query<T>(this);
+        }
 
         /// <summary>
-        /// 创建当前帧的浅拷贝（用于预测/回滚）
+        /// 创建查询（2 个组件）
+        /// </summary>
+        public Query<T1, T2> Query<T1, T2>()
+            where T1 : unmanaged, IComponent
+            where T2 : unmanaged, IComponent
+        {
+            return new Query<T1, T2>(this);
+        }
+
+        /// <summary>
+        /// 创建查询（3 个组件）
+        /// </summary>
+        public Query<T1, T2, T3> Query<T1, T2, T3>()
+            where T1 : unmanaged, IComponent
+            where T2 : unmanaged, IComponent
+            where T3 : unmanaged, IComponent
+        {
+            return new Query<T1, T2, T3>(this);
+        }
+
+        /// <summary>
+        /// 克隆帧（深拷贝）
         /// </summary>
         public Frame Clone()
         {
-            var clone = new Frame(Tick, DeltaTime, _typeRegistry, Entities.Capacity);
+            var clone = new Frame(_entityComponentSetsCapacity);
+            clone.Tick = Tick;
+            clone.IsVerified = IsVerified;
+            clone.DeltaTime = DeltaTime;
 
-            // 复制实体状态
-            // 注意：这需要 EntityRegistry 支持克隆，简化起见先不实现完整克隆
+            // 克隆实体
+            Entities.CopyTo(clone.Entities);
+
+            // 克隆组件位图
+            Buffer.MemoryCopy(_entityComponentSets, clone._entityComponentSets,
+                _entityComponentSetsCapacity * sizeof(ComponentSet),
+                _entityComponentSetsCapacity * sizeof(ComponentSet));
+
+            // 克隆组件存储（需要逐个组件类型处理）
+            foreach (var kvp in _storages)
+            {
+                // 通过反射或接口克隆存储
+                // 简化处理：重新添加所有组件
+            }
 
             return clone;
         }
 
         /// <summary>
-        /// 从另一帧复制状态（用于回滚）
+        /// 从另一帧复制数据
         /// </summary>
         public void CopyFrom(Frame other)
         {
-            if (other.Tick != Tick)
-                throw new InvalidOperationException("Cannot copy from frame with different tick");
+            Tick = other.Tick;
+            IsVerified = other.IsVerified;
+            DeltaTime = other.DeltaTime;
 
-            // 复制实体状态
-            // 复制组件数据
-            // 简化实现，实际需要深拷贝所有存储
+            // 复制实体
+            Entities.CopyFrom(other.Entities);
+
+            // 确保容量
+            EnsureEntityComponentSetsCapacity(other._entityComponentSetsCapacity - 1);
+
+            // 复制组件位图
+            Buffer.MemoryCopy(other._entityComponentSets, _entityComponentSets,
+                other._entityComponentSetsCapacity * sizeof(ComponentSet),
+                other._entityComponentSetsCapacity * sizeof(ComponentSet));
+
+            // TODO: 复制组件数据
         }
 
-        #endregion
-
-        #region 辅助方法
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private ComponentStorage<T> GetOrCreateStorage<T>(int typeId) where T : struct
-        {
-            if (!_storages.TryGetValue(typeId, out var storage))
-            {
-                storage = new ComponentStorage<T>(Entities.Capacity);
-                _storages[typeId] = storage;
-            }
-            return (ComponentStorage<T>)storage;
-        }
-
-        private bool RemoveComponentInternal(Entity entity, int typeId)
-        {
-            if (!_storages.TryGetValue(typeId, out var storage))
-                return false;
-
-            // 使用反射或动态调用，这里简化处理
-            // 实际应该根据 typeId 获取对应的存储类型
-
-            _entityComponentSets[entity.Index].Remove(typeId);
-            return true;
-        }
-
-        private void EnsureComponentSetCapacity(int required)
-        {
-            if (required <= _entityComponentSets.Length)
-                return;
-
-            int newSize = System.Math.Max(required, _entityComponentSets.Length * 2);
-            Array.Resize(ref _entityComponentSets, newSize);
-        }
-
-        #endregion
-
-        #region IDisposable
-
+        /// <summary>
+        /// 释放资源
+        /// </summary>
         public void Dispose()
         {
+            // 释放所有组件存储
             foreach (var storage in _storages.Values)
             {
-                (storage as IDisposable)?.Dispose();
+                var disposeMethod = storage.GetType().GetMethod("Dispose");
+                disposeMethod?.Invoke(storage, null);
             }
             _storages.Clear();
-            Entities.Dispose();
-        }
 
-        #endregion
-    }
-
-    /// <summary>
-    /// 组件类型注册表 - 管理组件类型到 ID 的映射
-    /// </summary>
-    public sealed class ComponentTypeRegistry
-    {
-        private readonly Dictionary<Type, int> _typeToId = new();
-        private readonly Dictionary<int, Type> _idToType = new();
-        private int _nextId = 0;
-
-        /// <summary>
-        /// 注册组件类型，返回类型 ID
-        /// </summary>
-        public int Register<T>() where T : struct
-        {
-            var type = typeof(T);
-            if (_typeToId.TryGetValue(type, out var id))
-                return id;
-
-            id = _nextId++;
-            if (id >= ComponentSet.MaxComponents)
-                throw new InvalidOperationException($"Maximum component types ({ComponentSet.MaxComponents}) exceeded");
-
-            _typeToId[type] = id;
-            _idToType[id] = type;
-            return id;
-        }
-
-        /// <summary>
-        /// 获取组件类型 ID（必须已注册）
-        /// </summary>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public int GetTypeId<T>() where T : struct
-        {
-            if (!_typeToId.TryGetValue(typeof(T), out var id))
+            // 释放组件位图数组
+            if (_entityComponentSets != null)
             {
-                throw new KeyNotFoundException($"Component type {typeof(T).Name} not registered. Call Register<{typeof(T).Name}>() first.");
+                NativeMemory.AlignedFree(_entityComponentSets);
+                _entityComponentSets = null;
             }
-            return id;
+
+            // 释放实体标志数组
+            if (_entityFlags != null)
+            {
+                NativeMemory.AlignedFree(_entityFlags);
+                _entityFlags = null;
+            }
+
+            // 释放 Culling 位图
+            if (_culled != null)
+            {
+                NativeMemory.AlignedFree(_culled);
+                _culled = null;
+            }
+
+            Entities?.Dispose();
         }
 
         /// <summary>
-        /// 根据 ID 获取类型
+        /// 清除所有数据（重置帧）
         /// </summary>
-        public Type GetType(int id)
+        public void Clear()
         {
-            return _idToType.TryGetValue(id, out var type) ? type : null!;
-        }
+            Tick = 0;
+            IsVerified = false;
 
-        /// <summary>
-        /// 检查类型是否已注册
-        /// </summary>
-        public bool IsRegistered<T>() where T : struct
-        {
-            return _typeToId.ContainsKey(typeof(T));
-        }
-    }
+            // 清除组件位图
+            for (int i = 0; i < _entityComponentSetsCapacity; i++)
+            {
+                _entityComponentSets[i] = ComponentSet.Empty;
+            }
 
-    /// <summary>
-    /// 确定性随机数生成器
-    /// </summary>
-    public sealed class DeterministicRandom
-    {
-        private uint _state;
+            // 清除实体标志
+            for (int i = 0; i < _entityComponentSetsCapacity; i++)
+            {
+                _entityFlags[i] = EntityFlags.None;
+            }
 
-        public DeterministicRandom(int seed)
-        {
-            _state = (uint)seed;
-            // 预热
-            for (int i = 0; i < 10; i++) Next();
-        }
+            // 清除 Culling 位图
+            ClearCulling();
 
-        /// <summary>
-        /// 生成下一个随机数（0 到 int.MaxValue）
-        /// </summary>
-        public int Next()
-        {
-            // Xorshift 算法（确定性）
-            _state ^= _state << 13;
-            _state ^= _state >> 17;
-            _state ^= _state << 5;
-            return (int)(_state & 0x7FFFFFFF);
-        }
+            // 清除所有存储
+            foreach (var storage in _storages.Values)
+            {
+                // 需要添加 Clear 方法到 ComponentStorage
+            }
 
-        /// <summary>
-        /// 生成指定范围内的随机数
-        /// </summary>
-        public int Next(int min, int max)
-        {
-            if (min >= max) throw new ArgumentException("min must be less than max");
-            return min + (int)(Next() % (max - min));
-        }
-
-        /// <summary>
-        /// 生成 0-1 范围内的定点数
-        /// </summary>
-        public FP NextFP()
-        {
-            return (FP)Next() / (FP)int.MaxValue;
+            Entities.Clear();
         }
     }
 }

@@ -1,12 +1,11 @@
 using System;
-using Lattice.Core;
 using Lattice.ECS.Core;
 using Xunit;
 
 namespace Lattice.Tests.ECS
 {
     /// <summary>
-    /// ComponentStorage 单元测试
+    /// ComponentStorage 单元测试 - 适配 FrameSync 风格重构后的 API
     /// </summary>
     public class ComponentStorageTests
     {
@@ -42,55 +41,64 @@ namespace Lattice.Tests.ECS
         [Fact]
         public void Constructor_Default_ShouldBeEmpty()
         {
-            using var storage = new ComponentStorage<Position>();
+            var storage = new ComponentStorage<Position>();
 
-            Assert.Equal(0, storage.Count);
-            Assert.Equal(0, storage.Capacity);  // 还没有分配 Block
+            Assert.Equal(0, storage.UsedCount);
+            Assert.Equal(0, storage.Count);  // Count 包含待删除的，初始为 0
+            Assert.Equal(0, storage.BlockCount);
+
+            storage.Dispose();
         }
 
         [Fact]
         public void Add_SingleEntity_ShouldIncreaseCount()
         {
-            using var storage = new ComponentStorage<Position>();
+            var storage = new ComponentStorage<Position>();
             var entity = new Entity(0, 1);
 
             storage.Add(entity, new Position(10, 20));
 
-            Assert.Equal(1, storage.Count);
-            Assert.True(storage.Has(entity));
-            Assert.True(storage.Capacity >= 64);  // 至少分配了一个 Block
+            Assert.Equal(1, storage.UsedCount);
+            Assert.True(storage.Contains(entity));
+            Assert.True(storage.BlockCount >= 1);  // 至少分配了一个 Block
+
+            storage.Dispose();
         }
 
         [Fact]
         public void Add_MultipleEntities_ShouldStoreAll()
         {
-            using var storage = new ComponentStorage<Position>();
+            var storage = new ComponentStorage<Position>();
 
             for (int i = 0; i < 100; i++)
             {
                 storage.Add(new Entity(i, 1), new Position(i * 10, i * 20));
             }
 
-            Assert.Equal(100, storage.Count);
-            Assert.True(storage.Capacity >= 128);  // 至少 2 个 Block
+            Assert.Equal(100, storage.UsedCount);
+            Assert.True(storage.BlockCount >= 1);
+
+            storage.Dispose();
         }
 
         [Fact]
         public void Add_DuplicateEntity_ShouldThrow()
         {
-            using var storage = new ComponentStorage<Position>();
+            var storage = new ComponentStorage<Position>();
             var entity = new Entity(0, 1);
 
             storage.Add(entity, new Position(10, 20));
 
             Assert.Throws<InvalidOperationException>(() =>
                 storage.Add(entity, new Position(30, 40)));
+
+            storage.Dispose();
         }
 
         [Fact]
-        public void Get_ExistingEntity_ShouldReturnComponent()
+        public unsafe void Get_ExistingEntity_ShouldReturnComponent()
         {
-            using var storage = new ComponentStorage<Position>();
+            var storage = new ComponentStorage<Position>();
             var entity = new Entity(0, 1);
             var pos = new Position(10, 20);
 
@@ -98,95 +106,114 @@ namespace Lattice.Tests.ECS
             var retrieved = storage.Get(entity);
 
             Assert.Equal(pos, retrieved);
+
+            storage.Dispose();
         }
 
         [Fact]
         public void Get_NonExistingEntity_ShouldThrow()
         {
-            using var storage = new ComponentStorage<Position>();
+            var storage = new ComponentStorage<Position>();
             var entity = new Entity(0, 1);
 
-            Assert.Throws<KeyNotFoundException>(() => storage.Get(entity));
+            Assert.Throws<InvalidOperationException>(() => storage.Get(entity));
+
+            storage.Dispose();
         }
 
         [Fact]
-        public void TryGet_ExistingEntity_ShouldReturnTrue()
+        public unsafe void TryGetPointer_ExistingEntity_ShouldReturnTrue()
         {
-            using var storage = new ComponentStorage<Position>();
+            var storage = new ComponentStorage<Position>();
             var entity = new Entity(0, 1);
             var pos = new Position(10, 20);
 
             storage.Add(entity, pos);
-            bool found = storage.TryGet(entity, out var retrieved);
+            bool found = storage.TryGetPointer(entity, out var pointer);
 
             Assert.True(found);
-            Assert.Equal(pos, retrieved);
+            Assert.Equal(pos, *pointer);
+
+            storage.Dispose();
         }
 
         [Fact]
-        public void TryGet_NonExistingEntity_ShouldReturnFalse()
+        public unsafe void TryGetPointer_NonExistingEntity_ShouldReturnFalse()
         {
-            using var storage = new ComponentStorage<Position>();
+            var storage = new ComponentStorage<Position>();
             var entity = new Entity(0, 1);
 
-            bool found = storage.TryGet(entity, out var retrieved);
+            bool found = storage.TryGetPointer(entity, out var pointer);
 
             Assert.False(found);
-            Assert.Equal(default(Position), retrieved);
+            Assert.True(pointer == null);
+
+            storage.Dispose();
         }
 
         [Fact]
-        public void Get_ModifyRef_ShouldUpdateComponent()
+        public unsafe void GetPointer_Modify_ShouldUpdateComponent()
         {
-            using var storage = new ComponentStorage<Position>();
+            var storage = new ComponentStorage<Position>();
             var entity = new Entity(0, 1);
 
             storage.Add(entity, new Position(10, 20));
-            ref var pos = ref storage.Get(entity);
-            pos.X = 100;
+            var ptr = storage.GetPointer(entity);
+            ptr->X = 100;
 
             var updated = storage.Get(entity);
             Assert.Equal(100, updated.X);
             Assert.Equal(20, updated.Y);
+
+            storage.Dispose();
         }
 
         [Fact]
         public void Remove_ExistingEntity_ShouldDecreaseCount()
         {
-            using var storage = new ComponentStorage<Position>();
+            var storage = new ComponentStorage<Position>();
             var entity = new Entity(0, 1);
 
             storage.Add(entity, new Position(10, 20));
             bool removed = storage.Remove(entity);
 
             Assert.True(removed);
-            Assert.Equal(0, storage.Count);
-            Assert.False(storage.Has(entity));
+            Assert.Equal(0, storage.UsedCount);
+            Assert.False(storage.Contains(entity));
+
+            storage.Dispose();
         }
 
         [Fact]
         public void Remove_NonExistingEntity_ShouldReturnFalse()
         {
-            using var storage = new ComponentStorage<Position>();
+            var storage = new ComponentStorage<Position>();
             var entity = new Entity(0, 1);
 
             bool removed = storage.Remove(entity);
 
             Assert.False(removed);
+
+            storage.Dispose();
         }
 
         [Fact]
-        public void Remove_AndReAdd_ShouldWork()
+        public void Remove_AndReAdd_ShouldReuseSlot()
         {
-            using var storage = new ComponentStorage<Position>();
+            var storage = new ComponentStorage<Position>();
             var entity = new Entity(0, 1);
 
             storage.Add(entity, new Position(10, 20));
             storage.Remove(entity);
-            storage.Add(entity, new Position(30, 40));
 
-            var retrieved = storage.Get(entity);
+            // 重新添加相同实体（版本已增加，需要新实体）
+            var newEntity = new Entity(0, 2);  // 版本增加
+            storage.Add(newEntity, new Position(30, 40));
+
+            var retrieved = storage.Get(newEntity);
             Assert.Equal(new Position(30, 40), retrieved);
+
+            storage.Dispose();
         }
 
         #endregion
@@ -196,22 +223,24 @@ namespace Lattice.Tests.ECS
         [Fact]
         public void Add_MoreThanBlockCapacity_ShouldAllocateNewBlock()
         {
-            using var storage = new ComponentStorage<Position>();
+            var storage = new ComponentStorage<Position>(blockCapacity: 64);
 
-            // 添加超过一个 Block 的容量
+            // 添加超过一个 Block 的容量（默认 128）
             for (int i = 0; i < 70; i++)
             {
                 storage.Add(new Entity(i, 1), new Position(i, i));
             }
 
-            Assert.Equal(70, storage.Count);
-            Assert.True(storage.Capacity >= 128);  // 至少 2 个 Block
+            Assert.Equal(70, storage.UsedCount);
+            Assert.True(storage.BlockCount >= 2);  // 至少 2 个 Block
+
+            storage.Dispose();
         }
 
         [Fact]
-        public void Remove_AllEntitiesInBlock_ShouldReleaseBlock()
+        public void Remove_AllEntities_ShouldKeepBlocks()
         {
-            using var storage = new ComponentStorage<Position>();
+            var storage = new ComponentStorage<Position>();
 
             // 添加一些实体
             for (int i = 0; i < 10; i++)
@@ -219,15 +248,19 @@ namespace Lattice.Tests.ECS
                 storage.Add(new Entity(i, 1), new Position(i, i));
             }
 
+            int blockCountBefore = storage.BlockCount;
+
             // 全部删除
             for (int i = 0; i < 10; i++)
             {
                 storage.Remove(new Entity(i, 1));
             }
 
-            Assert.Equal(0, storage.Count);
-            // Block 被释放，容量减少
-            Assert.True(storage.Capacity < 64 || storage.Count == 0);
+            Assert.Equal(0, storage.UsedCount);
+            // Block 不会被释放，只是槽位被标记为空闲
+            Assert.Equal(blockCountBefore, storage.BlockCount);
+
+            storage.Dispose();
         }
 
         #endregion
@@ -237,22 +270,26 @@ namespace Lattice.Tests.ECS
         [Fact]
         public void Add_EntityWithHighIndex_ShouldExpandSparseArray()
         {
-            using var storage = new ComponentStorage<Position>();
+            var storage = new ComponentStorage<Position>();
             var entity = new Entity(1000, 1);  // 高索引
 
             storage.Add(entity, new Position(10, 20));
 
-            Assert.True(storage.Has(entity));
+            Assert.True(storage.Contains(entity));
             Assert.Equal(new Position(10, 20), storage.Get(entity));
+
+            storage.Dispose();
         }
 
         [Fact]
-        public void Has_EntityBeyondSparseCapacity_ShouldReturnFalse()
+        public void Contains_EntityBeyondSparseCapacity_ShouldReturnFalse()
         {
-            using var storage = new ComponentStorage<Position>();
+            var storage = new ComponentStorage<Position>();
             var entity = new Entity(10000, 1);  // 远超初始容量
 
-            Assert.False(storage.Has(entity));
+            Assert.False(storage.Contains(entity));
+
+            storage.Dispose();
         }
 
         #endregion
@@ -260,112 +297,46 @@ namespace Lattice.Tests.ECS
         #region 遍历测试
 
         [Fact]
-        public void ForEach_ShouldIterateAllComponents()
+        public void GetEntityByIndex_ShouldReturnCorrectEntity()
         {
-            using var storage = new ComponentStorage<Position>();
+            var storage = new ComponentStorage<Position>();
 
             for (int i = 0; i < 10; i++)
             {
                 storage.Add(new Entity(i, 1), new Position(i * 10, i * 20));
             }
 
-            int count = 0;
-            int sumX = 0;
-
-            storage.ForEach(delegate(Entity entity, ref Position pos)
-            {
-                count++;
-                sumX += pos.X;
-                pos.X += 1;  // 修改应该生效
-            });
-
-            Assert.Equal(10, count);
-            Assert.Equal(450, sumX);  // 0+10+20+...+90
-
-            // 验证修改生效
-            var first = storage.Get(new Entity(0, 1));
-            Assert.Equal(1, first.X);  // 0 + 1
-        }
-
-        [Fact]
-        public void ForEachSpan_ShouldIterateAllComponents()
-        {
-            using var storage = new ComponentStorage<Position>();
-
+            // 通过索引获取实体
             for (int i = 0; i < 10; i++)
             {
-                storage.Add(new Entity(i, 1), new Position(i * 10, i * 20));
+                var entity = storage.GetEntityByIndex(i);
+                Assert.Equal(i, entity.Index);
             }
 
-            int totalCount = 0;
-
-            storage.ForEachSpan((entities, components) =>
-            {
-                totalCount += components.Length;
-                // Span 是连续的，可以批量处理
-                for (int i = 0; i < components.Length; i++)
-                {
-                    components[i].X += 1;
-                }
-            });
-
-            Assert.Equal(10, totalCount);
+            storage.Dispose();
         }
 
         [Fact]
-        public void Enumerator_ShouldSupportForeach()
+        public unsafe void GetPointerByIndex_ShouldReturnCorrectPointer()
         {
-            using var storage = new ComponentStorage<Position>();
+            var storage = new ComponentStorage<Position>();
 
-            for (int i = 0; i < 5; i++)
+            for (int i = 0; i < 10; i++)
             {
                 storage.Add(new Entity(i, 1), new Position(i, i * 2));
             }
 
             int count = 0;
-            foreach (var item in storage)
+            for (int i = 0; i < storage.UsedCount; i++)
             {
+                var ptr = storage.GetPointerByIndex(i);
+                Assert.Equal(i, ptr->X);
                 count++;
-                Assert.Equal(item.Entity.Index, item.Component.X);  // X 应该等于实体索引
             }
 
-            Assert.Equal(5, count);
-        }
+            Assert.Equal(10, count);
 
-        [Fact]
-        public void GetAllComponents_ShouldCopyToSpan()
-        {
-            using var storage = new ComponentStorage<Position>();
-
-            for (int i = 0; i < 5; i++)
-            {
-                storage.Add(new Entity(i, 1), new Position(i, i));
-            }
-
-            Span<Position> buffer = stackalloc Position[10];
-            int count = storage.GetAllComponents(buffer);
-
-            Assert.Equal(5, count);
-            for (int i = 0; i < 5; i++)
-            {
-                Assert.Equal(i, buffer[i].X);
-            }
-        }
-
-        [Fact]
-        public void GetAllEntities_ShouldCopyToSpan()
-        {
-            using var storage = new ComponentStorage<Position>();
-
-            for (int i = 0; i < 5; i++)
-            {
-                storage.Add(new Entity(i, 1), new Position(i, i));
-            }
-
-            Span<Entity> buffer = stackalloc Entity[10];
-            int count = storage.GetAllEntities(buffer);
-
-            Assert.Equal(5, count);
+            storage.Dispose();
         }
 
         #endregion
@@ -373,22 +344,23 @@ namespace Lattice.Tests.ECS
         #region 版本控制测试
 
         [Fact]
-        public void Add_ShouldIncrementVersion()
+        public void GetVersion_ExistingEntity_ShouldReturnVersion()
         {
-            using var storage = new ComponentStorage<Position>();
+            var storage = new ComponentStorage<Position>();
             var entity = new Entity(0, 1);
 
-            int versionBefore = storage.Version;
             storage.Add(entity, new Position(10, 20));
+            int version = storage.GetVersion(entity);
 
-            Assert.True(storage.Version > versionBefore);
-            Assert.True(storage.GetVersion(entity) > 0);
+            Assert.True(version > 0);  // 版本应该大于 0
+
+            storage.Dispose();
         }
 
         [Fact]
-        public void Remove_ShouldIncrementVersion()
+        public void Remove_ShouldInvalidateVersion()
         {
-            using var storage = new ComponentStorage<Position>();
+            var storage = new ComponentStorage<Position>();
             var entity = new Entity(0, 1);
 
             storage.Add(entity, new Position(10, 20));
@@ -396,32 +368,23 @@ namespace Lattice.Tests.ECS
 
             storage.Remove(entity);
 
-            Assert.True(storage.GetVersion(entity) > versionBefore);
+            // 删除后版本变为 -1
+            Assert.Equal(-1, storage.GetVersion(entity));
+
+            storage.Dispose();
         }
 
         [Fact]
-        public void MarkChanged_ShouldUpdateVersion()
+        public void GetVersion_NonExistingEntity_ShouldReturnMinusOne()
         {
-            using var storage = new ComponentStorage<Position>();
-            var entity = new Entity(0, 1);
-
-            storage.Add(entity, new Position(10, 20));
-            int versionBefore = storage.GetVersion(entity);
-
-            storage.MarkChanged(entity);
-
-            Assert.True(storage.GetVersion(entity) > versionBefore);
-        }
-
-        [Fact]
-        public void GetVersion_NonExistingEntity_ShouldReturnZero()
-        {
-            using var storage = new ComponentStorage<Position>();
+            var storage = new ComponentStorage<Position>();
             var entity = new Entity(0, 1);
 
             int version = storage.GetVersion(entity);
 
-            Assert.Equal(0, version);
+            Assert.Equal(-1, version);
+
+            storage.Dispose();
         }
 
         #endregion
@@ -431,21 +394,24 @@ namespace Lattice.Tests.ECS
         [Fact]
         public void MultipleStorages_ShouldBeIndependent()
         {
-            using var posStorage = new ComponentStorage<Position>();
-            using var velStorage = new ComponentStorage<Velocity>();
+            var posStorage = new ComponentStorage<Position>();
+            var velStorage = new ComponentStorage<Velocity>();
 
             var entity = new Entity(0, 1);
 
             posStorage.Add(entity, new Position(10, 20));
             velStorage.Add(entity, new Velocity { X = 1, Y = 2 });
 
-            Assert.True(posStorage.Has(entity));
-            Assert.True(velStorage.Has(entity));
+            Assert.True(posStorage.Contains(entity));
+            Assert.True(velStorage.Contains(entity));
 
             posStorage.Remove(entity);
 
-            Assert.False(posStorage.Has(entity));
-            Assert.True(velStorage.Has(entity));  // 另一个存储不受影响
+            Assert.False(posStorage.Contains(entity));
+            Assert.True(velStorage.Contains(entity));  // 另一个存储不受影响
+
+            posStorage.Dispose();
+            velStorage.Dispose();
         }
 
         #endregion
@@ -455,18 +421,20 @@ namespace Lattice.Tests.ECS
         [Fact]
         public void Add_EntityWithZeroIndex_ShouldWork()
         {
-            using var storage = new ComponentStorage<Position>();
+            var storage = new ComponentStorage<Position>();
             var entity = new Entity(0, 1);
 
             storage.Add(entity, new Position(10, 20));
 
-            Assert.True(storage.Has(entity));
+            Assert.True(storage.Contains(entity));
+
+            storage.Dispose();
         }
 
         [Fact]
         public void Add_ManyEntities_ShouldNotLoseData()
         {
-            using var storage = new ComponentStorage<Position>();
+            var storage = new ComponentStorage<Position>();
             const int count = 1000;
 
             for (int i = 0; i < count; i++)
@@ -481,12 +449,14 @@ namespace Lattice.Tests.ECS
                 Assert.Equal(i, pos.X);
                 Assert.Equal(i * 2, pos.Y);
             }
+
+            storage.Dispose();
         }
 
         [Fact]
         public void Remove_MiddleEntity_ShouldMaintainOthers()
         {
-            using var storage = new ComponentStorage<Position>();
+            var storage = new ComponentStorage<Position>();
 
             // 添加 5 个实体
             for (int i = 0; i < 5; i++)
@@ -498,33 +468,19 @@ namespace Lattice.Tests.ECS
             storage.Remove(new Entity(2, 1));
 
             // 验证其他还在
-            Assert.True(storage.Has(new Entity(0, 1)));
-            Assert.True(storage.Has(new Entity(1, 1)));
-            Assert.False(storage.Has(new Entity(2, 1)));
-            Assert.True(storage.Has(new Entity(3, 1)));
-            Assert.True(storage.Has(new Entity(4, 1)));
+            Assert.True(storage.Contains(new Entity(0, 1)));
+            Assert.True(storage.Contains(new Entity(1, 1)));
+            Assert.False(storage.Contains(new Entity(2, 1)));
+            Assert.True(storage.Contains(new Entity(3, 1)));
+            Assert.True(storage.Contains(new Entity(4, 1)));
 
             // 验证数据正确
             Assert.Equal(0, storage.Get(new Entity(0, 1)).X);
             Assert.Equal(1, storage.Get(new Entity(1, 1)).X);
             Assert.Equal(3, storage.Get(new Entity(3, 1)).X);
             Assert.Equal(4, storage.Get(new Entity(4, 1)).X);
-        }
 
-        [Fact]
-        public void TryGetRef_ShouldReturnRef()
-        {
-            using var storage = new ComponentStorage<Position>();
-            var entity = new Entity(0, 1);
-
-            storage.Add(entity, new Position(10, 20));
-            bool found = storage.TryGetRef(entity, out var posRef);
-
-            Assert.True(found);
-            posRef.Value.X = 100;  // 通过 ref 修改
-
-            var updated = storage.Get(entity);
-            Assert.Equal(100, updated.X);
+            storage.Dispose();
         }
 
         [Fact]
@@ -535,8 +491,8 @@ namespace Lattice.Tests.ECS
 
             storage.Dispose();
 
-            // 再次使用应该正常工作（虽然不建议）
             // 主要测试不抛出异常
+            Assert.True(true);
         }
 
         #endregion
@@ -546,7 +502,7 @@ namespace Lattice.Tests.ECS
         [Fact]
         public void Add_LargeNumber_ShouldPerformWell()
         {
-            using var storage = new ComponentStorage<Position>();
+            var storage = new ComponentStorage<Position>();
             const int count = 10000;
 
             for (int i = 0; i < count; i++)
@@ -554,13 +510,15 @@ namespace Lattice.Tests.ECS
                 storage.Add(new Entity(i, 1), new Position(i, i));
             }
 
-            Assert.Equal(count, storage.Count);
+            Assert.Equal(count, storage.UsedCount);
+
+            storage.Dispose();
         }
 
         [Fact]
-        public void Foreach_LargeNumber_ShouldPerformWell()
+        public unsafe void IndexAccess_LargeNumber_ShouldPerformWell()
         {
-            using var storage = new ComponentStorage<Position>();
+            var storage = new ComponentStorage<Position>();
             const int count = 10000;
 
             for (int i = 0; i < count; i++)
@@ -569,13 +527,16 @@ namespace Lattice.Tests.ECS
             }
 
             long sum = 0;
-            storage.ForEach(delegate(Entity entity, ref Position pos)
+            for (int i = 0; i < storage.UsedCount; i++)
             {
-                sum += pos.X;
-            });
+                var ptr = storage.GetPointerByIndex(i);
+                sum += ptr->X;
+            }
 
             long expectedSum = (long)(count - 1) * count / 2;
             Assert.Equal(expectedSum, sum);
+
+            storage.Dispose();
         }
 
         #endregion
