@@ -8,15 +8,15 @@ on:
     branches: [ main ]
     paths:
       - 'godot/scripts/lattice/**'
-      - 'godot/Lattice.Tests/**'
-      - 'godot/Lattice.Benchmarks/**'
+      - 'godot/scripts/lattice/Tests/**'
+      - 'godot/scripts/lattice/Lattice.Tests.csproj'
       - '.github/workflows/**'
   pull_request:
     branches: [ main ]
     paths:
       - 'godot/scripts/lattice/**'
-      - 'godot/Lattice.Tests/**'
-      - 'godot/Lattice.Benchmarks/**'
+      - 'godot/scripts/lattice/Tests/**'
+      - 'godot/scripts/lattice/Lattice.Tests.csproj'
 
 env:
   DOTNET_VERSION: '8.0.x'
@@ -86,37 +86,37 @@ jobs:
       uses: actions/cache@v4
       with:
         path: ~/.nuget/packages
-        key: ${{ runner.os }}-${{ matrix.arch }}-${{ matrix.configuration }}-nuget-${{ hashFiles('**/Lattice.Tests.csproj') }}
+        key: ${{ runner.os }}-${{ matrix.arch }}-${{ matrix.configuration }}-nuget-${{ hashFiles('**/Lattice.Tests.csproj', '**/Lattice.csproj') }}
         restore-keys: |
           ${{ runner.os }}-${{ matrix.arch }}-nuget-
           ${{ runner.os }}-nuget-
 
     - name: Restore dependencies
       run: |
-        cd godot/Lattice.Tests
+        cd godot/scripts/lattice/Tests
         dotnet restore
 
     - name: Build (${{ matrix.configuration }})
       run: |
-        cd godot/Lattice.Tests
+        cd godot/scripts/lattice/Tests
         dotnet build --no-restore --configuration ${{ matrix.configuration }}
 
     # 运行所有测试（包括 SIMD 和 Unsafe）
     - name: Test (${{ matrix.configuration }})
       run: |
-        cd godot/Lattice.Tests
+        cd godot/scripts/lattice/Tests
         dotnet test --no-build --verbosity normal --configuration ${{ matrix.configuration }}
 
     # SIMD 专项测试
     - name: SIMD Tests
       run: |
-        cd godot/Lattice.Tests
+        cd godot/scripts/lattice/Tests
         dotnet test --no-build --configuration ${{ matrix.configuration }} --filter "FullyQualifiedName~SIMD"
 
     # Unsafe 代码测试
     - name: Unsafe Code Tests
       run: |
-        cd godot/Lattice.Tests
+        cd godot/scripts/lattice/Tests
         dotnet test --no-build --configuration ${{ matrix.configuration }} --filter "FullyQualifiedName~Unsafe"
 
     # 本地确定性验证（单平台内多次运行一致性）
@@ -125,7 +125,7 @@ jobs:
       shell: bash
       run: |
         set -e
-        cd godot/Lattice.Tests
+        cd godot/scripts/lattice/Tests
         
         echo "=== Local Determinism Verification ==="
         
@@ -177,7 +177,7 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: test-results-${{ matrix.os }}-${{ matrix.configuration }}${{ matrix.arch && format('-{0}', matrix.arch) || '' }}
-        path: godot/Lattice.Tests/test-results/
+        path: godot/scripts/lattice/Tests/test-results/
         retention-days: 1
         if-no-files-found: ignore
 
@@ -199,19 +199,19 @@ jobs:
 
     - name: Restore dependencies
       run: |
-        cd godot/Lattice.Tests
+        cd godot/scripts/lattice/Tests
         dotnet restore
 
     - name: Build (Release)
       run: |
-        cd godot/Lattice.Tests
+        cd godot/scripts/lattice/Tests
         dotnet build --no-restore --configuration Release
 
     # 运行确定性测试并捕获输出
     - name: Run Determinism Tests with Checksums
       shell: bash
       run: |
-        cd godot/Lattice.Tests
+        cd godot/scripts/lattice/Tests
         
         # 使用固定种子运行测试，输出详细日志和校验和
         dotnet test --configuration Release \
@@ -239,8 +239,8 @@ jobs:
       with:
         name: determinism-linux-checksums
         path: |
-          godot/Lattice.Tests/checksums.txt
-          godot/Lattice.Tests/cross-platform-results/
+          godot/scripts/lattice/Tests/checksums.txt
+          godot/scripts/lattice/Tests/cross-platform-results/
         retention-days: 1
 
     # 模拟跨平台比较（实际项目中这里会上传并与 Windows/macOS 结果比较）
@@ -276,19 +276,19 @@ jobs:
 
     - name: Restore dependencies
       run: |
-        cd godot/Lattice.Tests
+        cd godot/scripts/lattice/Tests
         dotnet restore
 
     - name: Build (Release)
       run: |
-        cd godot/Lattice.Tests
+        cd godot/scripts/lattice/Tests
         dotnet build --no-restore --configuration Release
 
     # 检查 SIMD 硬件加速状态
     - name: Check SIMD Hardware Acceleration
       shell: bash
       run: |
-        cd godot/Lattice.Tests
+        cd godot/scripts/lattice/Tests
         
         echo "=== SIMD Hardware Acceleration Check ==="
         dotnet test --configuration Release \
@@ -313,7 +313,7 @@ jobs:
     - name: SIMD vs Scalar Comparison
       shell: bash
       run: |
-        cd godot/Lattice.Tests
+        cd godot/scripts/lattice/Tests
         
         echo "=== SIMD vs Scalar Results Comparison ==="
         
@@ -334,7 +334,7 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: simd-results-${{ matrix.os }}
-        path: godot/Lattice.Tests/simd-results/
+        path: godot/scripts/lattice/Tests/simd-results/
         retention-days: 7
         if-no-files-found: ignore
 
@@ -359,13 +359,13 @@ jobs:
 
     - name: Restore dependencies
       run: |
-        cd godot/Lattice.Tests
+        cd godot/scripts/lattice/Tests
         dotnet restore
 
     # 验证 Unsafe 代码能够编译
     - name: Compile Unsafe Code
       run: |
-        cd godot/Lattice.Tests
+        cd godot/scripts/lattice/Tests
         echo "=== Compiling with Unsafe Code Support ==="
         dotnet build --no-restore --configuration ${{ matrix.configuration }} -p:AllowUnsafeBlocks=true
         echo "✓ Unsafe code compiled successfully on ${{ matrix.os }} (${{ matrix.configuration }})"
@@ -374,7 +374,7 @@ jobs:
     - name: Run Unsafe Tests
       shell: bash
       run: |
-        cd godot/Lattice.Tests
+        cd godot/scripts/lattice/Tests
         dotnet test --no-build --configuration ${{ matrix.configuration }} \
           --filter "FullyQualifiedName~Unsafe" \
           --verbosity normal
@@ -434,18 +434,18 @@ jobs:
 
     - name: Restore dependencies
       run: |
-        cd godot/Lattice.Tests
+        cd godot/scripts/lattice/Tests
         dotnet restore
 
     - name: Build
       run: |
-        cd godot/Lattice.Tests
+        cd godot/scripts/lattice/Tests
         dotnet build --configuration Release
 
     - name: Test with Coverage
       shell: bash
       run: |
-        cd godot/Lattice.Tests
+        cd godot/scripts/lattice/Tests
         dotnet test --configuration Release \
           --verbosity minimal \
           /p:CollectCoverage=true \
@@ -458,7 +458,7 @@ jobs:
     - name: Generate HTML Report
       shell: bash
       run: |
-        cd godot/Lattice.Tests
+        cd godot/scripts/lattice/Tests
         reportgenerator \
           -reports:"./coverage/coverage.cobertura.xml" \
           -targetdir:"./coverage/report" \
@@ -474,7 +474,7 @@ jobs:
     - name: Upload to Codecov
       uses: codecov/codecov-action@v4
       with:
-        files: godot/Lattice.Tests/coverage/coverage.cobertura.xml
+        files: godot/scripts/lattice/Tests/coverage/coverage.cobertura.xml
         flags: unittests
         name: lattice-coverage
         fail_ci_if_error: false
@@ -500,13 +500,13 @@ jobs:
     # 恢复 Benchmark 项目依赖
     - name: Restore Benchmark Project
       run: |
-        cd godot/Lattice.Benchmarks
+        cd godot/scripts/lattice/Benchmarks
         dotnet restore
 
     # 运行基准测试
     - name: Run Benchmarks
       run: |
-        cd godot/Lattice.Benchmarks
+        cd godot/scripts/lattice/Benchmarks
         dotnet run --configuration Release --exporters json html markdown
 
     - name: Debug - Find Benchmark Output
@@ -518,16 +518,16 @@ jobs:
         find . -type f -name "*.json" -o -name "*.html" -o -name "*.md" 2>/dev/null | head -20
         echo ""
         echo "=== benchmark-results Directory ==="
-        ls -la godot/Lattice.Benchmarks/benchmark-results/ 2>/dev/null || echo "Directory not found"
+        ls -la godot/scripts/lattice/Benchmarks/benchmark-results/ 2>/dev/null || echo "Directory not found"
         echo ""
         echo "=== BenchmarkDotNet.Artifacts Directory ==="
-        ls -la godot/Lattice.Benchmarks/BenchmarkDotNet.Artifacts/ 2>/dev/null || echo "Directory not found"
+        ls -la godot/scripts/lattice/Benchmarks/BenchmarkDotNet.Artifacts/ 2>/dev/null || echo "Directory not found"
 
     - name: Upload Benchmark Results
       uses: actions/upload-artifact@v4
       with:
         name: benchmark-results
-        path: godot/Lattice.Benchmarks/benchmark-results/
+        path: godot/scripts/lattice/Benchmarks/benchmark-results/
         retention-days: 90
         if-no-files-found: warn  # 如果没有文件，只警告不失败
 
