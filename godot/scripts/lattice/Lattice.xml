@@ -835,6 +835,61 @@
             比 ComponentSet（512位）更节省内存，操作更快
             </summary>
         </member>
+        <member name="T:Lattice.ECS.Core.ComponentSetNet8">
+            <summary>
+            .NET 8 优化的 ComponentSet
+            
+            关键优化：
+            1. InlineArray - 无需 unsafe 的栈上存储
+            2. Vector512 - SIMD 批量运算（如果硬件支持）
+            3. ref readonly - 避免大结构体复制
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.ComponentSetNet8.IsSet(System.Int32)">
+            <summary>
+            检查组件是否存在 - 内联优化
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.ComponentSetNet8.Add(System.Int32)">
+            <summary>
+            添加组件 - 内联优化
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.ComponentSetNet8.IsSupersetOf(Lattice.ECS.Core.ComponentSetNet8@)">
+            <summary>
+            SIMD 超集检查（512位一次性运算）
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.ComponentSetNet8.Overlaps(Lattice.ECS.Core.ComponentSetNet8@)">
+            <summary>
+            SIMD 交集检查
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.ComponentSetNet8.UnionWith(Lattice.ECS.Core.ComponentSetNet8@)">
+            <summary>
+            并集 - SIMD 优化
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.ComponentSetNet8.IntersectWith(Lattice.ECS.Core.ComponentSetNet8@)">
+            <summary>
+            交集 - SIMD 优化
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.ComponentSetNet8.AsSpan">
+            <summary>
+            获取 Span 视图（用于序列化）
+            </summary>
+        </member>
+        <member name="P:Lattice.ECS.Core.ComponentSetNet8.IsEmpty">
+            <summary>
+            是否为空
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.ComponentSetNet8.Clear">
+            <summary>
+            清空
+            </summary>
+        </member>
         <member name="T:Lattice.ECS.Core.ComponentStorageExtensions">
             <summary>
             组件存储扩展方法（保留框架接口）
@@ -856,13 +911,13 @@
             <summary>全局单例实例</summary>
         </member>
         <member name="F:Lattice.ECS.Core.ComponentTypeRegistry._typeToId">
-            <summary>Type -> ID 映射</summary>
+            <summary>Type -> ID 映射（确定性）</summary>
         </member>
         <member name="F:Lattice.ECS.Core.ComponentTypeRegistry._idToType">
-            <summary>ID -> Type 映射</summary>
+            <summary>ID -> Type 映射（数组实现，O(1)访问）</summary>
         </member>
         <member name="F:Lattice.ECS.Core.ComponentTypeRegistry._nameToId">
-            <summary>类型名称 -> ID 映射</summary>
+            <summary>类型名称 -> ID 映射（构建阶段使用普通字典，完成后冻结）</summary>
         </member>
         <member name="F:Lattice.ECS.Core.ComponentTypeRegistry._typeInfos">
             <summary>类型元数据数组（索引 0 保留为 null）</summary>
@@ -904,7 +959,7 @@
         </member>
         <member name="M:Lattice.ECS.Core.ComponentTypeRegistry.Builder.Finish">
             <summary>
-            完成注册
+            完成注册 - 冻结确定性集合
             </summary>
         </member>
         <member name="M:Lattice.ECS.Core.ComponentTypeRegistry.RegisterInternal``1(Lattice.ECS.Core.ComponentCallbacks,Lattice.ECS.Core.ComponentFlags)">
@@ -1116,6 +1171,138 @@
             <param name="blockSize">块大小</param>
             <param name="changedBlocks">变化的块索引列表</param>
             <returns>变化的块数量</returns>
+        </member>
+        <member name="T:Lattice.ECS.Core.DeterministicTypeMap`1">
+            <summary>
+            确定性字典 - 用于类型注册等场景
+            
+            关键保证：
+            1. FrozenDictionary 构建后不可变，遍历顺序固定
+            2. 跨平台一致性（x64/ARM64 行为相同）
+            3. 无运行时哈希码差异
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.DeterministicTypeMap`1.Add(System.Type,`0)">
+            <summary>
+            添加条目（构建阶段）
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.DeterministicTypeMap`1.Freeze">
+            <summary>
+            冻结字典 - 之后不可修改，遍历顺序固定
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.DeterministicTypeMap`1.TryGetValue(System.Type,`0@)">
+            <summary>
+            查找（O(1)，确定性性能）
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.DeterministicTypeMap`1.ContainsKey(System.Type)">
+            <summary>
+            检查是否包含键
+            </summary>
+        </member>
+        <member name="P:Lattice.ECS.Core.DeterministicTypeMap`1.Items">
+            <summary>
+            获取值（确定性顺序遍历）
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Core.DeterministicIdMap`1">
+            <summary>
+            确定性整数 ID 映射
+            使用数组而非字典实现 O(1) 访问，完全确定性
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.DeterministicIdMap`1.Add(System.Int32,`0)">
+            <summary>
+            添加条目（必须在构建阶段完成）
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.DeterministicIdMap`1.TryGetValue(System.Int32,`0@)">
+            <summary>
+            获取值（O(1)，无哈希，完全确定性）
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.DeterministicIdMap`1.GetById(System.Int32)">
+            <summary>
+            直接索引（调用方确保有效性）
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.DeterministicIdMap`1.GetAll">
+            <summary>
+            确定性遍历（按 ID 排序）
+            </summary>
+        </member>
+        <!-- Badly formed XML comment ignored for member "T:Lattice.ECS.Core.DeterministicSmallSet`1" -->
+        <member name="T:Lattice.ECS.Core.FixedList32`1">
+            <summary>
+            固定容量列表（最大32个）- 栈上分配，无GC
+            注意：需要外部管理_count
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Core.DeterministicHash">
+            <summary>
+            确定性哈希计算 - 跨平台一致
+            
+            禁用默认 GetHashCode（可能因平台/运行时不同）
+            使用 FNV-1a 等确定性算法
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.DeterministicHash.Fnv1a32(System.ReadOnlySpan{System.Byte})">
+            <summary>
+            FNV-1a 32位哈希 - 完全确定性
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.DeterministicHash.Fnv1a64(System.ReadOnlySpan{System.Byte})">
+            <summary>
+            FNV-1a 64位哈希
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.DeterministicHash.GetHashCode(Lattice.Core.EntityRef)">
+            <summary>
+            确定性实体引用哈希
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.DeterministicHash.Combine(System.Int32,System.Int32)">
+            <summary>
+            确定性组合哈希
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.DeterministicHash.GetHashCode(Lattice.ECS.Core.ComponentSetNet8)">
+            <summary>
+            ComponentSet 确定性哈希
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Core.DeterministicEntityComparer">
+            <summary>
+            确定性比较器
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Core.DeterministicSerialization">
+            <summary>
+            确定性序列化辅助
+            确保浮点数序列化跨平台一致
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.DeterministicSerialization.WriteFP(System.Span{System.Byte},Lattice.Math.FP,System.Int32@)">
+            <summary>
+            将 FP 序列化为字节（确定性，平台无关）
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.DeterministicSerialization.ReadFP(System.ReadOnlySpan{System.Byte},System.Int32@)">
+            <summary>
+            从字节反序列化 FP
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.DeterministicSerialization.WriteInt32(System.Span{System.Byte},System.Int32,System.Int32@)">
+            <summary>
+            将 int 序列化为字节（小端序，确定性）
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.DeterministicSerialization.ComputeChecksum(System.ReadOnlySpan{System.Byte})">
+            <summary>
+            计算序列化数据的确定性校验和
+            </summary>
         </member>
         <member name="T:Lattice.ECS.Core.EntityInfo">
             <summary>
@@ -1338,6 +1525,47 @@
             <summary>
             组件接口，对齐 FrameSync IComponent
             用于标识 ECS 组件类型
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Core.Ulong8">
+            <summary>
+            .NET 8 InlineArray 优化 - 8个ulong的栈上数组
+            用于 ComponentSet，无需 unsafe 代码即可获得 fixed array 性能
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.Ulong8.AsSpan">
+            <summary>
+            获取 Span 视图（安全访问）
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.Ulong8.GetValue(System.Int32)">
+            <summary>
+            获取元素值
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.Ulong8.SetValue(System.Int32,System.UInt64)">
+            <summary>
+            设置元素值
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.Ulong8.IsAllZero">
+            <summary>
+            检查所有元素是否为零（快速空检查）
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.Ulong8.Clear">
+            <summary>
+            清零
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Core.Ulong4">
+            <summary>
+            4个ulong的栈上数组 - 用于 ComponentSet256
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Core.Ushort128">
+            <summary>
+            128个ushort的栈上数组 - 用于稀疏数组缓存
             </summary>
         </member>
         <member name="T:Lattice.ECS.Serialization.IFrameSerializer">

@@ -2,6 +2,7 @@
 // Licensed under GPL-3.0.
 
 using System;
+using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 
@@ -23,14 +24,14 @@ namespace Lattice.ECS.Core
         /// <summary>全局单例实例</summary>
         public static readonly ComponentTypeRegistry Global = new();
 
-        /// <summary>Type -> ID 映射</summary>
-        private readonly Dictionary<Type, int> _typeToId = new();
+        /// <summary>Type -> ID 映射（确定性）</summary>
+        private DeterministicTypeMap<int> _typeToId = new();
 
-        /// <summary>ID -> Type 映射</summary>
-        private readonly Dictionary<int, Type> _idToType = new();
+        /// <summary>ID -> Type 映射（数组实现，O(1)访问）</summary>
+        private List<Type> _idToType = new();
 
-        /// <summary>类型名称 -> ID 映射</summary>
-        private readonly Dictionary<string, int> _nameToId = new();
+        /// <summary>类型名称 -> ID 映射（构建阶段使用普通字典，完成后冻结）</summary>
+        private Dictionary<string, int> _nameToId = new();
 
         /// <summary>类型元数据数组（索引 0 保留为 null）</summary>
         private ComponentTypeInfo[] _typeInfos = new ComponentTypeInfo[16];
@@ -60,6 +61,10 @@ namespace Lattice.ECS.Core
         /// </summary>
         public Builder CreateBuilder(int expectedTypeCount = 64)
         {
+            // 重置确定性集合
+            _typeToId = new DeterministicTypeMap<int>(expectedTypeCount);
+            _nameToId = new Dictionary<string, int>(expectedTypeCount);
+            _idToType = new List<Type>(expectedTypeCount);
             return new Builder(this, expectedTypeCount);
         }
 
@@ -102,10 +107,14 @@ namespace Lattice.ECS.Core
             }
 
             /// <summary>
-            /// 完成注册
+            /// 完成注册 - 冻结确定性集合
             /// </summary>
             public void Finish()
             {
+                // 冻结字典，确保后续遍历顺序固定
+                _registry._typeToId.Freeze();
+                // _nameToId 不冻结，仅用于查找
+
                 // 验证所有类型已正确注册
                 _registry.ValidateAllTypesRegistered();
             }
@@ -151,9 +160,9 @@ namespace Lattice.ECS.Core
                     BitMask = 1UL << (id & 0x3F)
                 };
 
-                _typeToId[type] = id;
-                _idToType[id] = type;
-                _nameToId[type.Name] = id;
+                _typeToId.Add(type, id);
+                _idToType.Add(type);
+                _nameToId.Add(type.Name, id);
 
                 // 设置 ComponentTypeId<T> 的静态字段（通过反射或预编译生成）
                 ComponentTypeId<T>.Initialize(id, sizeof(T), flags, callbacks);
@@ -192,9 +201,9 @@ namespace Lattice.ECS.Core
                     BitMask = 1UL << (id & 0x3F)
                 };
 
-                _typeToId[type] = id;
-                _idToType[id] = type;
-                _nameToId[type.Name] = id;
+                _typeToId.Add(type, id);
+                _idToType.Add(type);
+                _nameToId.Add(type.Name, id);
 
                 ComponentTypeId<T>.Initialize(id, sizeof(T), ComponentFlags.None, ComponentCallbacks.Empty);
 
@@ -243,7 +252,7 @@ namespace Lattice.ECS.Core
             if (id <= 0 || id >= _nextId)
                 throw new ArgumentOutOfRangeException(nameof(id), $"Invalid component type ID: {id}");
 
-            return _idToType[id];
+            return _idToType[id - 1]; // id 从 1 开始，List 从 0 开始
         }
 
         /// <summary>

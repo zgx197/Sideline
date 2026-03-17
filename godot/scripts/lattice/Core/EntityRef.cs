@@ -5,6 +5,7 @@ using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Lattice.ECS.Core;
+using static Lattice.ECS.Core.DeterministicHash;
 
 namespace Lattice.Core
 {
@@ -113,10 +114,8 @@ namespace Lattice.Core
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public override int GetHashCode()
         {
-            // FrameSync 风格哈希计算
-            uint a = (uint)Version;
-            uint b = (uint)Index;
-            return (int)(a + b * 59209);
+            // 使用确定性哈希（跨平台一致）
+            return DeterministicHash.GetHashCode(this);
         }
 
         #endregion
