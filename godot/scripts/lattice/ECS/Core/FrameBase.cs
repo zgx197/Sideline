@@ -350,17 +350,8 @@ namespace Lattice.ECS.Core
         /// </summary>
         public ComponentBlockIterator<T> GetComponentBlockIterator<T>() where T : unmanaged, IComponent
         {
-            // FrameBase 是引用类型，this 本身就是指针
-            // 获取 this 的指针（FrameBase 是类，this 是托管引用）
-            var handle = GCHandle.Alloc(this, GCHandleType.Pinned);
-            try
-            {
-                return new ComponentBlockIterator<T>((FrameBase*)handle.AddrOfPinnedObject(), &_buffers[ComponentTypeId<T>.Id]);
-            }
-            finally
-            {
-                handle.Free();
-            }
+            // 直接传递非托管缓冲区指针，避免 GCHandle 问题
+            return new ComponentBlockIterator<T>(&_buffers[ComponentTypeId<T>.Id]);
         }
 
         // Query 方法在后续实现

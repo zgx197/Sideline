@@ -143,8 +143,8 @@ namespace Lattice.ECS.Core
                     if (!_frame.MatchesQuery(entity, _requiredSet))
                         continue;
 
-                    // 获取第二个组件
-                    if (_frame.TryGetComponent<T2>(entity, out var component2))
+                    // 获取第二个组件（使用 ref 避免拷贝）
+                    if (_frame.TryGetComponentRef<T2>(entity, out var component2))
                     {
                         _current = new QueryItem<T1, T2>(entity, new Ref<T1>(ref _storage1.Get(entity)), component2);
                         return true;
@@ -233,9 +233,9 @@ namespace Lattice.ECS.Core
                     if (!_frame.MatchesQuery(entity, _requiredSet))
                         continue;
 
-                    // 获取第二、三个组件
-                    if (_frame.TryGetComponent<T2>(entity, out var component2) &&
-                        _frame.TryGetComponent<T3>(entity, out var component3))
+                    // 获取第二、三个组件（使用 ref 避免拷贝）
+                    if (_frame.TryGetComponentRef<T2>(entity, out var component2) &&
+                        _frame.TryGetComponentRef<T3>(entity, out var component3))
                     {
                         _current = new QueryItem<T1, T2, T3>(entity, new Ref<T1>(ref _storage1.Get(entity)), component2, component3);
                         return true;
@@ -278,9 +278,9 @@ namespace Lattice.ECS.Core
     {
         public readonly EntityRef Entity;
         private readonly Ref<T1> _component1;
-        private readonly T2 _component2;
+        private readonly Ref<T2> _component2;
 
-        public QueryItem(EntityRef entity, Ref<T1> component1, T2 component2)
+        public QueryItem(EntityRef entity, Ref<T1> component1, Ref<T2> component2)
         {
             Entity = entity;
             _component1 = component1;
@@ -288,7 +288,7 @@ namespace Lattice.ECS.Core
         }
 
         public ref T1 Component1 => ref _component1.Value;
-        public T2 Component2 => _component2;
+        public ref T2 Component2 => ref _component2.Value;
     }
 
     /// <summary>
@@ -301,10 +301,10 @@ namespace Lattice.ECS.Core
     {
         public readonly EntityRef Entity;
         private readonly Ref<T1> _component1;
-        private readonly T2 _component2;
-        private readonly T3 _component3;
+        private readonly Ref<T2> _component2;
+        private readonly Ref<T3> _component3;
 
-        public QueryItem(EntityRef entity, Ref<T1> component1, T2 component2, T3 component3)
+        public QueryItem(EntityRef entity, Ref<T1> component1, Ref<T2> component2, Ref<T3> component3)
         {
             Entity = entity;
             _component1 = component1;
@@ -313,8 +313,8 @@ namespace Lattice.ECS.Core
         }
 
         public ref T1 Component1 => ref _component1.Value;
-        public T2 Component2 => _component2;
-        public T3 Component3 => _component3;
+        public ref T2 Component2 => ref _component2.Value;
+        public ref T3 Component3 => ref _component3.Value;
     }
 
     #endregion

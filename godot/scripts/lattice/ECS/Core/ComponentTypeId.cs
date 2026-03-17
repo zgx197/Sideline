@@ -440,15 +440,18 @@ namespace Lattice.ECS.Core
         }
 
         /// <summary>
-        /// 静态构造函数 - 懒加载自动注册（向后兼容）
+        /// 静态构造函数 - 已禁用懒加载以确保确定性
         /// </summary>
         static ComponentTypeId()
         {
-            // 如果尚未通过 Builder 注册，则自动注册
+            // 懒加载已禁用：必须通过 ComponentTypeRegistry.Builder 显式注册
+            // 这是为了确保跨客户端的类型ID一致性
             if (Id == 0)
             {
-                int id = ComponentTypeRegistry.Global.Register<T>();
-                // Register<T> 会调用 Initialize
+                throw new InvalidOperationException(
+                    $"Component type '{typeof(T).Name}' must be registered explicitly using " +
+                    "ComponentTypeRegistry.Global.CreateBuilder().Add<...>().Finish() " +
+                    "before use. Lazy registration is disabled to ensure deterministic type IDs.");
             }
         }
 

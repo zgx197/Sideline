@@ -107,7 +107,7 @@ namespace Lattice.ECS.Core
                 throw new InvalidOperationException("Cannot read in writing mode");
 
             if (_bytePosition >= _buffer.Length)
-                throw new EndOfStreamException();
+                throw new EndOfStreamException($"Attempted to read beyond buffer length ({_buffer.Length} bytes at position {_bytePosition})");
 
             bool value = (_buffer[_bytePosition] & (1 << _bitPosition)) != 0;
 
@@ -481,6 +481,45 @@ namespace Lattice.ECS.Core
             Buffer.BlockCopy(_buffer, 0, newBuffer, 0, _buffer.Length);
             _buffer = newBuffer;
         }
+
+        #endregion
+
+        #region 缓冲区安全检查
+
+        /// <summary>
+        /// 检查剩余写入空间是否足够
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public bool CanWrite(int bytes) => _bytePosition + bytes <= _buffer.Length;
+
+        /// <summary>
+        /// 检查剩余读取空间是否足够
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public bool CanRead(int bytes) => _bytePosition + bytes <= _buffer.Length;
+
+        /// <summary>
+        /// 验证可以读取指定数量的字节
+        /// </summary>
+        public void VerifyCanRead(int bytes, string operation = "read")
+        {
+            if (!CanRead(bytes))
+                throw new EndOfStreamException(
+                    $"Insufficient data to {operation}. " +
+                    $"Required: {bytes} bytes, Available: {_buffer.Length - _bytePosition} bytes " +
+                    $"(at position {_bytePosition})");
+        }
+
+        /// <summary>
+        /// 获取剩余可读字节数
+        /// </summary>
+        public int RemainingBytes => System.Math.Max(0, _buffer.Length - _bytePosition);
+
+        /// <summary>
+        /// 获取当前位置信息（用于调试）
+        /// </summary>
+        public string PositionInfo =>
+            $"Byte: {_bytePosition}, Bit: {_bitPosition}, Length: {_buffer.Length}";
 
         #endregion
     }

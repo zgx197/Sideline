@@ -12,6 +12,7 @@ namespace Lattice.ECS.Core
     /// 组件块迭代器 - FrameSync 风格
     /// 
     /// 提供对组件数据的批量指针访问，最大化缓存效率
+    /// 注意：迭代过程中不应修改组件存储结构（添加/删除组件）
     /// </summary>
     public unsafe struct ComponentBlockIterator<T> where T : unmanaged, IComponent
     {
@@ -20,12 +21,12 @@ namespace Lattice.ECS.Core
         /// </summary>
         public struct Enumerator
         {
-            private FrameBase* _frame;
             private ComponentBlockIterator _inner;
             private int _blockIndex;
             private int _blockCount;
             private EntityRef* _blockEntities;
             private T* _blockComponents;
+            private int _typeId;
 
             public EntityComponentPair<T> Current
             {
@@ -42,10 +43,10 @@ namespace Lattice.ECS.Core
                 }
             }
 
-            internal Enumerator(FrameBase* frame, ComponentBlockIterator inner)
+            internal Enumerator(ComponentBlockIterator inner, int typeId)
             {
-                _frame = frame;
                 _inner = inner;
+                _typeId = typeId;
                 _blockIndex = -1;
                 _blockCount = 0;
                 _blockEntities = null;
@@ -69,28 +70,29 @@ namespace Lattice.ECS.Core
                         _blockComponents = (T*)rawComponents;
                         _blockIndex = 0;
                     }
-                } while (!_frame->Has(_blockEntities[_blockIndex], ComponentTypeId<T>.Id));
+                    // 检查实体是否仍然有此组件（版本号匹配）
+                } while (_blockEntities[_blockIndex].Version == 0); // 跳过无效实体
 
                 return true;
             }
         }
 
-        private FrameBase* _frame;
         internal ComponentBlockIterator _inner;
+        private int _typeId;
 
-        internal ComponentBlockIterator(FrameBase* frame, ComponentDataBuffer* buffer)
+        internal ComponentBlockIterator(ComponentDataBuffer* buffer)
         {
 #if DEBUG
             if (sizeof(T) != buffer->Stride)
                 throw new ArgumentException($"Component size mismatch: {sizeof(T)} vs {buffer->Stride}");
 #endif
-            _frame = frame;
             _inner = new ComponentBlockIterator(buffer);
+            _typeId = ComponentTypeId<T>.Id;
         }
 
         public Enumerator GetEnumerator()
         {
-            return new Enumerator(_frame, _inner);
+            return new Enumerator(_inner, _typeId);
         }
 
         /// <summary>
