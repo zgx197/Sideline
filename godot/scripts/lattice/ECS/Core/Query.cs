@@ -9,6 +9,8 @@ namespace Lattice.ECS.Core
     // - ref struct 迭代器（零分配）
     // - 密集数组遍历（缓存友好）
     // - 位图快速过滤（ComponentSet）
+    //
+    // 注意：此文件使用 EntityRef（原 Entity）类型
 
     #region 单类型查询
 
@@ -255,10 +257,10 @@ namespace Lattice.ECS.Core
     /// </summary>
     public readonly ref struct QueryItem<T> where T : struct
     {
-        public readonly Entity Entity;
+        public readonly EntityRef Entity;
         private readonly Ref<T> _component;
 
-        public QueryItem(Entity entity, Ref<T> component)
+        public QueryItem(EntityRef entity, Ref<T> component)
         {
             Entity = entity;
             _component = component;
@@ -274,11 +276,11 @@ namespace Lattice.ECS.Core
         where T1 : struct
         where T2 : struct
     {
-        public readonly Entity Entity;
+        public readonly EntityRef Entity;
         private readonly Ref<T1> _component1;
         private readonly T2 _component2;
 
-        public QueryItem(Entity entity, Ref<T1> component1, T2 component2)
+        public QueryItem(EntityRef entity, Ref<T1> component1, T2 component2)
         {
             Entity = entity;
             _component1 = component1;
@@ -297,12 +299,12 @@ namespace Lattice.ECS.Core
         where T2 : struct
         where T3 : struct
     {
-        public readonly Entity Entity;
+        public readonly EntityRef Entity;
         private readonly Ref<T1> _component1;
         private readonly T2 _component2;
         private readonly T3 _component3;
 
-        public QueryItem(Entity entity, Ref<T1> component1, T2 component2, T3 component3)
+        public QueryItem(EntityRef entity, Ref<T1> component1, T2 component2, T3 component3)
         {
             Entity = entity;
             _component1 = component1;

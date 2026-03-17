@@ -29,10 +29,10 @@ namespace Lattice.ECS.Core
         #region 字段
 
         /// <summary>
-        /// 位图数据 - 8 个 ulong 覆盖 512 位
+        /// 位图数据 - 8 个 ulong 覆盖 512 位（FrameSync 风格命名）
         /// </summary>
         [FieldOffset(0)]
-        public unsafe fixed ulong Bits[BlockCount];
+        public unsafe fixed ulong Set[BlockCount];
 
         #endregion
 
@@ -113,10 +113,10 @@ namespace Lattice.ECS.Core
         #region 基本操作
 
         /// <summary>
-        /// 检查是否包含指定组件
+        /// 检查是否包含指定组件（FrameSync 命名风格）
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public unsafe bool Contains(int index)
+        public unsafe bool IsSet(int index)
         {
 #if DEBUG
             if ((uint)index >= MaxComponents)
@@ -124,7 +124,93 @@ namespace Lattice.ECS.Core
 #endif
             int blockIndex = index >> 6;      // index / 64
             int bitIndex = index & 0x3F;      // index % 64
-            return (Bits[blockIndex] & (1UL << bitIndex)) != 0;
+            return (Set[blockIndex] & (1UL << bitIndex)) != 0;
+        }
+
+        /// <summary>
+        /// 检查是否包含指定组件类型（泛型版本，零开销）
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public bool IsSet<T>() where T : unmanaged, IComponent
+        {
+            return Contains(ComponentTypeId<T>.Id);
+        }
+
+        /// <summary>
+        /// 添加组件类型到集合（泛型版本，零开销）
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public void Add<T>() where T : unmanaged, IComponent
+        {
+            Add(ComponentTypeId<T>.Id);
+        }
+
+        /// <summary>
+        /// 从集合移除组件类型（泛型版本，零开销）
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public void Remove<T>() where T : unmanaged, IComponent
+        {
+            Remove(ComponentTypeId<T>.Id);
+        }
+
+        /// <summary>
+        /// 创建包含指定组件类型的集合（泛型版本）
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ComponentSet Create<T0>() where T0 : unmanaged, IComponent
+        {
+            ComponentSet set = default;
+            set.Add<T0>();
+            return set;
+        }
+
+        /// <summary>
+        /// 创建包含指定组件类型的集合（2个类型）
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ComponentSet Create<T0, T1>()
+            where T0 : unmanaged, IComponent
+            where T1 : unmanaged, IComponent
+        {
+            ComponentSet set = default;
+            set.Add<T0>();
+            set.Add<T1>();
+            return set;
+        }
+
+        /// <summary>
+        /// 创建包含指定组件类型的集合（3个类型）
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ComponentSet Create<T0, T1, T2>()
+            where T0 : unmanaged, IComponent
+            where T1 : unmanaged, IComponent
+            where T2 : unmanaged, IComponent
+        {
+            ComponentSet set = default;
+            set.Add<T0>();
+            set.Add<T1>();
+            set.Add<T2>();
+            return set;
+        }
+
+        /// <summary>
+        /// 创建包含指定组件类型的集合（4个类型）
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ComponentSet Create<T0, T1, T2, T3>()
+            where T0 : unmanaged, IComponent
+            where T1 : unmanaged, IComponent
+            where T2 : unmanaged, IComponent
+            where T3 : unmanaged, IComponent
+        {
+            ComponentSet set = default;
+            set.Add<T0>();
+            set.Add<T1>();
+            set.Add<T2>();
+            set.Add<T3>();
+            return set;
         }
 
         /// <summary>
@@ -139,7 +225,7 @@ namespace Lattice.ECS.Core
 #endif
             int blockIndex = index >> 6;
             int bitIndex = index & 0x3F;
-            Bits[blockIndex] |= (1UL << bitIndex);
+            Set[blockIndex] |= (1UL << bitIndex);
         }
 
         /// <summary>
@@ -154,7 +240,7 @@ namespace Lattice.ECS.Core
 #endif
             int blockIndex = index >> 6;
             int bitIndex = index & 0x3F;
-            Bits[blockIndex] &= ~(1UL << bitIndex);
+            Set[blockIndex] &= ~(1UL << bitIndex);
         }
 
         /// <summary>
@@ -169,7 +255,7 @@ namespace Lattice.ECS.Core
 #endif
             int blockIndex = index >> 6;
             int bitIndex = index & 0x3F;
-            Bits[blockIndex] ^= (1UL << bitIndex);
+            Set[blockIndex] ^= (1UL << bitIndex);
         }
 
         /// <summary>
@@ -178,14 +264,14 @@ namespace Lattice.ECS.Core
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public unsafe void Clear()
         {
-            Bits[0] = 0;
-            Bits[1] = 0;
-            Bits[2] = 0;
-            Bits[3] = 0;
-            Bits[4] = 0;
-            Bits[5] = 0;
-            Bits[6] = 0;
-            Bits[7] = 0;
+            Set[0] = 0;
+            Set[1] = 0;
+            Set[2] = 0;
+            Set[3] = 0;
+            Set[4] = 0;
+            Set[5] = 0;
+            Set[6] = 0;
+            Set[7] = 0;
         }
 
         /// <summary>
@@ -196,8 +282,8 @@ namespace Lattice.ECS.Core
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             get
             {
-                return Bits[0] == 0 && Bits[1] == 0 && Bits[2] == 0 && Bits[3] == 0
-                    && Bits[4] == 0 && Bits[5] == 0 && Bits[6] == 0 && Bits[7] == 0;
+                return Set[0] == 0 && Set[1] == 0 && Set[2] == 0 && Set[3] == 0
+                    && Set[4] == 0 && Set[5] == 0 && Set[6] == 0 && Set[7] == 0;
             }
         }
 
@@ -209,14 +295,14 @@ namespace Lattice.ECS.Core
             get
             {
                 int count = 0;
-                count += System.Numerics.BitOperations.PopCount(Bits[0]);
-                count += System.Numerics.BitOperations.PopCount(Bits[1]);
-                count += System.Numerics.BitOperations.PopCount(Bits[2]);
-                count += System.Numerics.BitOperations.PopCount(Bits[3]);
-                count += System.Numerics.BitOperations.PopCount(Bits[4]);
-                count += System.Numerics.BitOperations.PopCount(Bits[5]);
-                count += System.Numerics.BitOperations.PopCount(Bits[6]);
-                count += System.Numerics.BitOperations.PopCount(Bits[7]);
+                count += System.Numerics.BitOperations.PopCount(Set[0]);
+                count += System.Numerics.BitOperations.PopCount(Set[1]);
+                count += System.Numerics.BitOperations.PopCount(Set[2]);
+                count += System.Numerics.BitOperations.PopCount(Set[3]);
+                count += System.Numerics.BitOperations.PopCount(Set[4]);
+                count += System.Numerics.BitOperations.PopCount(Set[5]);
+                count += System.Numerics.BitOperations.PopCount(Set[6]);
+                count += System.Numerics.BitOperations.PopCount(Set[7]);
                 return count;
             }
         }
@@ -231,14 +317,14 @@ namespace Lattice.ECS.Core
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public unsafe bool IsSupersetOf(in ComponentSet other)
         {
-            return (Bits[0] & other.Bits[0]) == other.Bits[0]
-                && (Bits[1] & other.Bits[1]) == other.Bits[1]
-                && (Bits[2] & other.Bits[2]) == other.Bits[2]
-                && (Bits[3] & other.Bits[3]) == other.Bits[3]
-                && (Bits[4] & other.Bits[4]) == other.Bits[4]
-                && (Bits[5] & other.Bits[5]) == other.Bits[5]
-                && (Bits[6] & other.Bits[6]) == other.Bits[6]
-                && (Bits[7] & other.Bits[7]) == other.Bits[7];
+            return (Set[0] & other.Set[0]) == other.Set[0]
+                && (Set[1] & other.Set[1]) == other.Set[1]
+                && (Set[2] & other.Set[2]) == other.Set[2]
+                && (Set[3] & other.Set[3]) == other.Set[3]
+                && (Set[4] & other.Set[4]) == other.Set[4]
+                && (Set[5] & other.Set[5]) == other.Set[5]
+                && (Set[6] & other.Set[6]) == other.Set[6]
+                && (Set[7] & other.Set[7]) == other.Set[7];
         }
 
         /// <summary>
@@ -247,20 +333,36 @@ namespace Lattice.ECS.Core
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool IsSubsetOf(in ComponentSet other) => other.IsSupersetOf(this);
 
+        #region 别名方法（向后兼容）
+
+        /// <summary>
+        /// 检查是否包含指定组件（Contains 别名）
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public unsafe bool Contains(int index) => IsSet(index);
+
+        /// <summary>
+        /// 检查是否包含指定组件类型（Contains 别名）
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public bool Contains<T>() where T : unmanaged, IComponent => IsSet<T>();
+
+        #endregion
+
         /// <summary>
         /// 检查两个集合是否有交集
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public unsafe bool Overlaps(in ComponentSet other)
         {
-            return (Bits[0] & other.Bits[0]) != 0
-                || (Bits[1] & other.Bits[1]) != 0
-                || (Bits[2] & other.Bits[2]) != 0
-                || (Bits[3] & other.Bits[3]) != 0
-                || (Bits[4] & other.Bits[4]) != 0
-                || (Bits[5] & other.Bits[5]) != 0
-                || (Bits[6] & other.Bits[6]) != 0
-                || (Bits[7] & other.Bits[7]) != 0;
+            return (Set[0] & other.Set[0]) != 0
+                || (Set[1] & other.Set[1]) != 0
+                || (Set[2] & other.Set[2]) != 0
+                || (Set[3] & other.Set[3]) != 0
+                || (Set[4] & other.Set[4]) != 0
+                || (Set[5] & other.Set[5]) != 0
+                || (Set[6] & other.Set[6]) != 0
+                || (Set[7] & other.Set[7]) != 0;
         }
 
         /// <summary>
@@ -269,14 +371,14 @@ namespace Lattice.ECS.Core
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public unsafe void UnionWith(in ComponentSet other)
         {
-            Bits[0] |= other.Bits[0];
-            Bits[1] |= other.Bits[1];
-            Bits[2] |= other.Bits[2];
-            Bits[3] |= other.Bits[3];
-            Bits[4] |= other.Bits[4];
-            Bits[5] |= other.Bits[5];
-            Bits[6] |= other.Bits[6];
-            Bits[7] |= other.Bits[7];
+            Set[0] |= other.Set[0];
+            Set[1] |= other.Set[1];
+            Set[2] |= other.Set[2];
+            Set[3] |= other.Set[3];
+            Set[4] |= other.Set[4];
+            Set[5] |= other.Set[5];
+            Set[6] |= other.Set[6];
+            Set[7] |= other.Set[7];
         }
 
         /// <summary>
@@ -285,14 +387,14 @@ namespace Lattice.ECS.Core
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public unsafe void IntersectWith(in ComponentSet other)
         {
-            Bits[0] &= other.Bits[0];
-            Bits[1] &= other.Bits[1];
-            Bits[2] &= other.Bits[2];
-            Bits[3] &= other.Bits[3];
-            Bits[4] &= other.Bits[4];
-            Bits[5] &= other.Bits[5];
-            Bits[6] &= other.Bits[6];
-            Bits[7] &= other.Bits[7];
+            Set[0] &= other.Set[0];
+            Set[1] &= other.Set[1];
+            Set[2] &= other.Set[2];
+            Set[3] &= other.Set[3];
+            Set[4] &= other.Set[4];
+            Set[5] &= other.Set[5];
+            Set[6] &= other.Set[6];
+            Set[7] &= other.Set[7];
         }
 
         /// <summary>
@@ -301,14 +403,14 @@ namespace Lattice.ECS.Core
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public unsafe void ExceptWith(in ComponentSet other)
         {
-            Bits[0] &= ~other.Bits[0];
-            Bits[1] &= ~other.Bits[1];
-            Bits[2] &= ~other.Bits[2];
-            Bits[3] &= ~other.Bits[3];
-            Bits[4] &= ~other.Bits[4];
-            Bits[5] &= ~other.Bits[5];
-            Bits[6] &= ~other.Bits[6];
-            Bits[7] &= ~other.Bits[7];
+            Set[0] &= ~other.Set[0];
+            Set[1] &= ~other.Set[1];
+            Set[2] &= ~other.Set[2];
+            Set[3] &= ~other.Set[3];
+            Set[4] &= ~other.Set[4];
+            Set[5] &= ~other.Set[5];
+            Set[6] &= ~other.Set[6];
+            Set[7] &= ~other.Set[7];
         }
 
         /// <summary>
@@ -317,14 +419,92 @@ namespace Lattice.ECS.Core
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public unsafe void SymmetricExceptWith(in ComponentSet other)
         {
-            Bits[0] ^= other.Bits[0];
-            Bits[1] ^= other.Bits[1];
-            Bits[2] ^= other.Bits[2];
-            Bits[3] ^= other.Bits[3];
-            Bits[4] ^= other.Bits[4];
-            Bits[5] ^= other.Bits[5];
-            Bits[6] ^= other.Bits[6];
-            Bits[7] ^= other.Bits[7];
+            Set[0] ^= other.Set[0];
+            Set[1] ^= other.Set[1];
+            Set[2] ^= other.Set[2];
+            Set[3] ^= other.Set[3];
+            Set[4] ^= other.Set[4];
+            Set[5] ^= other.Set[5];
+            Set[6] ^= other.Set[6];
+            Set[7] ^= other.Set[7];
+        }
+
+        #endregion
+
+        #region 与子集的互操作（FrameSync 风格）
+
+        /// <summary>
+        /// 检查是否包含 ComponentSet64 的所有组件
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public unsafe bool IsSupersetOf(in ComponentSet64 other)
+        {
+            return (Set[0] & other.Set) == other.Set;
+        }
+
+        /// <summary>
+        /// 检查是否包含 ComponentSet256 的所有组件
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public unsafe bool IsSupersetOf(in ComponentSet256 other)
+        {
+            return (Set[0] & other.Set[0]) == other.Set[0]
+                && (Set[1] & other.Set[1]) == other.Set[1]
+                && (Set[2] & other.Set[2]) == other.Set[2]
+                && (Set[3] & other.Set[3]) == other.Set[3];
+        }
+
+        /// <summary>
+        /// 添加 ComponentSet64 的所有组件
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public unsafe void UnionWith(in ComponentSet64 other)
+        {
+            Set[0] |= other.Set;
+        }
+
+        /// <summary>
+        /// 添加 ComponentSet256 的所有组件
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public unsafe void UnionWith(in ComponentSet256 other)
+        {
+            Set[0] |= other.Set[0];
+            Set[1] |= other.Set[1];
+            Set[2] |= other.Set[2];
+            Set[3] |= other.Set[3];
+        }
+
+        /// <summary>
+        /// 只保留与 ComponentSet64 共有的组件
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public unsafe void IntersectWith(in ComponentSet64 other)
+        {
+            Set[0] &= other.Set;
+            Set[1] = 0;
+            Set[2] = 0;
+            Set[3] = 0;
+            Set[4] = 0;
+            Set[5] = 0;
+            Set[6] = 0;
+            Set[7] = 0;
+        }
+
+        /// <summary>
+        /// 只保留与 ComponentSet256 共有的组件
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public unsafe void IntersectWith(in ComponentSet256 other)
+        {
+            Set[0] &= other.Set[0];
+            Set[1] &= other.Set[1];
+            Set[2] &= other.Set[2];
+            Set[3] &= other.Set[3];
+            Set[4] = 0;
+            Set[5] = 0;
+            Set[6] = 0;
+            Set[7] = 0;
         }
 
         #endregion
@@ -368,14 +548,14 @@ namespace Lattice.ECS.Core
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public unsafe bool Equals(ComponentSet other)
         {
-            return Bits[0] == other.Bits[0]
-                && Bits[1] == other.Bits[1]
-                && Bits[2] == other.Bits[2]
-                && Bits[3] == other.Bits[3]
-                && Bits[4] == other.Bits[4]
-                && Bits[5] == other.Bits[5]
-                && Bits[6] == other.Bits[6]
-                && Bits[7] == other.Bits[7];
+            return Set[0] == other.Set[0]
+                && Set[1] == other.Set[1]
+                && Set[2] == other.Set[2]
+                && Set[3] == other.Set[3]
+                && Set[4] == other.Set[4]
+                && Set[5] == other.Set[5]
+                && Set[6] == other.Set[6]
+                && Set[7] == other.Set[7];
         }
 
         public override bool Equals(object? obj) => obj is ComponentSet other && Equals(other);
@@ -389,14 +569,14 @@ namespace Lattice.ECS.Core
         public unsafe override int GetHashCode()
         {
             // 组合所有块的哈希
-            int hash = (int)Bits[0];
-            hash = System.HashCode.Combine(hash, (int)(Bits[0] >> 32));
-            hash = System.HashCode.Combine(hash, (int)Bits[1]);
-            hash = System.HashCode.Combine(hash, (int)(Bits[1] >> 32));
-            hash = System.HashCode.Combine(hash, (int)Bits[2]);
-            hash = System.HashCode.Combine(hash, (int)(Bits[2] >> 32));
-            hash = System.HashCode.Combine(hash, (int)Bits[3]);
-            hash = System.HashCode.Combine(hash, (int)(Bits[3] >> 32));
+            int hash = (int)Set[0];
+            hash = System.HashCode.Combine(hash, (int)(Set[0] >> 32));
+            hash = System.HashCode.Combine(hash, (int)Set[1]);
+            hash = System.HashCode.Combine(hash, (int)(Set[1] >> 32));
+            hash = System.HashCode.Combine(hash, (int)Set[2]);
+            hash = System.HashCode.Combine(hash, (int)(Set[2] >> 32));
+            hash = System.HashCode.Combine(hash, (int)Set[3]);
+            hash = System.HashCode.Combine(hash, (int)(Set[3] >> 32));
             return hash;
         }
 
@@ -412,14 +592,14 @@ namespace Lattice.ECS.Core
             if (destination.Length < BlockCount)
                 throw new ArgumentException("Destination span too small", nameof(destination));
 
-            destination[0] = Bits[0];
-            destination[1] = Bits[1];
-            destination[2] = Bits[2];
-            destination[3] = Bits[3];
-            destination[4] = Bits[4];
-            destination[5] = Bits[5];
-            destination[6] = Bits[6];
-            destination[7] = Bits[7];
+            destination[0] = Set[0];
+            destination[1] = Set[1];
+            destination[2] = Set[2];
+            destination[3] = Set[3];
+            destination[4] = Set[4];
+            destination[5] = Set[5];
+            destination[6] = Set[6];
+            destination[7] = Set[7];
         }
 
         /// <summary>
@@ -430,14 +610,14 @@ namespace Lattice.ECS.Core
             if (source.Length < BlockCount)
                 throw new ArgumentException("Source span too small", nameof(source));
 
-            Bits[0] = source[0];
-            Bits[1] = source[1];
-            Bits[2] = source[2];
-            Bits[3] = source[3];
-            Bits[4] = source[4];
-            Bits[5] = source[5];
-            Bits[6] = source[6];
-            Bits[7] = source[7];
+            Set[0] = source[0];
+            Set[1] = source[1];
+            Set[2] = source[2];
+            Set[3] = source[3];
+            Set[4] = source[4];
+            Set[5] = source[5];
+            Set[6] = source[6];
+            Set[7] = source[7];
         }
 
         #endregion
