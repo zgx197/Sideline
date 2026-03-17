@@ -8,72 +8,84 @@ using Lattice.Core;
 namespace Lattice.ECS.Core
 {
     /// <summary>
-    /// 组件过滤器 - FrameSync 风格的高效查询
+    /// 组件过滤器 - FrameSync 风格的高效查询，支持 Block 批量迭代
     /// 
-    /// 特性：
+    /// 性能特性：
     /// 1. 自动选择组件数最少的类型作为主遍历源
-    /// 2. 支持任意数量的组件组合
-    /// 3. 零分配遍历
+    /// 2. 支持 Block 级别的批量迭代，缓存友好
+    /// 3. 零分配遍历（ref struct）
     /// </summary>
     public unsafe class Filter<T1> where T1 : unmanaged
     {
-        private readonly Frame _frame;
+        private readonly Frame* _frame;
         private readonly Storage<T1>* _storage1;
 
-        public Filter(Frame frame)
+        public Filter(Frame* frame)
         {
             _frame = frame;
-            _storage1 = (Storage<T1>*)frame.GetStorage<T1>(ComponentTypeId<T1>.Id);
+            _storage1 = frame->GetStoragePointer<T1>();
         }
 
         public Enumerator GetEnumerator() => new Enumerator(_frame, _storage1);
 
-        public struct Enumerator
+        /// <summary>
+        /// 获取 Block 迭代器（批量遍历）
+        /// </summary>
+        public ComponentBlockIterator<T1> GetBlockIterator()
         {
-            private readonly Frame _frame;
-            private readonly Storage<T1>* _storage1;
-            private int _index;
+            if (_storage1 == null) return default;
+            return new ComponentBlockIterator<T1>(_storage1);
+        }
 
-            public Enumerator(Frame frame, Storage<T1>* storage1)
+        public ref struct Enumerator
+        {
+            private readonly Frame* _frame;
+            private readonly Storage<T1>* _storage1;
+            private ComponentBlockIterator<T1> _iterator;
+
+            public Enumerator(Frame* frame, Storage<T1>* storage1)
             {
                 _frame = frame;
                 _storage1 = storage1;
-                _index = -1;
+                _iterator = storage1 != null ? new ComponentBlockIterator<T1>(storage1) : default;
             }
 
             public bool MoveNext()
             {
                 if (_storage1 == null) return false;
-                while (++_index < _storage1->Count)
+                while (_iterator.Next(out var entity, out var ptr))
                 {
-                    var entity = _storage1->DenseEntities[_index];
-                    if (_frame.IsValid(entity)) return true;
+                    if (!_frame->IsValid(entity)) continue;
+                    CurrentEntity = entity;
+                    CurrentPtr = ptr;
+                    return true;
                 }
                 return false;
             }
 
-            public EntityRef Current => _storage1->DenseEntities[_index];
-            public ref T1 Component => ref _storage1->DenseComponents[_index];
+            public EntityRef CurrentEntity;
+            public T1* CurrentPtr;
+            public ref T1 Component => ref *CurrentPtr;
         }
     }
 
     /// <summary>
-    /// 双组件过滤器
+    /// 双组件过滤器 - 支持 Block 批量迭代
     /// </summary>
     public unsafe class Filter<T1, T2>
         where T1 : unmanaged
         where T2 : unmanaged
     {
-        private readonly Frame _frame;
+        private readonly Frame* _frame;
         private readonly Storage<T1>* _storage1;
         private readonly Storage<T2>* _storage2;
         private readonly bool _useStorage2AsPrimary;
 
-        public Filter(Frame frame)
+        public Filter(Frame* frame)
         {
             _frame = frame;
-            _storage1 = (Storage<T1>*)frame.GetStorage<T1>(ComponentTypeId<T1>.Id);
-            _storage2 = (Storage<T2>*)frame.GetStorage<T2>(ComponentTypeId<T2>.Id);
+            _storage1 = frame->GetStoragePointer<T1>();
+            _storage2 = frame->GetStoragePointer<T2>();
 
             // 自动选择组件数最少的存储作为主遍历源
             int count1 = _storage1 != null ? _storage1->Count : int.MaxValue;
@@ -83,23 +95,32 @@ namespace Lattice.ECS.Core
 
         public Enumerator GetEnumerator() => new Enumerator(_frame, _storage1, _storage2, _useStorage2AsPrimary);
 
-        public struct Enumerator
+        public ref struct Enumerator
         {
-            private readonly Frame _frame;
+            private readonly Frame* _frame;
             private readonly Storage<T1>* _storage1;
             private readonly Storage<T2>* _storage2;
             private readonly bool _useStorage2AsPrimary;
-            private int _index;
+            private ComponentBlockIterator<T1> _iterator1;
+            private ComponentBlockIterator<T2> _iterator2;
             private EntityRef _currentEntity;
+            private T1* _currentPtr1;
+            private T2* _currentPtr2;
 
-            public Enumerator(Frame frame, Storage<T1>* s1, Storage<T2>* s2, bool useS2)
+            public Enumerator(Frame* frame, Storage<T1>* s1, Storage<T2>* s2, bool useS2)
             {
                 _frame = frame;
                 _storage1 = s1;
                 _storage2 = s2;
                 _useStorage2AsPrimary = useS2;
-                _index = -1;
                 _currentEntity = EntityRef.None;
+                _currentPtr1 = null;
+                _currentPtr2 = null;
+
+                if (useS2 && s2 != null)
+                    _iterator2 = new ComponentBlockIterator<T2>(s2);
+                else if (s1 != null)
+                    _iterator1 = new ComponentBlockIterator<T1>(s1);
             }
 
             public bool MoveNext()
@@ -107,37 +128,35 @@ namespace Lattice.ECS.Core
                 if (_useStorage2AsPrimary)
                 {
                     if (_storage2 == null) return false;
-                    while (++_index < _storage2->Count)
+                    while (_iterator2.Next(out var entity, out _currentPtr2))
                     {
-                        var entity = _storage2->DenseEntities[_index];
-                        if (!_frame.IsValid(entity)) continue;
-                        if (_storage1 != null && _storage1->Has(entity))
-                        {
-                            _currentEntity = entity;
-                            return true;
-                        }
+                        if (!_frame->IsValid(entity)) continue;
+                        if (_storage1 != null && !_storage1->Has(entity)) continue;
+
+                        _currentEntity = entity;
+                        _currentPtr1 = _storage1->GetPointer(entity);
+                        return true;
                     }
                 }
                 else
                 {
                     if (_storage1 == null) return false;
-                    while (++_index < _storage1->Count)
+                    while (_iterator1.Next(out var entity, out _currentPtr1))
                     {
-                        var entity = _storage1->DenseEntities[_index];
-                        if (!_frame.IsValid(entity)) continue;
-                        if (_storage2 != null && _storage2->Has(entity))
-                        {
-                            _currentEntity = entity;
-                            return true;
-                        }
+                        if (!_frame->IsValid(entity)) continue;
+                        if (_storage2 != null && !_storage2->Has(entity)) continue;
+
+                        _currentEntity = entity;
+                        _currentPtr2 = _storage2->GetPointer(entity);
+                        return true;
                     }
                 }
                 return false;
             }
 
             public EntityRef Entity => _currentEntity;
-            public ref T1 Component1 => ref _storage1->Get(_currentEntity);
-            public ref T2 Component2 => ref _storage2->Get(_currentEntity);
+            public ref T1 Component1 => ref *_currentPtr1;
+            public ref T2 Component2 => ref *_currentPtr2;
         }
     }
 
@@ -149,18 +168,18 @@ namespace Lattice.ECS.Core
         where T2 : unmanaged
         where T3 : unmanaged
     {
-        private readonly Frame _frame;
+        private readonly Frame* _frame;
         private readonly Storage<T1>* _storage1;
         private readonly Storage<T2>* _storage2;
         private readonly Storage<T3>* _storage3;
         private readonly int _primaryIndex; // 0=T1, 1=T2, 2=T3
 
-        public Filter(Frame frame)
+        public Filter(Frame* frame)
         {
             _frame = frame;
-            _storage1 = (Storage<T1>*)frame.GetStorage<T1>(ComponentTypeId<T1>.Id);
-            _storage2 = (Storage<T2>*)frame.GetStorage<T2>(ComponentTypeId<T2>.Id);
-            _storage3 = (Storage<T3>*)frame.GetStorage<T3>(ComponentTypeId<T3>.Id);
+            _storage1 = frame->GetStoragePointer<T1>();
+            _storage2 = frame->GetStoragePointer<T2>();
+            _storage3 = frame->GetStoragePointer<T3>();
 
             // 自动选择组件数最少的存储作为主遍历源
             int count1 = _storage1 != null ? _storage1->Count : int.MaxValue;
@@ -174,90 +193,99 @@ namespace Lattice.ECS.Core
 
         public Enumerator GetEnumerator() => new Enumerator(_frame, _storage1, _storage2, _storage3, _primaryIndex);
 
-        public struct Enumerator
+        public ref struct Enumerator
         {
-            private readonly Frame _frame;
+            private readonly Frame* _frame;
             private readonly Storage<T1>* _storage1;
             private readonly Storage<T2>* _storage2;
             private readonly Storage<T3>* _storage3;
             private readonly int _primaryIndex;
-            private int _index;
+            private ComponentBlockIterator<T1> _iterator1;
+            private ComponentBlockIterator<T2> _iterator2;
+            private ComponentBlockIterator<T3> _iterator3;
             private EntityRef _currentEntity;
+            private T1* _currentPtr1;
+            private T2* _currentPtr2;
+            private T3* _currentPtr3;
 
-            public Enumerator(Frame frame, Storage<T1>* s1, Storage<T2>* s2, Storage<T3>* s3, int primary)
+            public Enumerator(Frame* frame, Storage<T1>* s1, Storage<T2>* s2, Storage<T3>* s3, int primary)
             {
                 _frame = frame;
                 _storage1 = s1;
                 _storage2 = s2;
                 _storage3 = s3;
                 _primaryIndex = primary;
-                _index = -1;
                 _currentEntity = EntityRef.None;
+                _currentPtr1 = null;
+                _currentPtr2 = null;
+                _currentPtr3 = null;
+
+                switch (primary)
+                {
+                    case 0 when s1 != null: _iterator1 = new ComponentBlockIterator<T1>(s1); break;
+                    case 1 when s2 != null: _iterator2 = new ComponentBlockIterator<T2>(s2); break;
+                    case 2 when s3 != null: _iterator3 = new ComponentBlockIterator<T3>(s3); break;
+                }
             }
 
             public bool MoveNext()
             {
-                // 根据主索引选择存储
-                if (_primaryIndex == 0)
+                Storage<T1>* s1 = _storage1;
+                Storage<T2>* s2 = _storage2;
+                Storage<T3>* s3 = _storage3;
+
+                switch (_primaryIndex)
                 {
-                    if (_storage1 == null) return false;
-                    while (++_index < _storage1->Count)
-                    {
-                        var entity = _storage1->DenseEntities[_index];
-                        if (!_frame.IsValid(entity)) continue;
-                        if ((_storage2 == null || _storage2->Has(entity)) &&
-                            (_storage3 == null || _storage3->Has(entity)))
+                    case 0 when s1 != null:
+                        while (_iterator1.Next(out var entity, out _currentPtr1))
                         {
-                            _currentEntity = entity;
-                            return true;
+                            if (!_frame->IsValid(entity)) continue;
+                            if ((s2 == null || s2->Has(entity)) && (s3 == null || s3->Has(entity)))
+                            {
+                                _currentEntity = entity;
+                                _currentPtr2 = s2 != null ? s2->GetPointer(entity) : null;
+                                _currentPtr3 = s3 != null ? s3->GetPointer(entity) : null;
+                                return true;
+                            }
                         }
-                    }
-                }
-                else if (_primaryIndex == 1)
-                {
-                    if (_storage2 == null) return false;
-                    while (++_index < _storage2->Count)
-                    {
-                        var entity = _storage2->DenseEntities[_index];
-                        if (!_frame.IsValid(entity)) continue;
-                        if ((_storage1 == null || _storage1->Has(entity)) &&
-                            (_storage3 == null || _storage3->Has(entity)))
+                        break;
+
+                    case 1 when s2 != null:
+                        while (_iterator2.Next(out var entity, out _currentPtr2))
                         {
-                            _currentEntity = entity;
-                            return true;
+                            if (!_frame->IsValid(entity)) continue;
+                            if ((s1 == null || s1->Has(entity)) && (s3 == null || s3->Has(entity)))
+                            {
+                                _currentEntity = entity;
+                                _currentPtr1 = s1 != null ? s1->GetPointer(entity) : null;
+                                _currentPtr3 = s3 != null ? s3->GetPointer(entity) : null;
+                                return true;
+                            }
                         }
-                    }
-                }
-                else
-                {
-                    if (_storage3 == null) return false;
-                    while (++_index < _storage3->Count)
-                    {
-                        var entity = _storage3->DenseEntities[_index];
-                        if (!_frame.IsValid(entity)) continue;
-                        if ((_storage1 == null || _storage1->Has(entity)) &&
-                            (_storage2 == null || _storage2->Has(entity)))
+                        break;
+
+                    case 2 when s3 != null:
+                        while (_iterator3.Next(out var entity, out _currentPtr3))
                         {
-                            _currentEntity = entity;
-                            return true;
+                            if (!_frame->IsValid(entity)) continue;
+                            if ((s1 == null || s1->Has(entity)) && (s2 == null || s2->Has(entity)))
+                            {
+                                _currentEntity = entity;
+                                _currentPtr1 = s1 != null ? s1->GetPointer(entity) : null;
+                                _currentPtr2 = s2 != null ? s2->GetPointer(entity) : null;
+                                return true;
+                            }
                         }
-                    }
+                        break;
                 }
+
                 return false;
             }
 
-            private bool HasSecondaryComponents(EntityRef entity)
-            {
-                if (_primaryIndex != 0 && (_storage1 == null || !_storage1->Has(entity))) return false;
-                if (_primaryIndex != 1 && (_storage2 == null || !_storage2->Has(entity))) return false;
-                if (_primaryIndex != 2 && (_storage3 == null || !_storage3->Has(entity))) return false;
-                return true;
-            }
-
             public EntityRef Entity => _currentEntity;
-            public ref T1 Component1 => ref _storage1->Get(_currentEntity);
-            public ref T2 Component2 => ref _storage2->Get(_currentEntity);
-            public ref T3 Component3 => ref _storage3->Get(_currentEntity);
+            public ref T1 Component1 => ref *_currentPtr1;
+            public ref T2 Component2 => ref *_currentPtr2;
+            public ref T3 Component3 => ref *_currentPtr3;
         }
     }
 }

@@ -326,6 +326,45 @@ namespace Lattice.ECS.Core
 
         #endregion
 
+        #region Unsafe API (高性能直接访问)
+
+        /// <summary>
+        /// 获取组件块迭代器 - 批量遍历，最大化缓存命中率
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public ComponentBlockIterator<T> GetComponentBlockIterator<T>() where T : unmanaged
+        {
+            int typeId = ComponentTypeId<T>.Id;
+            var storage = GetStorage<T>(typeId);
+            if (storage == null)
+                return default;
+            return new ComponentBlockIterator<T>(storage);
+        }
+
+        /// <summary>
+        /// 获取组件块迭代器（范围版）
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public ComponentBlockIterator<T> GetComponentBlockIterator<T>(int offset, int count) where T : unmanaged
+        {
+            int typeId = ComponentTypeId<T>.Id;
+            var storage = GetStorage<T>(typeId);
+            if (storage == null)
+                return default;
+            return new ComponentBlockIterator<T>(storage, offset, count);
+        }
+
+        /// <summary>
+        /// 获取组件存储的原始指针（高级用法）
+        /// </summary>
+        internal Storage<T>* GetStoragePointer<T>() where T : unmanaged
+        {
+            int typeId = ComponentTypeId<T>.Id;
+            return GetStorage<T>(typeId);
+        }
+
+        #endregion
+
         #region IDisposable
 
         public void Dispose()

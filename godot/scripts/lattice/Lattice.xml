@@ -345,6 +345,51 @@
             获取当前位置信息（用于调试）
             </summary>
         </member>
+        <member name="T:Lattice.ECS.Core.ComponentBlockIterator`1">
+            <summary>
+            组件块迭代器 - 批量遍历组件，最大化缓存命中率
+            
+            性能特性：
+            1. 按 Block 批量遍历，每 Block 内数据连续
+            2. 同时返回实体引用和组件指针，无需二次查找
+            3. 版本号检测，防止迭代中修改存储
+            4. 支持范围迭代（offset + count）
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.ComponentBlockIterator`1.#ctor(Lattice.ECS.Core.Storage{`0}*)">
+            <summary>
+            创建完整迭代器
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.ComponentBlockIterator`1.#ctor(Lattice.ECS.Core.Storage{`0}*,System.Int32,System.Int32)">
+            <summary>
+            创建范围迭代器
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.ComponentBlockIterator`1.Reset">
+            <summary>
+            重置迭代器
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.ComponentBlockIterator`1.NextBlock(Lattice.Core.EntityRef*@,`0*@,System.Int32@)">
+            <summary>
+            获取下一个 Block 的数据
+            </summary>
+            <param name="entities">实体引用数组指针</param>
+            <param name="components">组件数据数组指针</param>
+            <param name="count">此 Block 中的有效项数</param>
+            <returns>是否还有更多数据</returns>
+        </member>
+        <member name="M:Lattice.ECS.Core.ComponentBlockIterator`1.Next(Lattice.Core.EntityRef@,`0*@)">
+            <summary>
+            移动到下一个实体（逐个迭代）
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.ComponentBlockIterator`1.ValidateVersion">
+            <summary>
+            验证存储未被修改（防止迭代中增删组件）
+            </summary>
+        </member>
         <member name="T:Lattice.ECS.Core.ComponentFilter">
             <summary>
             组件过滤器 - 描述查询条件
@@ -592,17 +637,22 @@
         </member>
         <member name="T:Lattice.ECS.Core.Filter`1">
             <summary>
-            组件过滤器 - FrameSync 风格的高效查询
+            组件过滤器 - FrameSync 风格的高效查询，支持 Block 批量迭代
             
-            特性：
+            性能特性：
             1. 自动选择组件数最少的类型作为主遍历源
-            2. 支持任意数量的组件组合
-            3. 零分配遍历
+            2. 支持 Block 级别的批量迭代，缓存友好
+            3. 零分配遍历（ref struct）
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.Filter`1.GetBlockIterator">
+            <summary>
+            获取 Block 迭代器（批量遍历）
             </summary>
         </member>
         <member name="T:Lattice.ECS.Core.Filter`2">
             <summary>
-            双组件过滤器
+            双组件过滤器 - 支持 Block 批量迭代
             </summary>
         </member>
         <member name="T:Lattice.ECS.Core.Filter`3">
@@ -651,49 +701,8 @@
         <member name="F:Lattice.ECS.Core.Frame._componentStorages">
             <summary>组件存储数组（类型ID -> 存储指针）</summary>
         </member>
-        <member name="T:Lattice.ECS.Core.CullingZone">
-            <summary>
-            裁剪区域（预测区域），定义需要同步的物理范围
-            对齐 FrameSync 的预测区域概念
-            </summary>
-        </member>
-        <member name="F:Lattice.ECS.Core.CullingZone.Center2D">
-            <summary>中心位置（2D）</summary>
-        </member>
-        <member name="F:Lattice.ECS.Core.CullingZone.Center3D">
-            <summary>中心位置（3D）</summary>
-        </member>
-        <member name="F:Lattice.ECS.Core.CullingZone.Radius">
-            <summary>半径</summary>
-        </member>
-        <member name="F:Lattice.ECS.Core.CullingZone.Is3D">
-            <summary>是否使用 3D 裁剪</summary>
-        </member>
-        <member name="M:Lattice.ECS.Core.CullingZone.Create2D(Lattice.Math.FPVector2,Lattice.Math.FP)">
-            <summary>创建 2D 裁剪区域</summary>
-        </member>
-        <member name="M:Lattice.ECS.Core.CullingZone.Create3D(Lattice.Math.FPVector3,Lattice.Math.FP)">
-            <summary>创建 3D 裁剪区域</summary>
-        </member>
-        <member name="M:Lattice.ECS.Core.CullingZone.Contains(Lattice.Math.FPVector2)">
-            <summary>检查 2D 位置是否在区域内</summary>
-        </member>
-        <member name="M:Lattice.ECS.Core.CullingZone.Contains(Lattice.Math.FPVector3)">
-            <summary>检查 3D 位置是否在区域内</summary>
-        </member>
-        <member name="P:Lattice.ECS.Core.CullingZone.Default">
-            <summary>全局默认裁剪区域</summary>
-        </member>
-        <member name="T:Lattice.ECS.Core.Frame">
-            <summary>
-            单帧完整状态 - FrameSync 风格
-            
-            包含某一时刻的所有 ECS 数据：
-            - 实体管理（EntityRegistry）
-            - 组件存储（ComponentStorage 字典）
-            - 每个实体的组件集合（ComponentSet 数组）
-            - 全局数据（Tick、DeltaTime、随机种子等）
-            </summary>
+        <member name="F:Lattice.ECS.Core.Frame._storageInitialized">
+            <summary>组件存储是否已初始化</summary>
         </member>
         <member name="P:Lattice.ECS.Core.Frame.Tick">
             <summary>当前帧号</summary>
@@ -764,6 +773,21 @@
             检查实体是否匹配组件过滤器
             </summary>
         </member>
+        <member name="M:Lattice.ECS.Core.Frame.GetComponentBlockIterator``1">
+            <summary>
+            获取组件块迭代器 - 批量遍历，最大化缓存命中率
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.Frame.GetComponentBlockIterator``1(System.Int32,System.Int32)">
+            <summary>
+            获取组件块迭代器（范围版）
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.Frame.GetStoragePointer``1">
+            <summary>
+            获取组件存储的原始指针（高级用法）
+            </summary>
+        </member>
         <member name="T:Lattice.ECS.Core.GenerateComponentAttribute">
             <summary>
             自动生成组件序列化代码的特性
@@ -831,79 +855,67 @@
         </member>
         <member name="T:Lattice.ECS.Core.Storage`1">
             <summary>
-            高性能组件存储 - Sparse Set 实现（FrameSync 风格）
+            Block-based 高性能组件存储 - 超越 FrameSync 的内存效率与迭代性能
             
-            设计目标：
-            1. O(1) 随机访问，最少内存访问次数
-            2. 顺序遍历缓存友好
-            3. 零 GC 压力
-            4. 极简内存布局
+            核心设计：
+            1. Block 分层存储：每个 Block 包含固定数量组件，缓存友好
+            2. 稀疏数组存储全局索引(ushort)：Entity.Index → GlobalIndex
+            3. 版本号检测：迭代时修改检测，防止迭代中增删组件
+            4. 内存对齐：Block 内数据连续，支持 SIMD
             </summary>
         </member>
-        <member name="T:Lattice.ECS.Core.HashCodeUtils">
+        <member name="F:Lattice.ECS.Core.Storage`1.DefaultBlockCapacity">
+            <summary>默认 Block 容量（与 FrameSync 一致）</summary>
+        </member>
+        <member name="F:Lattice.ECS.Core.Storage`1.InitialBlockListCapacity">
+            <summary>Block 列表初始容量</summary>
+        </member>
+        <member name="F:Lattice.ECS.Core.Storage`1.TOMBSTONE">
+            <summary>稀疏数组 Tombstone 标记</summary>
+        </member>
+        <member name="T:Lattice.ECS.Core.Storage`1.Block">
             <summary>
-            哈希码工具类，对齐 FrameSync HashCodeUtils
+            数据块 - 包含固定数量的实体引用和组件数据
             </summary>
         </member>
-        <member name="M:Lattice.ECS.Core.HashCodeUtils.UInt64HashCode(System.UInt64)">
-            <summary>
-            计算 ulong 的哈希码
-            </summary>
+        <member name="F:Lattice.ECS.Core.Storage`1.Block.PackedHandles">
+            <summary>实体引用数组（紧密排列）</summary>
         </member>
-        <member name="M:Lattice.ECS.Core.HashCodeUtils.CombineHashCodes(System.Int32,System.Int32)">
-            <summary>
-            组合两个哈希码
-            </summary>
+        <member name="F:Lattice.ECS.Core.Storage`1.Block.PackedData">
+            <summary>组件数据数组（紧密排列）</summary>
         </member>
-        <member name="T:Lattice.ECS.Core.IComponent">
-            <summary>
-            组件接口，对齐 FrameSync IComponent
-            用于标识 ECS 组件类型
-            </summary>
-        </member>
-        <member name="T:Lattice.ECS.Core.ISystem">
-            <summary>
-            系统接口 - 操作 Frame 状态
-            </summary>
-        </member>
-        <member name="F:Lattice.ECS.Core.Storage`1._sparse">
-            <summary>稀疏数组：Entity.Index -> DenseIndex（或 TOMBSTONE）</summary>
-        </member>
-        <member name="F:Lattice.ECS.Core.Storage`1._denseEntities">
-            <summary>密集数组：实体引用（与组件一一对应）</summary>
-        </member>
-        <member name="F:Lattice.ECS.Core.Storage`1._denseComponents">
-            <summary>密集数组：组件数据</summary>
-        </member>
-        <member name="F:Lattice.ECS.Core.Storage`1._denseCount">
-            <summary>密集数组当前元素数</summary>
-        </member>
-        <member name="F:Lattice.ECS.Core.Storage`1._sparseCapacity">
-            <summary>稀疏数组容量（最大实体数）</summary>
-        </member>
-        <member name="F:Lattice.ECS.Core.Storage`1._denseCapacity">
-            <summary>密集数组容量</summary>
+        <member name="P:Lattice.ECS.Core.Storage`1.Block.IsAllocated">
+            <summary>Block 是否已分配</summary>
         </member>
         <member name="P:Lattice.ECS.Core.Storage`1.Count">
-            <summary>当前组件数量</summary>
+            <summary>当前组件数量（不包括索引0）</summary>
         </member>
         <member name="P:Lattice.ECS.Core.Storage`1.IsEmpty">
             <summary>是否为空</summary>
         </member>
-        <member name="P:Lattice.ECS.Core.Storage`1.DenseEntities">
-            <summary>密集数组实体指针（用于遍历）</summary>
+        <member name="P:Lattice.ECS.Core.Storage`1.Version">
+            <summary>当前版本号（用于迭代检测）</summary>
         </member>
-        <member name="P:Lattice.ECS.Core.Storage`1.DenseComponents">
-            <summary>密集数组组件指针（用于遍历）</summary>
+        <member name="P:Lattice.ECS.Core.Storage`1.BlockCount">
+            <summary>Block 数量</summary>
         </member>
-        <member name="M:Lattice.ECS.Core.Storage`1.Initialize(System.Int32,System.Int32)">
+        <member name="P:Lattice.ECS.Core.Storage`1.BlockItemCapacity">
+            <summary>每个 Block 的容量</summary>
+        </member>
+        <member name="P:Lattice.ECS.Core.Storage`1.ComponentTypeId">
+            <summary>组件类型ID</summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.Storage`1.Initialize(System.Int32,System.Int32,System.Int32)">
             <summary>
             初始化存储
             </summary>
+            <param name="maxEntities">最大实体数</param>
+            <param name="blockCapacity">每个 Block 的组件容量</param>
+            <param name="componentTypeId">组件类型ID</param>
         </member>
         <member name="M:Lattice.ECS.Core.Storage`1.Dispose">
             <summary>
-            释放内存
+            释放所有内存
             </summary>
         </member>
         <member name="M:Lattice.ECS.Core.Storage`1.Add(Lattice.Core.EntityRef,`0@)">
@@ -913,125 +925,17 @@
         </member>
         <member name="M:Lattice.ECS.Core.Storage`1.Remove(Lattice.Core.EntityRef)">
             <summary>
-            删除组件 - O(1)，与末尾交换保持密集
+            删除组件 - O(1)
             </summary>
         </member>
         <member name="M:Lattice.ECS.Core.Storage`1.Get(Lattice.Core.EntityRef)">
             <summary>
-            获取组件引用 - O(1)，2 次内存访问
+            获取组件引用 - O(1)
             </summary>
         </member>
-        <member name="T:Lattice.ECS.Serialization.IFrameSerializer">
+        <member name="M:Lattice.ECS.Core.Storage`1.GetPointer(Lattice.Core.EntityRef)">
             <summary>
-            帧序列化器接口（对齐 FrameSync IDeterministicFrameSerializer）
-            </summary>
-        </member>
-        <member name="P:Lattice.ECS.Serialization.IFrameSerializer.Writing">
-            <summary>
-            是否正在写入（序列化）
-            </summary>
-        </member>
-        <member name="P:Lattice.ECS.Serialization.IFrameSerializer.Reading">
-            <summary>
-            是否正在读取（反序列化）
-            </summary>
-        </member>
-        <member name="P:Lattice.ECS.Serialization.IFrameSerializer.Stream">
-            <summary>
-            序列化流
-            </summary>
-        </member>
-        <member name="T:Lattice.ECS.Serialization.IBitStream">
-            <summary>
-            位流接口（对齐 FrameSync IBitStream）
-            </summary>
-        </member>
-        <member name="T:Lattice.ECS.Serialization.FrameSerializer">
-            <summary>
-            帧序列化器（对齐 FrameSync）
-            </summary>
-        </member>
-        <member name="T:Lattice.ECS.Serialization.HashCodeUtils">
-            <summary>
-            哈希码工具类（对齐 FrameSync）
-            </summary>
-        </member>
-        <member name="M:Lattice.ECS.Serialization.HashCodeUtils.CombineHashCodes(System.Int32,System.Int32)">
-            <summary>
-            合并两个哈希码（FrameSync 算法：((a &lt;&lt; 5) + a) ^ b）
-            </summary>
-        </member>
-        <member name="M:Lattice.ECS.Serialization.HashCodeUtils.CombineHashCodes(System.Int32,System.Int32,System.Int32)">
-            <summary>
-            合并三个哈希码
-            </summary>
-        </member>
-        <member name="M:Lattice.ECS.Serialization.HashCodeUtils.Int64HashCode(System.Int64)">
-            <summary>
-            计算 long 的哈希码
-            </summary>
-        </member>
-        <member name="M:Lattice.ECS.Serialization.HashCodeUtils.UInt64HashCode(System.UInt64)">
-            <summary>
-            计算 ulong 的哈希码（FrameSync 算法：(int)value ^ (int)(value >> 32)）
-            </summary>
-        </member>
-        <member name="T:Lattice.ECS.Serialization.IFrameSerializable">
-            <summary>
-            帧序列化接口，对齐 FrameSync 序列化设计
-            用于支持帧快照、回放和确定性校验
-            </summary>
-        </member>
-        <member name="M:Lattice.ECS.Serialization.IFrameSerializable.Serialize(System.Byte[],System.Int32)">
-            <summary>
-            序列化到字节缓冲区
-            </summary>
-            <param name="buffer">目标缓冲区</param>
-            <param name="offset">起始偏移</param>
-            <returns>写入的字节数</returns>
-        </member>
-        <member name="M:Lattice.ECS.Serialization.IFrameSerializable.Deserialize(System.Byte[],System.Int32)">
-            <summary>
-            从字节缓冲区反序列化
-            </summary>
-            <param name="buffer">源缓冲区</param>
-            <param name="offset">起始偏移</param>
-            <returns>读取的字节数</returns>
-        </member>
-        <member name="P:Lattice.ECS.Serialization.IFrameSerializable.SerializedSize">
-            <summary>
-            序列化后的字节大小
-            </summary>
-        </member>
-        <member name="T:Lattice.ECS.Serialization.IUnsafeFrameSerializable">
-            <summary>
-            不安全帧序列化接口（用于高性能场景）
-            </summary>
-        </member>
-        <member name="M:Lattice.ECS.Serialization.IUnsafeFrameSerializable.Serialize(System.Byte*,System.Int32)">
-            <summary>
-            序列化到指针
-            </summary>
-            <param name="ptr">目标指针</param>
-            <param name="size">缓冲区大小</param>
-            <returns>写入的字节数</returns>
-        </member>
-        <member name="M:Lattice.ECS.Serialization.IUnsafeFrameSerializable.Deserialize(System.Byte*,System.Int32)">
-            <summary>
-            从指针反序列化
-            </summary>
-            <param name="ptr">源指针</param>
-            <param name="size">缓冲区大小</param>
-            <returns>读取的字节数</returns>
-        </member>
-        <member name="P:Lattice.ECS.Serialization.IUnsafeFrameSerializable.SerializedSize">
-            <summary>
-            序列化后的字节大小
-            </summary>
-        </member>
-        <member name="T:Lattice.ECS.Session.Session">
-            <summary>
-            获取组件指针 - O(1)，2 次内存访问
+            获取组件指针 - O(1)
             </summary>
         </member>
         <member name="M:Lattice.ECS.Core.Storage`1.TryGet(Lattice.Core.EntityRef,`0@)">
@@ -1044,19 +948,19 @@
             检查是否存在 - O(1)
             </summary>
         </member>
-        <member name="M:Lattice.ECS.Core.Storage`1.GetEntities">
+        <member name="M:Lattice.ECS.Core.Storage`1.GetBlockData(System.Int32)">
             <summary>
-            获取所有实体到 Span（零拷贝）
+            获取指定 Block 的数据指针
             </summary>
         </member>
-        <member name="M:Lattice.ECS.Core.Storage`1.GetComponents">
+        <member name="M:Lattice.ECS.Core.Storage`1.GetBlockEntityRefs(System.Int32)">
             <summary>
-            获取所有组件到 Span（零拷贝）
+            获取指定 Block 的实体引用指针
             </summary>
         </member>
-        <member name="M:Lattice.ECS.Core.Storage`1.ForEach()">
+        <member name="M:Lattice.ECS.Core.Storage`1.GetBlockItemCount(System.Int32)">
             <summary>
-            遍历所有组件（高性能指针遍历）
+            获取 Block 中有效项的数量
             </summary>
         </member>
         <member name="T:Lattice.ECS.Serialization.IFrameSerializer">
@@ -1749,6 +1653,29 @@
             所有操作本身是确定性的，但调用者需确保内存安全，
             否则可能产生未定义行为（内存损坏、崩溃等）。
             </remarks>
+        </member>
+        <member name="M:Lattice.Math.FPUnsafe.CheckNotNull(System.Void*,System.String)">
+            <summary>
+            DEBUG 模式下检查指针是否为 null
+            </summary>
+            <param name="ptr">要检查的指针</param>
+            <param name="name">参数名（用于异常消息）</param>
+            <exception cref="T:System.ArgumentNullException">指针为 null 时抛出</exception>
+        </member>
+        <member name="M:Lattice.Math.FPUnsafe.CheckCount(System.Int32)">
+            <summary>
+            DEBUG 模式下检查 count 是否为非负数
+            </summary>
+            <param name="count">要检查的数量</param>
+            <exception cref="T:System.ArgumentOutOfRangeException">count 为负数时抛出</exception>
+        </member>
+        <member name="M:Lattice.Math.FPUnsafe.CheckPointers(System.Void*,System.Void*,System.Int32)">
+            <summary>
+            DEBUG 模式下检查指针和 count 的有效性
+            </summary>
+            <param name="source">源指针</param>
+            <param name="destination">目标指针</param>
+            <param name="count">元素数量</param>
         </member>
         <member name="M:Lattice.Math.FPUnsafe.Copy(Lattice.Math.FP*,Lattice.Math.FP*,System.Int32)">
             <summary>
