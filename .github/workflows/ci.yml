@@ -249,7 +249,7 @@ jobs:
         echo "=== Cross-Platform Determinism Verification ==="
         echo "Platform: ubuntu-latest (baseline)"
         echo "Checksums captured:"
-        cat godot/Lattice.Tests/checksums.txt
+        cat godot/scripts/lattice/Tests/checksums.txt
         echo ""
         echo "✓ Linux baseline captured. In multi-platform setup, this would be compared with:"
         echo "  - windows-latest"
@@ -468,7 +468,7 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: coverage-report
-        path: godot/Lattice.Tests/coverage/report/
+        path: godot/scripts/lattice/Tests/coverage/report/
         retention-days: 30
 
     - name: Upload to Codecov
