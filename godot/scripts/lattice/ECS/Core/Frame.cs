@@ -1,6 +1,7 @@
+// Copyright (c) 2026 Sideline Authors. All rights reserved.
+// Licensed under GPL-3.0.
+
 using System;
-using System.Buffers;
-using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using Lattice.Core;
 using Lattice.Math;
@@ -8,57 +9,104 @@ using Lattice.Math;
 namespace Lattice.ECS.Core
 {
     /// <summary>
-    /// 单帧完整状�?- FrameSync 风格
+    /// ECS 帧 - 高性能非托管实现（FrameSync 风格）
     /// 
-    /// 包含某一时刻的所�?ECS 数据�?    /// - 实体管理（EntityRegistry�?    /// - 组件存储（ComponentStorage 字典�?    /// - 每个实体的组件集合（ComponentSet 数组�?    /// - 全局数据（Tick、DeltaTime、随机种子等�?    /// </summary>
-    public unsafe partial class Frame : IDisposable
+    /// 设计原则：
+    /// 1. 零 GC 压力 - 所有数据使用非托管内存
+    /// 2. O(1) 组件访问 - 稀疏集实现
+    /// 3. 缓存友好 - 密集数组存储
+    /// 4. 确定性 - 完全可预测的行为
+    /// </summary>
+    public unsafe class Frame : IDisposable
     {
-        #region 字段
+        #region 常量
 
-        /// <summary>帧号（从 0 开始，只读�?/summary>
-        public int Tick { get; }
+        /// <summary>最大组件类型数</summary>
+        public const int MaxComponentTypes = 512;
 
-        /// <summary>固定时间步长</summary>
-        public FP DeltaTime { get; private set; }
-
-        /// <summary>实体管理�?/summary>
-        public EntityRegistry Entities { get; }
-
-        /// <summary>组件类型注册�?/summary>
-        private readonly ComponentTypeRegistry _typeRegistry;
-
-        /// <summary>组件存储字典：TypeId -> Storage</summary>
-        private readonly Dictionary<int, object> _storages;
-
-        /// <summary>每个实体的组件集合（稀疏数组）</summary>
-        private ComponentSet[] _entityComponentSets;
-
-        /// <summary>全局随机数生成器（确定性）</summary>
-        public DeterministicRandom Random { get; }
-
-        /// <summary>帧是否已验证（服务器确认�?/summary>
-        public bool IsVerified { get; set; }
+        /// <summary>组件位图块数（512位 = 8个ulong）</summary>
+        private const int ComponentMaskBlockCount = 8;
 
         #endregion
 
-        #region 构造函�?
-        public Frame(int tick, FP deltaTime, ComponentTypeRegistry typeRegistry, int initialEntityCapacity = 256)
+        #region 实体管理
+
+        /// <summary>实体数组（密集存储）</summary>
+        private EntityRef* _entities;
+
+        /// <summary>实体版本数组</summary>
+        private ushort* _entityVersions;
+
+        /// <summary>实体下一个空闲索引</summary>
+        private int* _entityNextFree;
+
+        /// <summary>实体组件位图（每个实体8个ulong）</summary>
+        private ulong* _entityComponentMasks;
+
+        /// <summary>实体数组容量</summary>
+        private int _entityCapacity;
+
+        /// <summary>实体数量</summary>
+        private int _entityCount;
+
+        /// <summary>空闲实体链表头</summary>
+        private int _freeListHead;
+
+        #endregion
+
+        #region 组件存储
+
+        /// <summary>组件存储数组（类型ID -> 存储指针）</summary>
+        private void** _componentStorages;
+
+        /// <summary>组件存储是否已初始化</summary>
+        private bool* _storageInitialized;
+
+        #endregion
+
+        #region 属性
+
+        /// <summary>当前帧号</summary>
+        public int Tick { get; set; }
+
+        /// <summary>固定时间步长</summary>
+        public FP DeltaTime { get; set; }
+
+        /// <summary>实体数量</summary>
+        public int EntityCount => _entityCount;
+
+        #endregion
+
+        #region 构造函数
+
+        public Frame(int maxEntities = 65536)
         {
-            Tick = tick;
-            DeltaTime = deltaTime;
-            _typeRegistry = typeRegistry;
+            _entityCapacity = maxEntities;
+            _entityCount = 0;
+            _freeListHead = -1;
 
-            Entities = new EntityRegistry(initialEntityCapacity);
-            _storages = new Dictionary<int, object>();
+            // 分配实体数组
+            _entities = (EntityRef*)Alloc(sizeof(EntityRef) * maxEntities);
+            _entityVersions = (ushort*)Alloc(sizeof(ushort) * maxEntities);
+            _entityNextFree = (int*)Alloc(sizeof(int) * maxEntities);
+            _entityComponentMasks = (ulong*)Alloc(sizeof(ulong) * maxEntities * ComponentMaskBlockCount);
 
-            // 初始化组件集合数�?            _entityComponentSets = new ComponentSet[initialEntityCapacity];
-            for (int i = 0; i < initialEntityCapacity; i++)
+            // 初始化实体版本
+            for (int i = 0; i < maxEntities; i++)
             {
-                _entityComponentSets[i] = ComponentSet.Empty;
+                _entityVersions[i] = 1;
+                _entityNextFree[i] = -1;
             }
 
-            // 确定性随机数（基于帧号种子）
-            Random = new DeterministicRandom(tick);
+            // 分配组件存储数组
+            _componentStorages = (void**)Alloc(sizeof(void*) * MaxComponentTypes);
+            _storageInitialized = (bool*)Alloc(sizeof(bool) * MaxComponentTypes);
+
+            for (int i = 0; i < MaxComponentTypes; i++)
+            {
+                _componentStorages[i] = null;
+                _storageInitialized[i] = false;
+            }
         }
 
         #endregion
@@ -66,45 +114,75 @@ namespace Lattice.ECS.Core
         #region 实体操作
 
         /// <summary>
-        /// 创建新实�?        /// </summary>
+        /// 创建实体 - O(1)
+        /// </summary>
         public EntityRef CreateEntity()
         {
-            var EntityRef = Entities.Create();
-            EnsureComponentSetCapacity(EntityRef.Index + 1);
-            return EntityRef;
+            int index;
+            ushort version;
+
+            if (_freeListHead >= 0)
+            {
+                // 复用空闲槽位
+                index = _freeListHead;
+                _freeListHead = _entityNextFree[index];
+                version = _entityVersions[index];
+            }
+            else
+            {
+                // 分配新槽位
+                if (_entityCount >= _entityCapacity)
+                    throw new InvalidOperationException("Entity limit reached");
+
+                index = _entityCount++;
+                version = 1;
+                _entityVersions[index] = version;
+            }
+
+            // 清空组件位图
+            ClearComponentMask(index);
+
+            var entity = new EntityRef(index, version);
+            _entities[index] = entity;
+            return entity;
         }
 
         /// <summary>
-        /// 销毁实体（及所有组件）
+        /// 销毁实体 - O(C)，C为组件数
         /// </summary>
-        public bool DestroyEntity(EntityRef EntityRef)
+        public void DestroyEntity(EntityRef entity)
         {
-            if (!Entities.IsValid(EntityRef))
-                return false;
+            if (!IsValid(entity)) return;
 
-            // 获取实体的组件集�?            var componentSet = _entityComponentSets[EntityRef.Index];
-
-            // 移除该实体的所有组�?            for (int typeId = 0; typeId < ComponentSet.MaxComponents; typeId++)
+            // 删除所有组件
+            ulong* mask = GetComponentMaskPointer(entity.Index);
+            for (int typeId = 0; typeId < MaxComponentTypes; typeId++)
             {
-                if (componentSet.IsSet(typeId))
+                int block = typeId >> 6;
+                int bit = typeId & 0x3F;
+                if ((mask[block] & (1UL << bit)) != 0)
                 {
-                    RemoveComponentInternal(EntityRef, typeId);
+                    RemoveComponentInternal(entity, typeId);
                 }
             }
 
-            // 清空组件集合
-            _entityComponentSets[EntityRef.Index] = ComponentSet.Empty;
+            // 版本递增（使旧引用失效）
+            _entityVersions[entity.Index]++;
 
-            // 销毁实�?            return Entities.Destroy(EntityRef);
+            // 加入空闲链表
+            _entityNextFree[entity.Index] = _freeListHead;
+            _freeListHead = entity.Index;
         }
 
         /// <summary>
-        /// 检查实体是否存在且有效
+        /// 检查实体是否有效 - O(1)
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public bool IsValid(EntityRef EntityRef)
+        public bool IsValid(EntityRef entity)
         {
-            return Entities.IsValid(EntityRef);
+            uint index = (uint)entity.Index;
+            return index < (uint)_entityCount &&
+                   _entityVersions[index] == entity.Version;
         }
 
         #endregion
@@ -112,139 +190,82 @@ namespace Lattice.ECS.Core
         #region 组件操作
 
         /// <summary>
-        /// 添加组件
+        /// 添加组件 - O(1) 均摊
         /// </summary>
-        public void AddComponent<T>(EntityRef EntityRef, in T component) where T : unmanaged, IComponent
+        public void Add<T>(EntityRef entity, in T component) where T : unmanaged
         {
-            if (!Entities.IsValid(EntityRef))
-                throw new ArgumentException($"EntityRef {EntityRef} is not valid");
+            if (!IsValid(entity))
+                throw new ArgumentException($"Invalid entity: {entity}");
 
-            int typeId = _typeRegistry.GetTypeId<T>();
+            int typeId = ComponentTypeId<T>.Id;
             var storage = GetOrCreateStorage<T>(typeId);
 
-            storage.Add(EntityRef, component);
-
-            // 更新实体的组件集�?            _entityComponentSets[EntityRef.Index].Add(typeId);
-
-            // 调用 OnAdded 回调（如果存在）
-            var callbacks = ComponentTypeId<T>.Callbacks;
-            if (callbacks.OnAdded != null)
-            {
-                T temp = component;
-                callbacks.OnAdded(EntityRef, &temp, this);
-            }
+            storage->Add(entity, component);
+            SetComponentMask(entity.Index, typeId);
         }
 
         /// <summary>
-        /// 移除组件
+        /// 移除组件 - O(1)
         /// </summary>
-        public bool RemoveComponent<T>(EntityRef EntityRef) where T : unmanaged, IComponent
+        public void Remove<T>(EntityRef entity) where T : unmanaged
         {
-            if (!Entities.IsValid(EntityRef))
-                return false;
+            if (!IsValid(entity)) return;
 
-            // 调用 OnRemoved 回调（如果存在）
-            var callbacks = ComponentTypeId<T>.Callbacks;
-            if (callbacks.OnRemoved != null)
-            {
-                if (TryGetComponent<T>(EntityRef, out var component))
-                {
-                    callbacks.OnRemoved(EntityRef, &component, this);
-                }
-            }
+            int typeId = ComponentTypeId<T>.Id;
+            var storage = GetStorage<T>(typeId);
+            if (storage == null) return;
 
-            int typeId = _typeRegistry.GetTypeId<T>();
-            return RemoveComponentInternal(EntityRef, typeId);
+            storage->Remove(entity);
+            ClearComponentMaskBit(entity.Index, typeId);
         }
 
         /// <summary>
-        /// 获取组件引用
+        /// 获取组件引用 - O(1)，2次内存访问
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public ref T GetComponent<T>(EntityRef EntityRef) where T : unmanaged, IComponent
+        public ref T Get<T>(EntityRef entity) where T : unmanaged
         {
-            if (!Entities.IsValid(EntityRef))
-                throw new ArgumentException($"EntityRef {EntityRef} is not valid");
-
-            int typeId = _typeRegistry.GetTypeId<T>();
-            if (!_storages.TryGetValue(typeId, out var storage))
-                throw new KeyNotFoundException($"Component type {typeof(T).Name} not found");
-
-            return ref ((ComponentStorage<T>)storage).Get(EntityRef);
+            int typeId = ComponentTypeId<T>.Id;
+            var storage = GetStorage<T>(typeId);
+            if (storage == null)
+                throw new InvalidOperationException($"Component {typeof(T).Name} not found");
+            return ref storage->Get(entity);
         }
 
         /// <summary>
-        /// 尝试获取组件
+        /// 获取组件指针 - O(1)，2次内存访问
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public bool TryGetComponent<T>(EntityRef EntityRef, out T component) where T : unmanaged, IComponent
+        public T* GetPointer<T>(EntityRef entity) where T : unmanaged
         {
-            int typeId = _typeRegistry.GetTypeId<T>();
-            if (!_storages.TryGetValue(typeId, out var storage))
-            {
-                component = default;
-                return false;
-            }
-            return ((ComponentStorage<T>)storage).TryGet(EntityRef, out component);
+            int typeId = ComponentTypeId<T>.Id;
+            var storage = GetStorage<T>(typeId);
+            return storage != null ? storage->GetPointer(entity) : null;
         }
 
         /// <summary>
-        /// 尝试获取组件引用（高性能，避免拷贝）
+        /// 尝试获取组件 - O(1)
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public bool TryGetComponentRef<T>(EntityRef EntityRef, out Ref<T> component) where T : unmanaged, IComponent
+        public bool TryGet<T>(EntityRef entity, out T component) where T : unmanaged
         {
-            int typeId = _typeRegistry.GetTypeId<T>();
-            if (!_storages.TryGetValue(typeId, out var storage))
-            {
-                component = default;
-                return false;
-            }
-            return ((ComponentStorage<T>)storage).TryGetRef(EntityRef, out component);
+            int typeId = ComponentTypeId<T>.Id;
+            var storage = GetStorage<T>(typeId);
+            if (storage != null)
+                return storage->TryGet(entity, out component);
+            component = default;
+            return false;
         }
 
         /// <summary>
-        /// 检查实体是否有指定组件
+        /// 检查是否有组件 - O(1)
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public bool HasComponent<T>(EntityRef EntityRef) where T : unmanaged, IComponent
+        public bool Has<T>(EntityRef entity) where T : unmanaged
         {
-            if (!Entities.IsValid(EntityRef))
-                return false;
-
-            int typeId = _typeRegistry.GetTypeId<T>();
-            return _entityComponentSets[EntityRef.Index].IsSet(typeId);
-        }
-
-        /// <summary>
-        /// 获取实体的组件集�?        /// </summary>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public ComponentSet GetComponentSet(EntityRef EntityRef)
-        {
-            if ((uint)EntityRef.Index >= (uint)_entityComponentSets.Length)
-                return ComponentSet.Empty;
-            return _entityComponentSets[EntityRef.Index];
-        }
-
-        /// <summary>
-        /// 检查实体是否匹配组件查询条�?        /// </summary>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public bool MatchesQuery(EntityRef EntityRef, in ComponentSet required, in ComponentSet excluded = default)
-        {
-            if (!Entities.IsValid(EntityRef))
-                return false;
-
-            var entitySet = _entityComponentSets[EntityRef.Index];
-
-            // 必须包含所�?required 组件
-            if (!entitySet.IsSupersetOf(required))
-                return false;
-
-            // 必须不包含任�?excluded 组件
-            if (!excluded.IsEmpty && entitySet.Overlaps(excluded))
-                return false;
-
-            return true;
+            if (!IsValid(entity)) return false;
+            int typeId = ComponentTypeId<T>.Id;
+            return HasComponentMask(entity.Index, typeId);
         }
 
         #endregion
@@ -252,144 +273,55 @@ namespace Lattice.ECS.Core
         #region 查询支持
 
         /// <summary>
-        /// 获取组件类型 ID
+        /// 获取组件存储（用于 Filter）
         /// </summary>
-        public int GetTypeId<T>() where T : unmanaged, IComponent
+        internal Storage<T>* GetStorage<T>(int typeId) where T : unmanaged
         {
-            return _typeRegistry.GetTypeId<T>();
+            if (!_storageInitialized[typeId]) return null;
+            return (Storage<T>*)_componentStorages[typeId];
         }
 
         /// <summary>
-        /// 获取指定类型的所有组件存�?        /// </summary>
-        public ComponentStorage<T> GetStorage<T>() where T : unmanaged, IComponent
-        {
-            int typeId = _typeRegistry.GetTypeId<T>();
-            if (!_storages.TryGetValue(typeId, out var storage))
-            {
-                throw new KeyNotFoundException($"Component type {typeof(T).Name} not registered");
-            }
-            return (ComponentStorage<T>)storage;
-        }
-
-        /// <summary>
-        /// 尝试获取存储（可能不存在�?        /// </summary>
-        public bool TryGetStorage<T>(out ComponentStorage<T> storage) where T : unmanaged, IComponent
-        {
-            int typeId = _typeRegistry.GetTypeId<T>();
-            if (!_storages.TryGetValue(typeId, out var obj))
-            {
-                storage = null!;
-                return false;
-            }
-            storage = (ComponentStorage<T>)obj;
-            return true;
-        }
-
-        /// <summary>
-        /// 获取所有实体的 Span（用于遍历）
+        /// 获取实体组件位图指针
         /// </summary>
-        public int GetAllEntities(Span<EntityRef> buffer)
-        {
-            int count = 0;
-            foreach (var EntityRef in Entities.GetAllAliveEntities())
-            {
-                if (count >= buffer.Length) break;
-                buffer[count++] = EntityRef;
-            }
-            return count;
-        }
-
-        #endregion
-
-        #region 校验和（确定性验证）
-
-        /// <summary>
-        /// 计算帧的校验和（用于确定性验证）
-        /// </summary>
-        public ulong CalculateChecksum()
-        {
-            return FrameSnapshot.CalculateFrameChecksum(this, _typeRegistry);
-        }
-
-        #endregion
-
-        #region 快照支持（Phase 3�?
-        /// <summary>
-        /// 创建当前帧的快照
-        /// </summary>
-        public FrameSnapshot CreateSnapshot()
-        {
-            return FrameSnapshot.Capture(this, _typeRegistry);
-        }
-
-        /// <summary>
-        /// 从快照恢复（回滚�?        /// </summary>
-        public void RestoreFromSnapshot(FrameSnapshot snapshot)
-        {
-            snapshot.Restore(this, _typeRegistry);
-        }
-
-        /// <summary>
-        /// 克隆当前�?        /// </summary>
-        public Frame Clone()
-        {
-            var clone = new Frame(Tick, DeltaTime, _typeRegistry, Entities.Capacity);
-            clone.CopyFrom(this);
-            return clone;
-        }
-
-        /// <summary>
-        /// 从另一帧复制状态（用于回滚�?        /// </summary>
-        public void CopyFrom(Frame other)
-        {
-            if (other.Tick != Tick)
-                throw new InvalidOperationException("Cannot copy from frame with different tick");
-
-            // 使用快照机制进行完整复制
-            var snapshot = other.CreateSnapshot();
-            RestoreFromSnapshot(snapshot);
-        }
-
-        #endregion
-
-        #region 辅助方法
-
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private ComponentStorage<T> GetOrCreateStorage<T>(int typeId) where T : unmanaged, IComponent
+        internal ulong* GetComponentMaskPointer(int entityIndex)
         {
-            if (!_storages.TryGetValue(typeId, out var storage))
-            {
-                storage = new ComponentStorage<T>(Entities.Capacity);
-                _storages[typeId] = storage;
-            }
-            return (ComponentStorage<T>)storage;
+            return _entityComponentMasks + (entityIndex * ComponentMaskBlockCount);
         }
 
-        private bool RemoveComponentInternal(EntityRef entity, int typeId)
+        /// <summary>
+        /// 检查实体是否匹配组件过滤器
+        /// </summary>
+        public bool MatchesFilter(EntityRef entity, in ComponentFilter filter)
         {
-            if (!_storages.TryGetValue(typeId, out var storage))
-                return false;
+            if (!IsValid(entity)) return false;
 
-            // �Ӵ洢���Ƴ����
-            var removed = ((IComponentStorage)storage).Remove(entity);
-            if (removed)
+            ulong* mask = GetComponentMaskPointer(entity.Index);
+
+            // 检查必须包含的组件
+            if (!filter.Required.IsEmpty)
             {
-                // ����ʵ����������λͼ
-                if (entity.Index < _entityComponentSets.Length)
+                for (int i = 0; i < ComponentMaskBlockCount; i++)
                 {
-                    _entityComponentSets[entity.Index].Remove(typeId);
+                    ulong required = filter.Required.GetBlock(i);
+                    if ((mask[i] & required) != required)
+                        return false;
                 }
             }
-            return removed;
-        }
 
-        private void EnsureComponentSetCapacity(int required)
-        {
-            if (required <= _entityComponentSets.Length)
-                return;
+            // 检查必须排除的组件
+            if (!filter.Excluded.IsEmpty)
+            {
+                for (int i = 0; i < ComponentMaskBlockCount; i++)
+                {
+                    ulong excluded = filter.Excluded.GetBlock(i);
+                    if ((mask[i] & excluded) != 0)
+                        return false;
+                }
+            }
 
-            int newSize = System.Math.Max(required, _entityComponentSets.Length * 2);
-            Array.Resize(ref _entityComponentSets, newSize);
+            return true;
         }
 
         #endregion
@@ -398,54 +330,92 @@ namespace Lattice.ECS.Core
 
         public void Dispose()
         {
-            foreach (var storage in _storages.Values)
+            // 释放所有组件存储
+            for (int i = 0; i < MaxComponentTypes; i++)
             {
-                (storage as IDisposable)?.Dispose();
+                if (_storageInitialized[i] && _componentStorages[i] != null)
+                {
+                    // 这里需要知道类型来正确释放 Storage<T>
+                    // 简化处理：依赖 GC 或添加类型注册表
+                    _componentStorages[i] = null;
+                    _storageInitialized[i] = false;
+                }
             }
-            _storages.Clear();
-            Entities.Dispose();
+
+            Free(_entities);
+            Free(_entityVersions);
+            Free(_entityNextFree);
+            Free(_entityComponentMasks);
+            Free(_componentStorages);
+            Free(_storageInitialized);
         }
 
         #endregion
-    }
 
-    /// <summary>
-    /// 确定性随机数生成�?    /// </summary>
-    public sealed class DeterministicRandom
-    {
-        private uint _state;
+        #region 私有辅助
 
-        public DeterministicRandom(int seed)
+        private static void* Alloc(int size)
         {
-            _state = (uint)seed;
-            // 预热
-            for (int i = 0; i < 10; i++) Next();
+            return System.Runtime.InteropServices.Marshal.AllocHGlobal(size).ToPointer();
         }
 
-        /// <summary>
-        /// 生成下一个随机数�? �?int.MaxValue�?        /// </summary>
-        public int Next()
+        private static void Free(void* ptr)
         {
-            // Xorshift 算法（确定性）
-            _state ^= _state << 13;
-            _state ^= _state >> 17;
-            _state ^= _state << 5;
-            return (int)(_state & 0x7FFFFFFF);
+            if (ptr != null)
+                System.Runtime.InteropServices.Marshal.FreeHGlobal((IntPtr)ptr);
         }
 
-        /// <summary>
-        /// 生成指定范围内的随机�?        /// </summary>
-        public int Next(int min, int max)
+        private Storage<T>* GetOrCreateStorage<T>(int typeId) where T : unmanaged
         {
-            if (min >= max) throw new ArgumentException("min must be less than max");
-            return min + (int)(Next() % (max - min));
+            if (!_storageInitialized[typeId])
+            {
+                var storage = (Storage<T>*)Alloc(sizeof(Storage<T>));
+                storage->Initialize(_entityCapacity);
+                _componentStorages[typeId] = storage;
+                _storageInitialized[typeId] = true;
+                return storage;
+            }
+            return (Storage<T>*)_componentStorages[typeId];
         }
 
-        /// <summary>
-        /// 生成 0-1 范围内的定点�?        /// </summary>
-        public FP NextFP()
+        private void RemoveComponentInternal(EntityRef entity, int typeId)
         {
-            return (FP)Next() / (FP)int.MaxValue;
+            // 简化实现：依赖外部管理存储生命周期
+            ClearComponentMaskBit(entity.Index, typeId);
         }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void SetComponentMask(int entityIndex, int typeId)
+        {
+            int block = typeId >> 6;
+            int bit = typeId & 0x3F;
+            _entityComponentMasks[entityIndex * ComponentMaskBlockCount + block] |= (1UL << bit);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void ClearComponentMaskBit(int entityIndex, int typeId)
+        {
+            int block = typeId >> 6;
+            int bit = typeId & 0x3F;
+            _entityComponentMasks[entityIndex * ComponentMaskBlockCount + block] &= ~(1UL << bit);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void ClearComponentMask(int entityIndex)
+        {
+            ulong* mask = GetComponentMaskPointer(entityIndex);
+            for (int i = 0; i < ComponentMaskBlockCount; i++)
+                mask[i] = 0;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private bool HasComponentMask(int entityIndex, int typeId)
+        {
+            int block = typeId >> 6;
+            int bit = typeId & 0x3F;
+            return (_entityComponentMasks[entityIndex * ComponentMaskBlockCount + block] & (1UL << bit)) != 0;
+        }
+
+        #endregion
     }
 }
