@@ -1,19 +1,17 @@
 // Copyright (c) 2026 Sideline Authors. All rights reserved.
 // Licensed under GPL-3.0.
 
-using System;
 using System.Diagnostics;
 using Lattice.Core;
 using Lattice.ECS.Core;
 using Xunit;
 
-namespace Lattice.Tests
+namespace Lattice.Tests.Performance
 {
     /// <summary>
-    /// 简化性能测试
-    /// 用于快速验证优化效果（非精确基准测试）
+    /// ECS 性能测试
     /// </summary>
-    public class PerformanceTests
+    public class ECSPerformanceTests
     {
         private const int Iterations = 100000;
 
@@ -21,7 +19,7 @@ namespace Lattice.Tests
         public void Performance_EntityRef_GetHashCode()
         {
             var entity = new EntityRef(12345, 67890);
-            
+
             var sw = Stopwatch.StartNew();
             for (int i = 0; i < Iterations; i++)
             {
@@ -29,8 +27,7 @@ namespace Lattice.Tests
             }
             sw.Stop();
 
-            // 应该非常快（< 1ms for 100k）
-            Assert.True(sw.ElapsedMilliseconds < 10, 
+            Assert.True(sw.ElapsedMilliseconds < 10,
                 $"GetHashCode too slow: {sw.ElapsedMilliseconds}ms for {Iterations} iterations");
         }
 
@@ -48,19 +45,19 @@ namespace Lattice.Tests
             }
             sw.Stop();
 
-            Assert.True(result); // 验证正确性
+            Assert.True(result);
             Assert.True(sw.ElapsedMilliseconds < 10,
                 $"Equality check too slow: {sw.ElapsedMilliseconds}ms for {Iterations} iterations");
         }
 
         [Fact]
-        public void Performance_ComponentSetNet8_Add()
+        public void Performance_ComponentSet_Add()
         {
             var sw = Stopwatch.StartNew();
-            
+
             for (int i = 0; i < Iterations; i++)
             {
-                var set = new ComponentSetNet8();
+                var set = new ComponentSet();
                 for (int j = 0; j < 100; j++)
                 {
                     set.Add(j);
@@ -73,9 +70,9 @@ namespace Lattice.Tests
         }
 
         [Fact]
-        public void Performance_ComponentSetNet8_IsSet()
+        public void Performance_ComponentSet_IsSet()
         {
-            var set = new ComponentSetNet8();
+            var set = new ComponentSet();
             for (int i = 0; i < 100; i++)
             {
                 set.Add(i);
@@ -83,7 +80,7 @@ namespace Lattice.Tests
 
             bool result = false;
             var sw = Stopwatch.StartNew();
-            
+
             for (int i = 0; i < Iterations; i++)
             {
                 for (int j = 0; j < 100; j++)
@@ -93,17 +90,17 @@ namespace Lattice.Tests
             }
             sw.Stop();
 
-            Assert.True(result); // 验证正确性
+            Assert.True(result);
             Assert.True(sw.ElapsedMilliseconds < 500,
                 $"ComponentSet IsSet too slow: {sw.ElapsedMilliseconds}ms");
         }
 
         [Fact]
-        public void Performance_ComponentSetNet8_IsSupersetOf()
+        public void Performance_ComponentSet_IsSupersetOf()
         {
-            var set1 = new ComponentSetNet8();
-            var set2 = new ComponentSetNet8();
-            
+            var set1 = new ComponentSet();
+            var set2 = new ComponentSet();
+
             for (int i = 0; i < 50; i++)
             {
                 set1.Add(i);
@@ -113,23 +110,46 @@ namespace Lattice.Tests
 
             bool result = false;
             var sw = Stopwatch.StartNew();
-            
+
             for (int i = 0; i < Iterations; i++)
             {
-                result = set1.IsSupersetOf(ref set2);
+                result = set1.IsSupersetOf(set2);
             }
             sw.Stop();
 
-            Assert.True(result); // set1 是 set2 的超集
+            Assert.True(result);
             Assert.True(sw.ElapsedMilliseconds < 100,
                 $"IsSupersetOf too slow: {sw.ElapsedMilliseconds}ms");
+        }
+
+        [Fact]
+        public void Performance_ComponentSet_Count()
+        {
+            var set = new ComponentSet();
+            for (int i = 0; i < 100; i++)
+            {
+                set.Add(i);
+            }
+
+            int result = 0;
+            var sw = Stopwatch.StartNew();
+
+            for (int i = 0; i < Iterations; i++)
+            {
+                result = set.Count;
+            }
+            sw.Stop();
+
+            Assert.Equal(100, result);
+            Assert.True(sw.ElapsedMilliseconds < 200,
+                $"Count too slow: {sw.ElapsedMilliseconds}ms");
         }
 
         [Fact]
         public void Performance_DeterministicHash_Fnv1a32()
         {
             var data = new byte[64];
-            new Random(42).NextBytes(data);
+            new System.Random(42).NextBytes(data);
 
             var sw = Stopwatch.StartNew();
             for (int i = 0; i < Iterations; i++)
@@ -153,7 +173,7 @@ namespace Lattice.Tests
 
             int result = 0;
             var sw = Stopwatch.StartNew();
-            
+
             for (int i = 0; i < Iterations; i++)
             {
                 for (int j = 1; j <= 100; j++)
@@ -170,10 +190,9 @@ namespace Lattice.Tests
         [Fact]
         public void SIMD_Detect_Availability()
         {
-            // 输出 SIMD 可用性信息
             var simdInfo = new System.Text.StringBuilder();
             simdInfo.AppendLine("SIMD 支持状态:");
-            
+
             if (System.Runtime.Intrinsics.Vector512.IsHardwareAccelerated)
             {
                 simdInfo.AppendLine("  ✓ Vector512 (512-bit)");
@@ -188,10 +207,9 @@ namespace Lattice.Tests
             }
 
             simdInfo.AppendLine($"  CPU: {System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture}");
-            
-            Console.WriteLine(simdInfo.ToString());
-            
-            // 测试通过即成功
+
+            System.Console.WriteLine(simdInfo.ToString());
+
             Assert.True(true);
         }
     }
