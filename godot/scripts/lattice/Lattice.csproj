@@ -26,6 +26,7 @@
     <Compile Remove="ECS\Abstractions\**" />
     <Compile Remove="ECS\Future\**" />
     <Compile Remove="Tools\**" />
+    <Compile Remove="Tests\**" />
     <Compile Remove="Test*.cs" />
     <Compile Remove="EntityValidationTest.cs" />
     <Compile Remove="ECS\Core\Frame.cs" />
@@ -41,7 +42,9 @@
     <Compile Remove="Core\ThreadSafeValidator.cs" />
     <Compile Remove="ECS\Session\**" />
     <EmbeddedResource Remove="Tools\**" />
+    <EmbeddedResource Remove="Tests\**" />
     <None Remove="Tools\**" />
+    <None Remove="Tests\**" />
     <None Remove="Test*.cs" />
     <None Remove="EntityValidationTest.cs" />
   </ItemGroup>
