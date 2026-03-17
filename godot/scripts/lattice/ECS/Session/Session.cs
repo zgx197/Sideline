@@ -259,7 +259,7 @@ namespace Lattice.ECS.Session
                 return;
             }
 
-            long actualChecksum = frame.CalculateChecksum();
+            long actualChecksum = (long)frame.CalculateChecksum();
             bool success = actualChecksum == expectedChecksum;
 
             if (success)

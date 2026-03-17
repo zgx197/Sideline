@@ -16,24 +16,28 @@
     <DocumentationFile>$(OutputPath)$(AssemblyName).xml</DocumentationFile>
     <NoWarn>$(NoWarn);CS1591</NoWarn>  <!-- 暂时忽略缺少文档警告 -->
     
-    <!-- 允许不安全代码（缓存优化需要） -->
+    <!-- 允许不安全代码（高性能 ECS 需要） -->
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <!-- 纯 C# 库，不依赖 Godot -->
   <ItemGroup>
-    <!-- 排除工具目录和测试文件 -->
+    <!-- 排除工具目录和测试目录 -->
+    <Compile Remove="ECS\Abstractions\**" />
+    <Compile Remove="ECS\Future\**" />
     <Compile Remove="Tools\**" />
+    <Compile Remove="Tests\**" />
     <Compile Remove="Test*.cs" />
-    <Compile Remove="EntityValidationTest.cs" />
+    <Compile Remove="ECS\Session\**" />
     <EmbeddedResource Remove="Tools\**" />
+    <EmbeddedResource Remove="Tests\**" />
     <None Remove="Tools\**" />
+    <None Remove="Tests\**" />
     <None Remove="Test*.cs" />
-    <None Remove="EntityValidationTest.cs" />
   </ItemGroup>
 
   <!-- LUT 生成目标（可选，取消注释以启用自动 LUT 生成） -->
-  <!-- <Import Project="Lattice.targets" / -->
+  <!-- <Import Project="Lattice.targets" /> -->
 
   <!-- 确定性保护：禁止浮点类型和 Math API -->
   <ItemGroup>

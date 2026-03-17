@@ -6,35 +6,38 @@
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
-
+    <RootNamespace>Lattice.Tests</RootNamespace>
+    <AssemblyName>Lattice.Tests</AssemblyName>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <!-- 测试框架 -->
   <ItemGroup>
-    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.8.0" />
-    <PackageReference Include="xunit" Version="2.6.2" />
-    <PackageReference Include="xunit.runner.visualstudio" Version="2.5.4">
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
     </PackageReference>
-    <PackageReference Include="coverlet.collector" Version="6.0.0">
+    <PackageReference Include="coverlet.collector" Version="6.0.2">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
     </PackageReference>
-    <PackageReference Include="coverlet.msbuild" Version="6.0.0">
+    <PackageReference Include="coverlet.msbuild" Version="6.0.2">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
     </PackageReference>
   </ItemGroup>
 
-  <!-- 性能测试（可选） -->
+  <!-- 性能测试 -->
   <ItemGroup>
-    <PackageReference Include="BenchmarkDotNet" Version="0.13.11" />
+    <PackageReference Include="BenchmarkDotNet" Version="0.13.12" />
+    <PackageReference Include="BenchmarkDotNet.Annotations" Version="0.13.12" />
   </ItemGroup>
 
   <!-- 引用 Lattice 核心 -->
   <ItemGroup>
-    <ProjectReference Include="..\scripts\lattice\Lattice.csproj" />
+    <ProjectReference Include="..\Lattice.csproj" />
   </ItemGroup>
 
 </Project>
