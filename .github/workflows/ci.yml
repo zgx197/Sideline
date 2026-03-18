@@ -103,21 +103,25 @@ jobs:
 
     # 运行所有测试（包括 SIMD 和 Unsafe）
     - name: Test (${{ matrix.configuration }})
+      timeout-minutes: 10
       run: |
         cd godot/scripts/lattice/Tests
-        dotnet test --no-build --verbosity normal --configuration ${{ matrix.configuration }}
+        # 使用单线程模式避免 macOS ARM64 上的线程竞争问题
+        dotnet test --no-build --verbosity normal --configuration ${{ matrix.configuration }} --maxcpucount:1
 
     # SIMD 专项测试
     - name: SIMD Tests
+      timeout-minutes: 5
       run: |
         cd godot/scripts/lattice/Tests
-        dotnet test --no-build --configuration ${{ matrix.configuration }} --filter "FullyQualifiedName~SIMD"
+        dotnet test --no-build --configuration ${{ matrix.configuration }} --filter "FullyQualifiedName~SIMD" --maxcpucount:1
 
     # Unsafe 代码测试
     - name: Unsafe Code Tests
+      timeout-minutes: 5
       run: |
         cd godot/scripts/lattice/Tests
-        dotnet test --no-build --configuration ${{ matrix.configuration }} --filter "FullyQualifiedName~Unsafe"
+        dotnet test --no-build --configuration ${{ matrix.configuration }} --filter "FullyQualifiedName~Unsafe" --maxcpucount:1
 
     # 本地确定性验证（单平台内多次运行一致性）
     - name: Local Determinism Check
@@ -133,13 +137,13 @@ jobs:
         dotnet test --filter "FullyQualifiedName~Determinism" \
           --logger "trx;LogFileName=run1.trx" \
           --results-directory ./test-results \
-          --verbosity minimal
+          --verbosity minimal --maxcpucount:1
         
         # 第二次运行
         dotnet test --filter "FullyQualifiedName~Determinism" \
           --logger "trx;LogFileName=run2.trx" \
           --results-directory ./test-results \
-          --verbosity minimal
+          --verbosity minimal --maxcpucount:1
         
         # 提取并比较测试名称
         grep -oE 'testName="[^"]+"' ./test-results/run1.trx | \
@@ -219,7 +223,7 @@ jobs:
           --logger "console;verbosity=detailed" \
           --results-directory ./cross-platform-results \
           --logger "trx;LogFileName=cross-platform.trx" \
-          --verbosity normal 2>&1 | tee test-output.txt
+          --verbosity normal --maxcpucount:1 2>&1 | tee test-output.txt
         
         # 提取所有校验和输出（假设测试输出包含 CHECKSUM: 前缀）
         grep -oE 'CHECKSUM:[0-9a-fA-F]+' test-output.txt | sort > checksums.txt || echo "No checksums found in output"
@@ -293,7 +297,7 @@ jobs:
         echo "=== SIMD Hardware Acceleration Check ==="
         dotnet test --configuration Release \
           --filter "FullyQualifiedName~CheckHardwareAcceleration" \
-          --logger "console;verbosity=detailed" 2>&1 | tee simd-check.txt
+          --logger "console;verbosity=detailed" --maxcpucount:1 2>&1 | tee simd-check.txt
         
         # 检查输出中是否包含加速信息
         if grep -q "Vector.IsHardwareAccelerated.*True" simd-check.txt; then
@@ -321,12 +325,12 @@ jobs:
         dotnet test --configuration Release \
           --filter "FullyQualifiedName~SIMD" \
           --logger "trx;LogFileName=simd.trx" \
-          --results-directory ./simd-results
+          --results-directory ./simd-results --maxcpucount:1
         
         # 检查 SIMD 和标量结果是否一致
         dotnet test --configuration Release \
           --filter "FullyQualifiedName~SIMDvsScalar" \
-          --logger "console;verbosity=detailed"
+          --logger "console;verbosity=detailed" --maxcpucount:1
         
         echo "✓ SIMD validation completed on ${{ matrix.os }}"
 
@@ -377,7 +381,7 @@ jobs:
         cd godot/scripts/lattice/Tests
         dotnet test --no-build --configuration ${{ matrix.configuration }} \
           --filter "FullyQualifiedName~Unsafe" \
-          --verbosity normal
+          --verbosity normal --maxcpucount:1
 
   # ==================== 5. Analyzer 验证 ====================
   analyzer-validation:
@@ -447,7 +451,7 @@ jobs:
       run: |
         cd godot/scripts/lattice/Tests
         dotnet test --configuration Release \
-          --verbosity minimal \
+          --verbosity minimal --maxcpucount:1 \
           /p:CollectCoverage=true \
           /p:CoverletOutputFormat=cobertura \
           /p:CoverletOutput=./coverage/coverage.cobertura.xml
