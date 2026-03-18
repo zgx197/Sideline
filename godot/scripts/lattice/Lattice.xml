@@ -480,17 +480,7 @@
             计算缓存行数量
             </summary>
         </member>
-        <member name="T:Lattice.ECS.Core.ComponentBlockIterator`1">
-            <summary>
-            组件块迭代器 - 批量遍历组件，最大化缓存命中率
-            
-            性能特性：
-            1. 按 Block 批量遍历，每 Block 内数据连续
-            2. 同时返回实体引用和组件指针，无需二次查找
-            3. 版本号检测，防止迭代中修改存储
-            4. 支持范围迭代（offset + count）
-            </summary>
-        </member>
+        <!-- Badly formed XML comment ignored for member "T:Lattice.ECS.Core.ComponentBlockIterator`1" -->
         <member name="M:Lattice.ECS.Core.ComponentBlockIterator`1.#ctor(Lattice.ECS.Core.Storage{`0}*)">
             <summary>
             创建完整迭代器
@@ -1120,16 +1110,7 @@
             原子标志数组 - 多线程标记（如裁剪系统）
             </summary>
         </member>
-        <member name="T:Lattice.ECS.Core.SIMDUtils">
-            <summary>
-            SIMD 工具类 - 批量组件操作优化
-            
-            支持：
-            - 批量数学运算（位置更新、速度计算）
-            - 批量条件检查（范围检测、过滤）
-            - 内存拷贝和清零
-            </summary>
-        </member>
+        <!-- Badly formed XML comment ignored for member "T:Lattice.ECS.Core.SIMDUtils" -->
         <member name="M:Lattice.ECS.Core.SIMDUtils.AddBatch(Lattice.Math.FPVector2*,Lattice.Math.FPVector2*,Lattice.Math.FPVector2*,System.Int32)">
             <summary>
             批量向量加法：result[i] = a[i] + b[i]
@@ -1192,31 +1173,37 @@
         </member>
         <member name="T:Lattice.ECS.Core.StorageFlags">
             <summary>
-            存储标志
+            存储标志 - 定义组件存储的特殊行为
+            
+            设计说明：
+            - 使用 ushort 节省内存（2 字节），足够表示 16 种标志
+            - 单例和延迟删除是预测回滚模型的核心需求
             </summary>
         </member>
         <member name="F:Lattice.ECS.Core.StorageFlags.None">
             <summary>无特殊标志</summary>
         </member>
         <member name="F:Lattice.ECS.Core.StorageFlags.Singleton">
-            <summary>单例组件（只允许一个实例）</summary>
-        </member>
-        <member name="F:Lattice.ECS.Core.StorageFlags.DeferredRemoval">
-            <summary>延迟删除（Remove 时标记，需要 Commit 才真正删除）</summary>
-        </member>
-        <member name="T:Lattice.ECS.Core.Storage`1">
             <summary>
-            Block-based 高性能组件存储 - 超越 FrameSync 的内存效率与迭代性能
+            单例组件（只允许一个实例）
             
-            核心设计：
-            1. Block 分层存储：每个 Block 包含固定数量组件，缓存友好
-            2. 稀疏数组存储全局索引(ushort)：Entity.Index → GlobalIndex
-            3. 版本号检测：迭代时修改检测，防止迭代中增删组件
-            4. 内存对齐：Block 内数据连续，支持 SIMD
-            5. 单例支持：可选单例组件模式
-            6. 延迟删除：支持预测回滚模型的延迟删除
+            应用场景：
+            - 全局配置（如 GameConfig）
+            - 唯一的游戏状态（如 GameState）
+            - 避免多个实例导致的逻辑错误
             </summary>
         </member>
+        <member name="F:Lattice.ECS.Core.StorageFlags.DeferredRemoval">
+            <summary>
+            延迟删除（Remove 时标记，需要 Commit 才真正删除）
+            
+            设计原因：
+            - 预测回滚需要延迟删除，避免预测期间的状态不一致
+            - 允许在帧结束时批量处理删除，减少内存抖动
+            - FrameSync 使用相同的模式（_pendingRemoval）
+            </summary>
+        </member>
+        <!-- Badly formed XML comment ignored for member "T:Lattice.ECS.Core.Storage`1" -->
         <member name="F:Lattice.ECS.Core.Storage`1.DefaultBlockCapacity">
             <summary>默认 Block 容量（与 FrameSync 一致）</summary>
         </member>
