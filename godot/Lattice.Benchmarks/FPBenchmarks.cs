@@ -84,6 +84,7 @@ public class FPMathBenchmarks
 /// 批量运算基准（模拟游戏循环）
 /// </summary>
 [MemoryDiagnoser]
+[SimpleJob(RunStrategy.Throughput, iterationCount: 5, warmupCount: 3)]
 public class FPBatchBenchmarks
 {
     private const int N = 1000;
@@ -133,6 +134,7 @@ public class FPBatchBenchmarks
 /// 与浮点数对比基准
 /// </summary>
 [MemoryDiagnoser]
+[SimpleJob(RunStrategy.Throughput, iterationCount: 5, warmupCount: 3)]
 public class FPvsFloatBenchmarks
 {
     private FP[] fpValues = null!;

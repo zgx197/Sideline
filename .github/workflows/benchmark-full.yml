@@ -1,0 +1,187 @@
+name: Full Benchmark
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 3 * * 1'
+
+env:
+  DOTNET_VERSION: '8.0.x'
+
+jobs:
+  benchmark-full:
+    name: Full Benchmark Suite
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v5
+      with:
+        fetch-depth: 0
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v5
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+
+    - name: Restore Benchmark Project
+      run: |
+        cd godot/Lattice.Benchmarks
+        dotnet restore
+
+    - name: Clean Benchmark Artifacts
+      shell: bash
+      run: |
+        rm -rf godot/Lattice.Benchmarks/benchmark-results
+
+    - name: Run Full Benchmarks
+      shell: bash
+      run: |
+        cd godot/Lattice.Benchmarks
+        dotnet run --configuration Release -- --filter "*" --exporters json html markdown
+
+    - name: Debug Benchmark Output Paths
+      if: always()
+      shell: bash
+      run: |
+        echo "=== Benchmark Output Files ==="
+        find godot/Lattice.Benchmarks -maxdepth 3 \
+          \( -path '*/benchmark-results/*' -o -path '*/BenchmarkDotNet.Artifacts/*' -o -name '*.log' -o -name '*-report-github.md' -o -name '*-report.html' -o -name '*-report.csv' \) \
+          -type f | sort
+
+    - name: Validate Benchmark Execution
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        RESULTS_DIR="godot/Lattice.Benchmarks/benchmark-results"
+        REPORT_DIR="$RESULTS_DIR/results"
+
+        if [ ! -d "$RESULTS_DIR" ]; then
+          echo "::error::Benchmark artifact directory not found: $RESULTS_DIR"
+          exit 1
+        fi
+
+        if [ ! -d "$REPORT_DIR" ]; then
+          echo "::error::Benchmark report directory not found: $REPORT_DIR"
+          exit 1
+        fi
+
+        mapfile -t LOG_FILES < <(find "$RESULTS_DIR" -maxdepth 1 -type f -name '*.log' | sort)
+        mapfile -t MARKDOWN_REPORTS < <(find "$REPORT_DIR" -maxdepth 1 -type f -name '*-report-github.md' | sort)
+
+        if [ "${#LOG_FILES[@]}" -eq 0 ]; then
+          echo "::error::No benchmark log files were generated."
+          exit 1
+        fi
+
+        if [ "${#MARKDOWN_REPORTS[@]}" -eq 0 ]; then
+          echo "::error::No benchmark markdown reports were generated."
+          exit 1
+        fi
+
+        if grep -nE 'Build Error:|There are not any results runs' "${LOG_FILES[@]}"; then
+          echo "::error::Benchmark logs contain execution failures."
+          exit 1
+        fi
+
+        if grep -nE 'Benchmarks with issues:|\|[[:space:]]*[^|]+[[:space:]]*\|[[:space:]]*NA[[:space:]]*\|[[:space:]]*NA[[:space:]]*\|' "${MARKDOWN_REPORTS[@]}"; then
+          echo "::error::Benchmark reports contain invalid or incomplete measurements."
+          exit 1
+        fi
+
+    - name: Generate Benchmark Index
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        RESULTS_DIR="godot/Lattice.Benchmarks/benchmark-results"
+        REPORT_DIR="$RESULTS_DIR/results"
+        INDEX_FILE="$RESULTS_DIR/index.md"
+
+        if [ ! -d "$REPORT_DIR" ]; then
+          echo "::error::Benchmark report directory not found: $REPORT_DIR"
+          exit 1
+        fi
+
+        mapfile -t MARKDOWN_REPORTS < <(find "$REPORT_DIR" -maxdepth 1 -type f -name '*-report-github.md' | sort)
+
+        if [ "${#MARKDOWN_REPORTS[@]}" -eq 0 ]; then
+          echo "::error::No benchmark markdown reports were generated."
+          find "$RESULTS_DIR" -maxdepth 2 -type f | sort
+          exit 1
+        fi
+
+        for MARKDOWN_REPORT in "${MARKDOWN_REPORTS[@]}"; do
+          FILE_NAME="$(basename "$MARKDOWN_REPORT")"
+          REPORT_BASE_NAME="${FILE_NAME%-report-github.md}"
+          HTML_REPORT="$REPORT_DIR/${REPORT_BASE_NAME}-report.html"
+          CSV_REPORT="$REPORT_DIR/${REPORT_BASE_NAME}-report.csv"
+
+          if [ ! -f "$HTML_REPORT" ]; then
+            echo "::error::Expected HTML benchmark report is missing: $HTML_REPORT"
+            exit 1
+          fi
+
+          if [ ! -f "$CSV_REPORT" ]; then
+            echo "::error::Expected CSV benchmark report is missing: $CSV_REPORT"
+            exit 1
+          fi
+        done
+
+        GENERATED_AT="$(date -u '+%Y-%m-%d %H:%M:%SZ')"
+        SHORT_SHA="${GITHUB_SHA::8}"
+        RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+
+        {
+          echo "---"
+          echo "layout: default"
+          echo "title: 完整性能基准报告"
+          echo "description: Lattice BenchmarkDotNet 完整基准测试结果"
+          echo "---"
+          echo
+          echo "## 完整性能基准报告"
+          echo
+          echo "- 生成时间（UTC）: \`$GENERATED_AT\`"
+          echo "- 分支: \`${GITHUB_REF_NAME:-main}\`"
+          echo "- Commit: \`$SHORT_SHA\`"
+          echo "- CI 运行: [$GITHUB_REPOSITORY #$GITHUB_RUN_ID]($RUN_URL)"
+          echo
+          echo "> 本页由 GitHub Actions 定时或手动触发生成，用于完整回归分析。"
+          echo
+          echo "| 报告 | HTML | Markdown | CSV |"
+          echo "|------|------|----------|-----|"
+
+          for MARKDOWN_REPORT in "${MARKDOWN_REPORTS[@]}"; do
+            FILE_NAME="$(basename "$MARKDOWN_REPORT")"
+            REPORT_BASE_NAME="${FILE_NAME%-report-github.md}"
+            REPORT_LABEL="${REPORT_BASE_NAME#Lattice.Benchmarks.}"
+            HTML_NAME="${REPORT_BASE_NAME}-report.html"
+            CSV_NAME="${REPORT_BASE_NAME}-report.csv"
+
+            echo "| $REPORT_LABEL | [查看](results/$HTML_NAME) | [摘要](results/$FILE_NAME) | [CSV](results/$CSV_NAME) |"
+          done
+
+          echo
+          echo "### 原始日志"
+          echo
+
+          mapfile -t LOG_FILES < <(find "$RESULTS_DIR" -maxdepth 1 -type f -name '*.log' | sort)
+
+          if [ "${#LOG_FILES[@]}" -eq 0 ]; then
+            echo "- 无"
+          else
+            for LOG_FILE in "${LOG_FILES[@]}"; do
+              LOG_NAME="$(basename "$LOG_FILE")"
+              echo "- [$LOG_NAME]($LOG_NAME)"
+            done
+          fi
+        } > "$INDEX_FILE"
+
+    - name: Upload Full Benchmark Results
+      uses: actions/upload-artifact@v6
+      with:
+        name: benchmark-full-results
+        path: godot/Lattice.Benchmarks/benchmark-results/
+        retention-days: 90
+        if-no-files-found: error
