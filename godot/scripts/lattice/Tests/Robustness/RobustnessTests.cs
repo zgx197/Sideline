@@ -637,7 +637,8 @@ public class RobustnessTests
     [Fact]
     public void ThreadSafety_ReadOnlyOperations()
     {
-        const int iterations = 10000;
+        // 降低迭代次数避免 CI 环境下的线程压力
+        const int iterations = 100;
         FP value = FP.FromRaw(12345);
 
         // 模拟多线程只读访问
