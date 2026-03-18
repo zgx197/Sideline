@@ -46,7 +46,7 @@ namespace Lattice.ECS.Core
     /// Q: 为什么使用 System.Runtime.Intrinsics 而不是 Vector&lt;T&gt;？
     /// A:
     ///   1. 更底层的控制：可以精确选择指令（如 AVX2 的 MultiplyLow）
-    ///   2. 更好的性能：避免 Vector<T> 的抽象开销
+    ///   2. 更好的性能：避免 Vector{T} 的抽象开销
     ///   3. 确定性：固定的指令集，便于帧同步验证
     ///   4. 与 FrameSync 一致：FrameSync 也使用平台特定指令
     /// 
@@ -92,7 +92,7 @@ namespace Lattice.ECS.Core
     /// ❌ 不适合 SIMD：
     /// - 随机访问（无法预测内存）
     /// - 复杂条件分支（SIMD 不擅长）
-    /// - 数据量太小（< 16 个元素，启动开销）
+    /// - 数据量太小（小于 16 个元素，启动开销）
     /// - 定点数乘法（需要特殊处理）
     /// </summary>
     public static unsafe class SIMDUtils

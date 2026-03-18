@@ -60,7 +60,7 @@ namespace Lattice.ECS.Core
     /// A:
     ///   1. 与 FrameSync 保持一致，便于对比和迁移
     ///   2. 128 * sizeof(T) 通常能填满多个缓存行（假设 T=16 字节，128*16=2048 字节）
-    ///   3. 128 是 2 的幂，可以用位运算替代除法/取模（block = index >> 7, offset = index & 127）
+    ///   3. 128 是 2 的幂，可以用位运算替代除法/取模（block = index >> 7, offset = index &amp; 127）
     ///   4. 足够大的批次用于 SIMD 处理（AVX2 可以一次处理 4 个 Vector4FP）
     ///
     /// Q: 为什么稀疏数组使用 ushort（2 字节）而不是 int（4 字节）？

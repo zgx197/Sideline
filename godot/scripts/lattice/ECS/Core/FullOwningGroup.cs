@@ -26,7 +26,7 @@ namespace Lattice.ECS.Core
     /// -------------------------------------------------------------
     /// 假设你需要更新 Position 和 Velocity：
     /// 
-    /// 传统方式（Filter<T1, T2>）：
+    /// 传统方式（Filter{T1, T2}）：
     ///   1. 遍历 Position Storage（缓存命中）
     ///   2. 对每个实体查找 Velocity（稀疏查找，缓存未命中）
     ///   3. 总内存访问：Position Block + Velocity Block（两个不连续区域）

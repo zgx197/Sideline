@@ -147,7 +147,7 @@ namespace Lattice.ECS.Core.Parallel
                 state.WaitEvent.WaitOne();
         }
 
-        private void WorkerLoop(object state)
+        private void WorkerLoop(object? state)
         {
             while (_isRunning)
             {

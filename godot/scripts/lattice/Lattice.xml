@@ -480,44 +480,112 @@
             计算缓存行数量
             </summary>
         </member>
-        <!-- Badly formed XML comment ignored for member "T:Lattice.ECS.Core.ComponentBlockIterator`1" -->
+        <member name="T:Lattice.ECS.Core.ComponentBlockIterator`1">
+            <summary>
+            缁勪欢鍧楄凯浠ｅ櫒 - 鎵归噺閬嶅巻缁勪欢锛屾渶澶у寲缂撳瓨鍛戒腑鐜?
+            
+            ============================================================
+            涓轰粈涔堥渶瑕?Block Iterator锛?
+            ============================================================
+            
+            浼犵粺杩唬鏂瑰紡鐨勯棶棰橈細
+              foreach (var entity in filter) { ... }
+              - 姣忔杩唬閮借妫€鏌ョ増鏈彿
+              - 姣忔閮借璁＄畻 Block/Offset
+              - 缂撳瓨鏈懡涓巼楂橈紙璺冲埌涓嬩竴涓疄浣擄級
+            
+            Block Iterator 鐨勪紭鍔匡細
+              while (iterator.NextBlock(out entities, out comps, out count)) {
+                  for (int i = 0; i &lt; count; i++) { ... }
+              }
+              - 涓€娆¤幏鍙?128 涓粍浠?
+              - 鍐呭眰寰幆鏃犲垎鏀€佹棤鍑芥暟璋冪敤
+              - 缂撳瓨鍛戒腑鐜囨帴杩?100%
+            
+            鎬ц兘瀵规瘮锛堢悊璁猴級锛?
+            - 浼犵粺杩唬锛殈50-100 CPU 鍛ㄦ湡/瀹炰綋
+            - Block 杩唬锛殈5-10 CPU 鍛ㄦ湡/瀹炰綋锛堝唴灞傚惊鐜級
+            
+            ============================================================
+            鏋舵瀯璁捐鍐崇瓥
+            ============================================================
+            
+            Q: 涓轰粈涔堟彁渚涗袱绉嶈凯浠ｆā寮忥紵
+            A:
+              1. NextBlock锛氭壒閲忓鐞嗭紝閫傚悎 SIMD锛堜竴娆″鐞?128 涓級
+              2. Next锛氶€愪釜澶勭悊锛岄€傚悎澶嶆潅閫昏緫锛堟瘡涓疄浣撲笉鍚屾搷浣滐級
+            
+            Q: 涓轰粈涔堣烦杩囩储寮?0锛?
+            A:
+              1. 涓?FrameSync 淇濇寔涓€鑷达紙绱㈠紩 0 淇濈暀涓烘棤鏁堝€硷級
+              2. 绠€鍖栧垹闄ら€昏緫锛氱敤 0 浣滀负 TOMBSTONE
+              3. 閬垮厤绌哄紩鐢ㄦ鏌ワ細entity.Index == 0 鐩存帴杩斿洖鏃犳晥
+            
+            Q: 涓轰粈涔堥渶瑕佺増鏈彿妫€娴嬶紵
+            A:
+              1. C# IEnumerator 妯″紡锛氭鏌ラ泦鍚堜慨鏀?
+              2. 璋冭瘯鍙嬪ソ锛氬揩閫熷け璐ワ紝缁欏嚭娓呮櫚閿欒
+              3. 鎬ц兘寮€閿€灏忥細鍙湪 DEBUG 妯″紡妫€鏌?
+            
+            ============================================================
+            棰勫彇浼樺寲 (PrefetchedBlockIterator)
+            ============================================================
+            
+            闂锛氬鐞嗗綋鍓?Block 鏃讹紝涓嬩竴涓?Block 涓嶅湪缂撳瓨涓?
+            瑙ｅ喅锛氬湪 CPU 澶勭悊褰撳墠鏁版嵁鏃讹紝寮傛鍔犺浇涓嬩竴涓?Block
+            
+            纭欢棰勫彇 vs 杞欢棰勫彇锛?
+            - 纭欢棰勫彇锛氳嚜鍔ㄦ娴嬮『搴忚闂ā寮忥紝浣嗗欢杩熻緝楂?
+            - 杞欢棰勫彇锛氱▼搴忓憳鏄庣‘鎸囩ず锛屾彁鍓?100+ 鍛ㄦ湡寮€濮嬪姞杞?
+            
+            棰勫彇璺濈锛?
+            - 澶繎锛氭暟鎹繕娌＄敤瀹屽氨鍔犺浇锛屾氮璐瑰甫瀹?
+            - 澶繙锛氭暟鎹鍏朵粬缂撳瓨琛岄┍閫?
+            - 缁忛獙鍊硷細2 涓?Block锛?56 涓粍浠讹紝绾?4-8KB锛?
+            
+            浣跨敤鍦烘櫙锛?
+            - 澶у閲忓瓨鍌紙> 1000 涓粍浠讹級
+            - 椤哄簭閬嶅巻锛堥殢鏈鸿闂棤鏁堬級
+            - 鍐呭瓨甯﹀鍏呰冻锛堥潪澶氱嚎绋嬬珵浜夛級
+            </summary>
+        </member>
         <member name="M:Lattice.ECS.Core.ComponentBlockIterator`1.#ctor(Lattice.ECS.Core.Storage{`0}*)">
             <summary>
-            创建完整迭代器
+            鍒涘缓瀹屾暣杩唬鍣?
             </summary>
         </member>
         <member name="M:Lattice.ECS.Core.ComponentBlockIterator`1.#ctor(Lattice.ECS.Core.Storage{`0}*,System.Int32,System.Int32)">
             <summary>
-            创建范围迭代器
+            鍒涘缓鑼冨洿杩唬鍣?
             </summary>
         </member>
         <member name="M:Lattice.ECS.Core.ComponentBlockIterator`1.Reset">
             <summary>
-            重置迭代器
+            閲嶇疆杩唬鍣?
             </summary>
         </member>
         <member name="M:Lattice.ECS.Core.ComponentBlockIterator`1.NextBlock(Lattice.Core.EntityRef*@,`0*@,System.Int32@)">
             <summary>
-            获取下一个 Block 的数据
+            鑾峰彇涓嬩竴涓?Block 鐨勬暟鎹?
             </summary>
-            <param name="entities">实体引用数组指针</param>
-            <param name="components">组件数据数组指针</param>
-            <param name="count">此 Block 中的有效项数</param>
-            <returns>是否还有更多数据</returns>
+            <param name="entities">瀹炰綋寮曠敤鏁扮粍鎸囬拡</param>
+            <param name="components">缁勪欢鏁版嵁鏁扮粍鎸囬拡</param>
+            <param name="count">姝?Block 涓殑鏈夋晥椤规暟</param>
+            <returns>鏄惁杩樻湁鏇村鏁版嵁</returns>
         </member>
         <member name="M:Lattice.ECS.Core.ComponentBlockIterator`1.Next(Lattice.Core.EntityRef@,`0*@)">
             <summary>
-            移动到下一个实体（逐个迭代）
+            绉诲姩鍒颁笅涓€涓疄浣擄紙閫愪釜杩唬锛?
             </summary>
         </member>
         <member name="M:Lattice.ECS.Core.ComponentBlockIterator`1.ValidateVersion">
             <summary>
-            验证存储未被修改（防止迭代中增删组件）
+            楠岃瘉瀛樺偍鏈淇敼锛堥槻姝㈣凯浠ｄ腑澧炲垹缁勪欢锛?
             </summary>
         </member>
         <member name="T:Lattice.ECS.Core.PrefetchedBlockIterator`1">
             <summary>
-            增强版块迭代器 - 带预取优化
+            澧炲己鐗堝潡杩唬鍣?- 甯﹂鍙栦紭鍖?
             </summary>
         </member>
         <member name="T:Lattice.ECS.Core.ComponentFilter">
@@ -921,7 +989,107 @@
             获取组件存储的原始指针（高级用法）
             </summary>
         </member>
-        <!-- Badly formed XML comment ignored for member "T:Lattice.ECS.Core.FullOwningGroup`2" -->
+        <member name="T:Lattice.ECS.Core.FullOwningGroup`2">
+            <summary>
+            Full-Owning Group - 终极性能的多组件存储
+            
+            ============================================================
+            为什么需要 Full-Owning Group？
+            ============================================================
+            
+            问题：传统 Storage 的多组件遍历性能瓶颈
+            -------------------------------------------------------------
+            假设你需要更新 Position 和 Velocity：
+            
+            传统方式（Filter{T1, T2}）：
+              1. 遍历 Position Storage（缓存命中）
+              2. 对每个实体查找 Velocity（稀疏查找，缓存未命中）
+              3. 总内存访问：Position Block + Velocity Block（两个不连续区域）
+            
+            Full-Owning Group 方式：
+              1. 直接遍历 Group（Position 和 Velocity 在同一缓存行）
+              2. 总内存访问：一个连续的内存区域
+            
+            性能对比（理论）：
+              - 传统方式：~20-30 CPU 周期/实体（两次缓存加载）
+              - Full-Owning：~5-10 CPU 周期/实体（一次缓存加载，预取友好）
+            
+            ============================================================
+            架构设计决策
+            ============================================================
+            
+            Q: 为什么选择 AOS（Array of Structures）而不是 SOA？
+            A:
+              1. 缓存局部性极致：一起访问的组件在同一缓存行
+              2. 预取友好：硬件预取器可以预测下一个 Group 项
+              3. 更少的指针追踪：不需要通过 EntityRef 查找多个 Storage
+              4. 与 ECS 原则的妥协：牺牲内存效率换取迭代性能
+            
+            Q: 为什么固定 Block 容量为 128？
+            A:
+              1. 与 Storage 保持一致，便于互操作（如从 Storage 迁移到 Group）
+              2. 128 * sizeof(T1+T2) 填满 L1 缓存（假设 T1=16, T2=16，128*32=4096 字节 ≈ L1 容量）
+              3. SIMD 友好：AVX2 可以一次处理 4 个 Group 项
+            
+            Q: 为什么不支持动态添加/删除？
+            A:
+              1. 简化内存管理：连续的内存块，无需处理空洞
+              2. 适合批量创建/销毁的场景（如粒子系统、子弹）
+              3. 如果需要频繁增删，使用传统 Storage + Filter
+            
+            Q: 与 FrameSync 的区别？
+            A:
+              1. FrameSync 没有 Full-Owning Group，只有 ComponentDataBuffer
+              2. FrameSync 的 Filter 每次都要做稀疏查找（_sparse[entity.Index]）
+              3. 这是 Lattice 独有的性能优化特性
+            
+            ============================================================
+            使用场景
+            ============================================================
+            
+            ✅ 适合使用：
+            - 物理系统（Position + Velocity + Mass）
+            - 移动系统（Transform + Velocity + Rotation）
+            - 粒子系统（Position + Velocity + Lifetime + Color）
+            - 任何"每帧一起更新"的组件组合
+            
+            ❌ 不适合使用：
+            - 随机访问频繁的组件（用 Storage&lt;T&gt;）
+            - 生命周期差异大的组件（用 Storage&lt;T&gt; + 延迟删除）
+            - 需要复杂查询的组件（用 Filter）
+            
+            ============================================================
+            内存布局
+            ============================================================
+            
+            FullOwningGroup&lt;T1, T2&gt;（AOS - Array of Structures）:
+            
+            我们使用 SOA within Group（组内 SOA）以获得更好的 SIMD 支持：
+            
+            Block 0:
+            ┌─────────────┬─────────────┬─────────────┐
+            │ T1[0]       │ T1[1]       │ ... T1[127] │  ← 连续的 T1 数组（SIMD 友好）
+            ├─────────────┼─────────────┼─────────────┤
+            │ T2[0]       │ T2[1]       │ ... T2[127] │  ← 连续的 T2 数组（SIMD 友好）
+            ├─────────────┼─────────────┼─────────────┤
+            │ Entity[0]   │ Entity[1]   │ ... Entity  │  ← 实体引用
+            └─────────────┴─────────────┴─────────────┘
+            
+            对比纯 AOS：
+            ┌─────────────────────────────────────────┐
+            │ T1[0] | T2[0] | Entity[0]               │  ← 混合存储，SIMD 不友好
+            │ T1[1] | T2[1] | Entity[1]               │
+            └─────────────────────────────────────────┘
+            
+            我们的布局兼顾：
+            - AOS 的缓存局部性（一起访问的组件接近）
+            - SOA 的 SIMD 友好性（同类型数据连续）
+            
+            迭代时的缓存行为：
+            - 访问 T1[i] 时，T2[i] 很可能在同一缓存行（64 字节）
+            - 预取器可以预测 T1[i+1], T2[i+1] 的访问模式
+            </summary>
+        </member>
         <member name="T:Lattice.ECS.Core.FullOwningGroup`2.Block">
             <summary>
             AOS 布局的数据块
@@ -1110,7 +1278,84 @@
             原子标志数组 - 多线程标记（如裁剪系统）
             </summary>
         </member>
-        <!-- Badly formed XML comment ignored for member "T:Lattice.ECS.Core.SIMDUtils" -->
+        <member name="T:Lattice.ECS.Core.SIMDUtils">
+            <summary>
+            SIMD 工具类 - 批量组件操作优化
+            
+            ============================================================
+            为什么需要 SIMD？
+            ============================================================
+            
+            现代 CPU 的特点：
+            - 标量运算：1 个指令处理 1 个数据（SISD）
+            - SIMD 运算：1 个指令处理 N 个数据（单指令多数据）
+            
+            性能提升（理论）：
+            - SSE2（128 位）：一次处理 2 个 long / 4 个 int，2x-4x 加速
+            - AVX2（256 位）：一次处理 4 个 long / 8 个 int，4x-8x 加速
+            - AVX-512（512 位）：一次处理 8 个 long / 16 个 int，8x-16x 加速
+            
+            实际提升（考虑内存带宽）：
+            - 纯计算密集型：接近理论值（4x-8x）
+            - 内存密集型：1.5x-2x（受限于内存带宽）
+            
+            ============================================================
+            架构设计决策
+            ============================================================
+            
+            Q: 为什么使用 System.Runtime.Intrinsics 而不是 Vector&lt;T&gt;？
+            A:
+              1. 更底层的控制：可以精确选择指令（如 AVX2 的 MultiplyLow）
+              2. 更好的性能：避免 Vector{T} 的抽象开销
+              3. 确定性：固定的指令集，便于帧同步验证
+              4. 与 FrameSync 一致：FrameSync 也使用平台特定指令
+            
+            Q: 为什么需要运行时检查 IsSupported？
+            A:
+              1. 兼容性：支持旧 CPU（如没有 AVX2 的 Intel Sandy Bridge）
+              2. 安全性：避免非法指令异常（Illegal Instruction）
+              3. 渐进式优化：优先使用 AVX2，回退到 SSE2，最后标量
+            
+            Q: 定点数的 SIMD 有什么问题？
+            A:
+              1. 乘法溢出：64 位 × 64 位 = 128 位结果，但 SIMD 寄存器只有 256 位
+              2. 右移操作：定点数需要 (a * b) >> FractionalBits
+              3. 解决方案：使用 32 位中间结果，或分解为多个步骤
+              4. 当前实现：简化版，只使用 SIMD 进行加减法，乘法用标量
+            
+            ============================================================
+            支持的指令集
+            ============================================================
+            
+            优先顺序：
+            1. AVX2 (256-bit)：Intel Haswell+ (2013), AMD Ryzen
+               - Add, Subtract, MultiplyLow, ShiftRightArithmetic
+               - 一次处理 4 个 long（256 / 64 = 4）
+            
+            2. SSE2 (128-bit)：所有 x64 CPU
+               - Add, Subtract, Shift
+               - 一次处理 2 个 long（128 / 64 = 2）
+            
+            3. 标量回退：保证功能正确
+               - 纯 C# 实现，无需特殊指令
+            
+            ============================================================
+            使用建议
+            ============================================================
+            
+            ✅ 适合 SIMD：
+            - 批量向量加法/减法（位置更新）
+            - 批量缩放（速度缩放）
+            - 批量清零（初始化）
+            - 批量内存拷贝（快照/恢复）
+            
+            ❌ 不适合 SIMD：
+            - 随机访问（无法预测内存）
+            - 复杂条件分支（SIMD 不擅长）
+            - 数据量太小（小于 16 个元素，启动开销）
+            - 定点数乘法（需要特殊处理）
+            </summary>
+        </member>
         <member name="M:Lattice.ECS.Core.SIMDUtils.AddBatch(Lattice.Math.FPVector2*,Lattice.Math.FPVector2*,Lattice.Math.FPVector2*,System.Int32)">
             <summary>
             批量向量加法：result[i] = a[i] + b[i]
@@ -1203,7 +1448,85 @@
             - FrameSync 使用相同的模式（_pendingRemoval）
             </summary>
         </member>
-        <!-- Badly formed XML comment ignored for member "T:Lattice.ECS.Core.Storage`1" -->
+        <member name="T:Lattice.ECS.Core.Storage`1">
+             <summary>
+             Block-based 高性能组件存储 - 超越 FrameSync 的内存效率与迭代性能
+             
+             ============================================================
+             架构设计决策
+             ============================================================
+             
+             Q: 为什么选择分离存储（SOA）而不是联合存储（AOS）？
+             A: 
+               1. 预测回滚友好：可以单独快照/恢复单个组件类型
+               2. Delta 压缩高效：只传输变化的组件
+               3. SIMD 友好：连续的同类型数据便于向量化
+               4. 缓存局部性：批量访问同类型组件时命中率更高
+               5. 与 FrameSync 不同：FrameSync 使用联合存储（ComponentDataBuffer）
+            
+             Q: 为什么 Block 容量固定为 128？
+             A:
+               1. 与 FrameSync 保持一致，便于对比和迁移
+               2. 128 * sizeof(T) 通常能填满多个缓存行（假设 T=16 字节，128*16=2048 字节）
+               3. 128 是 2 的幂，可以用位运算替代除法/取模（block = index >> 7, offset = index &amp; 127）
+               4. 足够大的批次用于 SIMD 处理（AVX2 可以一次处理 4 个 Vector4FP）
+            
+             Q: 为什么稀疏数组使用 ushort（2 字节）而不是 int（4 字节）？
+             A:
+               1. 内存节省 50%：65536 个实体的稀疏数组只需 128KB，而 int 需要 256KB
+               2. 65535 的最大索引足够大多数游戏使用（支持 64K 个组件实例）
+               3. 缓存行利用更好：同一代码可以追踪更多实体
+               4. 与 FrameSync 相同的选择（ComponentDataBuffer._sparse 也是 ushort*）
+            
+             Q: 为什么需要版本号（_version）？
+             A:
+               1. 防止迭代中修改：快速检测并发修改，抛出异常而非崩溃
+               2. 调试友好：在 DEBUG 模式下提供清晰的错误信息
+               3. 与 C# 的 IEnumerator 模式一致（检查集合修改）
+            
+             ============================================================
+             性能特性
+             ============================================================
+             
+             1. O(1) 添加/删除/访问：稀疏数组保证常数时间
+             2. 缓存友好：Block 内数据连续，预取友好
+             3. 内存对齐：16 字节对齐，支持 SIMD
+             4. 无 GC：完全非托管内存，通过 Allocator 管理
+            
+             ============================================================
+             内存布局
+             ============================================================
+             
+             Storage&lt;T&gt; (SOA - Structure of Arrays):
+             
+                 Block 0          Block 1          Block 2
+             ┌─────────────┐  ┌─────────────┐  ┌─────────────┐
+             │ EntityRef   │  │ EntityRef   │  │ EntityRef   │  ← 实体引用数组
+             │ [128]       │  │ [128]       │  │ [128]       │     (密集存储)
+             └─────────────┘  └─────────────┘  └─────────────┘
+                   ↓                  ↓                  ↓
+             ┌─────────────┐  ┌─────────────┐  ┌─────────────┐
+             │ T[128]      │  │ T[128]      │  │ T[128]      │  ← 组件数据数组
+             │ (强类型)    │  │ (强类型)    │  │ (强类型)    │     (密集存储)
+             └─────────────┘  └─────────────┘  └─────────────┘
+                   ↓                  ↓                  ↓
+             _sparse[Entity.Index] → GlobalIndex (ushort, 2 字节)
+             
+             对比 FrameSync (AOS - Array of Structures):
+             
+             Block 内存布局：
+             ┌─────────────────────────────────────────┐
+             │ EntityRef[0] | Padding | T[0]          │  ← 同一 Block 内混合存储
+             │ EntityRef[1] | Padding | T[1]          │     需要 _blockDataOffset
+             │ ...                                    │     计算数据偏移
+             └─────────────────────────────────────────┘
+             
+             我们的优势：
+             - 类型安全：T* 而不是 byte*
+             - 更简单的偏移计算：直接 array[index] 而不是 ptr + stride * index
+             - 更好的 SIMD 支持：连续的同类型数据
+             </summary>
+        </member>
         <member name="F:Lattice.ECS.Core.Storage`1.DefaultBlockCapacity">
             <summary>默认 Block 容量（与 FrameSync 一致）</summary>
         </member>
@@ -2230,29 +2553,6 @@
             所有操作本身是确定性的，但调用者需确保内存安全，
             否则可能产生未定义行为（内存损坏、崩溃等）。
             </remarks>
-        </member>
-        <member name="M:Lattice.Math.FPUnsafe.CheckNotNull(System.Void*,System.String)">
-            <summary>
-            DEBUG 模式下检查指针是否为 null
-            </summary>
-            <param name="ptr">要检查的指针</param>
-            <param name="name">参数名（用于异常消息）</param>
-            <exception cref="T:System.ArgumentNullException">指针为 null 时抛出</exception>
-        </member>
-        <member name="M:Lattice.Math.FPUnsafe.CheckCount(System.Int32)">
-            <summary>
-            DEBUG 模式下检查 count 是否为非负数
-            </summary>
-            <param name="count">要检查的数量</param>
-            <exception cref="T:System.ArgumentOutOfRangeException">count 为负数时抛出</exception>
-        </member>
-        <member name="M:Lattice.Math.FPUnsafe.CheckPointers(System.Void*,System.Void*,System.Int32)">
-            <summary>
-            DEBUG 模式下检查指针和 count 的有效性
-            </summary>
-            <param name="source">源指针</param>
-            <param name="destination">目标指针</param>
-            <param name="count">元素数量</param>
         </member>
         <member name="M:Lattice.Math.FPUnsafe.Copy(Lattice.Math.FP*,Lattice.Math.FP*,System.Int32)">
             <summary>
