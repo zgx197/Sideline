@@ -19,6 +19,7 @@ on:
       - 'godot/scripts/lattice/Tests/**'
       - 'godot/scripts/lattice/Lattice.Tests.csproj'
       - 'godot/Lattice.Benchmarks/**'
+      - '.github/workflows/**'
 
 env:
   DOTNET_VERSION: '8.0.x'
