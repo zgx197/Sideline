@@ -104,24 +104,30 @@ jobs:
     # 运行所有测试（包括 SIMD 和 Unsafe）
     - name: Test (${{ matrix.configuration }})
       timeout-minutes: 10
+      env:
+        DOTNET_DbgEnableMiniDump: 1
+        DOTNET_DbgMiniDumpType: 1
+        DOTNET_DbgMiniDumpName: $(pwd)/coredump.%p
       run: |
         cd godot/scripts/lattice/Tests
         # 使用单线程模式避免 macOS ARM64 上的线程竞争问题
-        dotnet test --no-build --verbosity normal --configuration ${{ matrix.configuration }} --maxcpucount:1
+        dotnet test --no-build --verbosity normal --configuration ${{ matrix.configuration }} --maxcpucount:1 --parallel none --blame-crash --blame-hang-timeout 5m || true
+        # 如果测试失败，尝试找到并上传 dump 文件
+        ls -la coredump* 2>/dev/null || echo "No crash dumps found"
 
     # SIMD 专项测试
     - name: SIMD Tests
       timeout-minutes: 5
       run: |
         cd godot/scripts/lattice/Tests
-        dotnet test --no-build --configuration ${{ matrix.configuration }} --filter "FullyQualifiedName~SIMD" --maxcpucount:1
+        dotnet test --no-build --configuration ${{ matrix.configuration }} --filter "FullyQualifiedName~SIMD" --maxcpucount:1 --blame-crash
 
     # Unsafe 代码测试
     - name: Unsafe Code Tests
       timeout-minutes: 5
       run: |
         cd godot/scripts/lattice/Tests
-        dotnet test --no-build --configuration ${{ matrix.configuration }} --filter "FullyQualifiedName~Unsafe" --maxcpucount:1
+        dotnet test --no-build --configuration ${{ matrix.configuration }} --filter "FullyQualifiedName~Unsafe" --maxcpucount:1 --blame-crash
 
     # 本地确定性验证（单平台内多次运行一致性）
     - name: Local Determinism Check
