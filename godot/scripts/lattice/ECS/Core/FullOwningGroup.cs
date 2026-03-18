@@ -79,15 +79,15 @@ namespace Lattice.ECS.Core
     /// - 任何"每帧一起更新"的组件组合
     /// 
     /// ❌ 不适合使用：
-    /// - 随机访问频繁的组件（用 Storage<T>）
-    /// - 生命周期差异大的组件（用 Storage<T> + 延迟删除）
+    /// - 随机访问频繁的组件（用 Storage&lt;T&gt;）
+    /// - 生命周期差异大的组件（用 Storage&lt;T&gt; + 延迟删除）
     /// - 需要复杂查询的组件（用 Filter）
     /// 
     /// ============================================================
     /// 内存布局
     /// ============================================================
     /// 
-    /// FullOwningGroup<T1, T2>（AOS - Array of Structures）:
+    /// FullOwningGroup&lt;T1, T2&gt;（AOS - Array of Structures）:
     /// 
     /// 我们使用 SOA within Group（组内 SOA）以获得更好的 SIMD 支持：
     /// 

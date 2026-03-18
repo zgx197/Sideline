@@ -43,7 +43,7 @@ namespace Lattice.ECS.Core
     /// 架构设计决策
     /// ============================================================
     /// 
-    /// Q: 为什么使用 System.Runtime.Intrinsics 而不是 Vector<T>？
+    /// Q: 为什么使用 System.Runtime.Intrinsics 而不是 Vector&lt;T&gt;？
     /// A:
     ///   1. 更底层的控制：可以精确选择指令（如 AVX2 的 MultiplyLow）
     ///   2. 更好的性能：避免 Vector<T> 的抽象开销

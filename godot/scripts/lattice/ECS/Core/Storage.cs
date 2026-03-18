@@ -89,7 +89,7 @@ namespace Lattice.ECS.Core
     /// 内存布局
     /// ============================================================
     /// 
-    /// Storage<T> (SOA - Structure of Arrays):
+    /// Storage&lt;T&gt; (SOA - Structure of Arrays):
     /// 
     ///     Block 0          Block 1          Block 2
     /// ┌─────────────┐  ┌─────────────┐  ┌─────────────┐
