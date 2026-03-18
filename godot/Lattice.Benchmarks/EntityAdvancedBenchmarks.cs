@@ -110,6 +110,7 @@ namespace Lattice.Benchmarks
     /// </summary>
     [MemoryDiagnoser]
     [RankColumn]
+    [SimpleJob(RuntimeMoniker.Net80, launchCount: 1, warmupCount: 3, iterationCount: 5)]
     public class EntityReservationBenchmarks
     {
         [Params(100, 1000)]
@@ -205,6 +206,7 @@ namespace Lattice.Benchmarks
     /// </summary>
     [MemoryDiagnoser]
     [RankColumn]
+    [SimpleJob(RuntimeMoniker.Net80, launchCount: 1, warmupCount: 3, iterationCount: 5)]
     public class EntityCacheLineBenchmarks
     {
         private Frame _frame = null!;
@@ -283,6 +285,7 @@ namespace Lattice.Benchmarks
     /// </summary>
     [MemoryDiagnoser]
     [RankColumn]
+    [SimpleJob(RuntimeMoniker.Net80, launchCount: 1, warmupCount: 3, iterationCount: 5)]
     public class EntityDiagnosticsBenchmarks
     {
         private Frame _frame = null!;
@@ -376,6 +379,7 @@ namespace Lattice.Benchmarks
     /// </summary>
     [MemoryDiagnoser]
     [RankColumn]
+    [SimpleJob(RuntimeMoniker.Net80, launchCount: 1, warmupCount: 3, iterationCount: 5)]
     public class EntityScenarioBenchmarks
     {
         private const int MaxEntities = 1000;

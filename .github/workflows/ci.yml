@@ -32,10 +32,10 @@ jobs:
     
     steps:
     - name: Checkout
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
 
     - name: Setup .NET
-      uses: actions/setup-dotnet@v4
+      uses: actions/setup-dotnet@v5
       with:
         dotnet-version: ${{ env.DOTNET_VERSION }}
 
@@ -78,15 +78,15 @@ jobs:
 
     steps:
     - name: Checkout
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
 
     - name: Setup .NET
-      uses: actions/setup-dotnet@v4
+      uses: actions/setup-dotnet@v5
       with:
         dotnet-version: ${{ env.DOTNET_VERSION }}
 
     - name: Cache NuGet packages
-      uses: actions/cache@v4
+      uses: actions/cache@v5
       with:
         path: ~/.nuget/packages
         key: ${{ runner.os }}-${{ matrix.arch }}-${{ matrix.configuration }}-nuget-${{ hashFiles('**/Lattice.Tests.csproj', '**/Lattice.csproj') }}
@@ -187,7 +187,7 @@ jobs:
 
     # 上传测试结果用于跨平台确定性验证
     - name: Upload Test Results
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v6
       with:
         name: test-results-${{ matrix.os }}-${{ matrix.configuration }}${{ matrix.arch && format('-{0}', matrix.arch) || '' }}
         path: godot/scripts/lattice/Tests/test-results/
@@ -203,10 +203,10 @@ jobs:
 
     steps:
     - name: Checkout
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
 
     - name: Setup .NET
-      uses: actions/setup-dotnet@v4
+      uses: actions/setup-dotnet@v5
       with:
         dotnet-version: ${{ env.DOTNET_VERSION }}
 
@@ -248,7 +248,7 @@ jobs:
         echo "checksums=$(cat checksums.txt | tr '\n' ',')" >> $GITHUB_ENV
 
     - name: Upload Cross-Platform Results
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v6
       with:
         name: determinism-linux-checksums
         path: |
@@ -280,10 +280,10 @@ jobs:
 
     steps:
     - name: Checkout
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
 
     - name: Setup .NET
-      uses: actions/setup-dotnet@v4
+      uses: actions/setup-dotnet@v5
       with:
         dotnet-version: ${{ env.DOTNET_VERSION }}
 
@@ -344,7 +344,7 @@ jobs:
         echo "✓ SIMD validation completed on ${{ matrix.os }}"
 
     - name: Upload SIMD Results
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v6
       with:
         name: simd-results-${{ matrix.os }}
         path: godot/scripts/lattice/Tests/simd-results/
@@ -363,10 +363,10 @@ jobs:
 
     steps:
     - name: Checkout
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
 
     - name: Setup .NET
-      uses: actions/setup-dotnet@v4
+      uses: actions/setup-dotnet@v5
       with:
         dotnet-version: ${{ env.DOTNET_VERSION }}
 
@@ -400,15 +400,15 @@ jobs:
 
     steps:
     - name: Checkout
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
 
     - name: Setup .NET
-      uses: actions/setup-dotnet@v4
+      uses: actions/setup-dotnet@v5
       with:
         dotnet-version: ${{ env.DOTNET_VERSION }}
 
     - name: Cache NuGet packages
-      uses: actions/cache@v4
+      uses: actions/cache@v5
       with:
         path: ~/.nuget/packages
         key: ${{ runner.os }}-nuget-${{ hashFiles('**/Lattice.csproj') }}
@@ -434,14 +434,15 @@ jobs:
   coverage:
     name: Code Coverage
     runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: build-and-test
 
     steps:
     - name: Checkout
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
 
     - name: Setup .NET
-      uses: actions/setup-dotnet@v4
+      uses: actions/setup-dotnet@v5
       with:
         dotnet-version: ${{ env.DOTNET_VERSION }}
 
@@ -478,14 +479,14 @@ jobs:
           -reporttypes:"Html;MarkdownSummaryGithub"
 
     - name: Upload Coverage Report
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v6
       with:
         name: coverage-report
         path: godot/scripts/lattice/Tests/coverage/report/
         retention-days: 30
 
     - name: Upload to Codecov
-      uses: codecov/codecov-action@v4
+      uses: codecov/codecov-action@v5
       with:
         files: godot/scripts/lattice/Tests/coverage/coverage.cobertura.xml
         flags: unittests
@@ -501,12 +502,12 @@ jobs:
 
     steps:
     - name: Checkout
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
       with:
         fetch-depth: 0
 
     - name: Setup .NET
-      uses: actions/setup-dotnet@v4
+      uses: actions/setup-dotnet@v5
       with:
         dotnet-version: ${{ env.DOTNET_VERSION }}
 
@@ -577,7 +578,7 @@ jobs:
         fi
 
     - name: Upload Benchmark Smoke Results
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v6
       if: always()
       with:
         name: benchmark-smoke-results
@@ -585,8 +586,8 @@ jobs:
         retention-days: 14
         if-no-files-found: warn
 
-  # ==================== 8. main 完整性能基准测试 ====================
-  benchmark-publish:
+  # ==================== 8. main 代表性性能基准测试 ====================
+  benchmark-lite:
     name: Performance Benchmark
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -594,12 +595,12 @@ jobs:
 
     steps:
     - name: Checkout
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
       with:
         fetch-depth: 0
 
     - name: Setup .NET
-      uses: actions/setup-dotnet@v4
+      uses: actions/setup-dotnet@v5
       with:
         dotnet-version: ${{ env.DOTNET_VERSION }}
 
@@ -619,7 +620,9 @@ jobs:
       shell: bash
       run: |
         cd godot/Lattice.Benchmarks
-        dotnet run --configuration Release -- --filter "*" --exporters json html markdown
+        dotnet run --configuration Release -- \
+          --filter "*FPMathBenchmarks*" "*FPvsFloatBenchmarks*" "*EntityRegistryBenchmarks*" "*EntityBranchlessBenchmarks*" "*EntityMicroBenchmarks*" \
+          --exporters json html markdown
 
     - name: Debug Benchmark Output Paths
       if: always()
@@ -767,191 +770,87 @@ jobs:
         find godot/Lattice.Benchmarks/benchmark-results -maxdepth 2 -type f | sort
 
     - name: Upload Benchmark Results
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v6
       with:
         name: benchmark-results
         path: godot/Lattice.Benchmarks/benchmark-results/
         retention-days: 90
         if-no-files-found: error
 
-  # ==================== 9. 更新报告到 Docs ====================
-  update-reports:
-    name: Update Reports to Docs
+  # ==================== 9. 构建 Pages 站点 ====================
+  build-pages-site:
+    name: Build Pages Site
     runs-on: ubuntu-latest
-    needs: [coverage, benchmark-publish]
+    needs: [coverage, benchmark-lite]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     permissions:
-      contents: write
+      contents: read
     
     steps:
-    - name: Debug - Show Git Info
-      run: |
-        echo "=== Git Info ==="
-        echo "Event name: ${{ github.event_name }}"
-        echo "Ref: ${{ github.ref }}"
-        echo "Branch: ${{ github.ref_name }}"
-        echo "SHA: ${{ github.sha }}"
-    
     - name: Checkout
-      uses: actions/checkout@v4
-      with:
-        ref: ${{ github.ref }}
-        token: ${{ secrets.GITHUB_TOKEN }}
-    
-    - name: Create Report Directories
-      run: |
-        mkdir -p ./docs/reports/coverage
-        mkdir -p ./docs/reports/benchmark
-    
+      uses: actions/checkout@v5
+
+    - name: Configure Pages
+      uses: actions/configure-pages@v5
+
     - name: Download Coverage Report
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v6
       with:
         name: coverage-report
         path: ./coverage-temp
     
     - name: Download Benchmark Results
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v6
       with:
         name: benchmark-results
         path: ./benchmark-temp
-    
-    - name: Debug - Before Copy
-      run: |
-        echo "=== Current Directory ==="
-        pwd
-        echo ""
-        echo "=== List all files in current dir ==="
-        ls -la
-        echo ""
-        echo "=== Check coverage-temp ==="
-        if [ -d "./coverage-temp" ]; then
-          echo "Directory exists"
-          ls -la ./coverage-temp/ | head -20
-          echo "File count: $(find ./coverage-temp -type f | wc -l)"
-        else
-          echo "Directory does NOT exist"
-        fi
-        echo ""
-        echo "=== Check benchmark-temp ==="
-        if [ -d "./benchmark-temp" ]; then
-          echo "Directory exists"
-          ls -la ./benchmark-temp/ | head -20
-        else
-          echo "Directory does NOT exist"
-        fi
-        echo ""
-        echo "=== Check docs/reports ==="
-        ls -la ./docs/reports/ 2>/dev/null || echo "Directory does NOT exist"
-    
-    - name: Copy Reports to Docs
-      run: |
-        set -x  # 开启调试模式
-        
-        # 检查 coverage artifact
-        echo "=== Processing Coverage ==="
-        if [ -d "./coverage-temp" ] && [ "$(ls -A ./coverage-temp)" ]; then
-          echo "✓ Coverage artifact found"
-          echo "Source files:"
-          find ./coverage-temp -type f | head -10
-          
-          rm -rf ./docs/reports/coverage
-          mkdir -p ./docs/reports/coverage
-          
-          # 复制文件（保留隐藏文件）
-          cp -a ./coverage-temp/. ./docs/reports/coverage/
-          echo "✓ Copied files"
-          
-          # 验证复制结果
-          echo "Target files:"
-          ls -la ./docs/reports/coverage/ | head -20
-          echo "Total files in coverage: $(find ./docs/reports/coverage -type f | wc -l)"
-          
-          # 检查关键文件
-          if [ -f "./docs/reports/coverage/index.html" ]; then
-            echo "✓ index.html exists"
-          else
-            echo "⚠ index.html NOT found"
-          fi
-        else
-          echo "✗ Coverage artifact not found or empty!"
-          echo "Directory exists: $([ -d "./coverage-temp" ] && echo 'YES' || echo 'NO')"
-          if [ -d "./coverage-temp" ]; then
-            echo "Directory empty: $([ "$(ls -A ./coverage-temp)" ] && echo 'NO' || echo 'YES')"
-          fi
-          exit 1
-        fi
-        
-        # 检查 benchmark artifact
-        echo ""
-        echo "=== Processing Benchmark ==="
-        if [ -d "./benchmark-temp" ] && [ "$(ls -A ./benchmark-temp 2>/dev/null)" ]; then
-          echo "✓ Benchmark artifact found"
-          ls -la ./benchmark-temp/
-          
-          rm -rf ./docs/reports/benchmark
-          mkdir -p ./docs/reports/benchmark
-          cp -a ./benchmark-temp/. ./docs/reports/benchmark/
-          echo "✓ Copied files"
-          ls -la ./docs/reports/benchmark/
-        else
-          echo "✗ Benchmark artifact not found or empty!"
-          exit 1
-        fi
-    
-    - name: Debug - Final Report Structure
-      run: |
-        echo "=== Full Reports Directory Tree ==="
-        find ./docs/reports -type f 2>/dev/null | sort | head -30
-        echo ""
-        echo "=== Coverage Directory Details ==="
-        ls -laR ./docs/reports/coverage/ 2>/dev/null || echo "Directory not found"
-        echo ""
-        echo "=== Check index.html ==="
-        if [ -f "./docs/reports/coverage/index.html" ]; then
-          echo "✓ coverage/index.html EXISTS"
-          echo "First 5 lines:"
-          head -5 ./docs/reports/coverage/index.html
-        else
-          echo "✗ coverage/index.html NOT FOUND"
-        fi
-        echo ""
-        echo "=== Git Status ==="
-        git status --short
-        echo ""
-        echo "=== Git Diff (staged) ==="
-        git diff --staged --stat
-    
-    - name: Commit and Push
+
+    - name: Prepare Pages Source
       shell: bash
       run: |
-        set -x
-        
-        git config --local user.email "github-actions[bot]@users.noreply.github.com"
-        git config --local user.name "github-actions[bot]"
-        
-        echo "=== Current Git Status (all files) ==="
-        git status --untracked-files=all
-        
-        git add -A docs/reports/
-        
-        echo "=== Staged changes ==="
-        git diff --staged --name-status
-        
-        # 检查是否有变更
-        if git diff --staged --quiet; then
-          echo "✓ No report changes to commit"
-          exit 0
-        else
-          echo "=== Committing changes ==="
-          COVERAGE_COUNT=$(find ./docs/reports/coverage -type f 2>/dev/null | wc -l)
-          BENCHMARK_COUNT=$(find ./docs/reports/benchmark -type f 2>/dev/null | wc -l)
-          
-          git commit -m "docs: update CI reports [skip ci]" \
-                     -m "Coverage: $COVERAGE_COUNT files" \
-                     -m "Benchmark: $BENCHMARK_COUNT files"
-          
-          echo "=== Pushing to branch ==="
-          git pull --rebase origin "${GITHUB_REF_NAME}"
-          git push
-          echo "✓ Successfully pushed reports"
-        fi
+        set -euo pipefail
+
+        rm -rf .pages-src .pages-build
+        mkdir -p .pages-src
+        cp -a docs/. .pages-src/
+
+        rm -rf .pages-src/reports/coverage .pages-src/reports/benchmark
+        mkdir -p .pages-src/reports/coverage .pages-src/reports/benchmark
+
+        cp -a ./coverage-temp/. .pages-src/reports/coverage/
+        cp -a ./benchmark-temp/. .pages-src/reports/benchmark/
+
+        echo "=== Pages Source Reports Tree ==="
+        find .pages-src/reports -maxdepth 3 -type f | sort | head -200
+
+    - name: Build Jekyll Site
+      uses: actions/jekyll-build-pages@v1
+      with:
+        source: ./.pages-src
+        destination: ./.pages-build
+
+    - name: Upload Pages Artifact
+      uses: actions/upload-pages-artifact@v4
+      with:
+        path: ./.pages-build
+
+  # ==================== 10. 部署 GitHub Pages ====================
+  deploy-pages:
+    name: Deploy Pages
+    runs-on: ubuntu-latest
+    needs: build-pages-site
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      pages: write
+      id-token: write
+    concurrency:
+      group: github-pages
+      cancel-in-progress: true
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+    - name: Deploy to GitHub Pages
+      id: deployment
+      uses: actions/deploy-pages@v4

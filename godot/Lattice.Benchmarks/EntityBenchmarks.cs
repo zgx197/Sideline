@@ -270,6 +270,7 @@ namespace Lattice.Benchmarks
     /// </summary>
     [MemoryDiagnoser]
     [RankColumn]
+    [SimpleJob(RuntimeMoniker.Net80, launchCount: 1, warmupCount: 3, iterationCount: 5)]
     public class EntityMemoryBenchmarks
     {
         [Params(100, 1000, 10000)]
@@ -329,6 +330,7 @@ namespace Lattice.Benchmarks
     /// 实体热路径微基准测试
     /// </summary>
     [MemoryDiagnoser]
+    [SimpleJob(RuntimeMoniker.Net80, launchCount: 1, warmupCount: 3, iterationCount: 5)]
     public class EntityMicroBenchmarks
     {
         private Frame _frame = null!;
