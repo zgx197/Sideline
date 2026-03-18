@@ -14,7 +14,7 @@
     <!-- XML 文档生成 -->
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <DocumentationFile>$(OutputPath)$(AssemblyName).xml</DocumentationFile>
-    <NoWarn>$(NoWarn);CS1591</NoWarn>  <!-- 暂时忽略缺少文档警告 -->
+    <NoWarn>$(NoWarn);CS1591;CS8500</NoWarn>  <!-- 忽略缺少文档警告和托管类型指针警告 -->
     
     <!-- 允许不安全代码（高性能 ECS 需要） -->
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
