@@ -111,9 +111,9 @@ jobs:
       run: |
         cd godot/scripts/lattice/Tests
         # 使用单线程模式避免 macOS ARM64 上的线程竞争问题
-        dotnet test --no-build --verbosity normal --configuration ${{ matrix.configuration }} --maxcpucount:1 --parallel none --blame-crash --blame-hang-timeout 5m || true
+        dotnet test --no-build --verbosity normal --configuration ${{ matrix.configuration }} --maxcpucount:1 --blame-crash --blame-hang-timeout 5m
         # 如果测试失败，尝试找到并上传 dump 文件
-        ls -la coredump* 2>/dev/null || echo "No crash dumps found"
+        if (Test-Path coredump*) { Get-ChildItem coredump* } else { Write-Host "No crash dumps found" }
 
     # SIMD 专项测试
     - name: SIMD Tests
