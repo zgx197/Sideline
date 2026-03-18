@@ -20,7 +20,7 @@ description: Lattice 框架代码覆盖率与性能基准测试报告
         <p>查看 Lattice 框架的单元测试覆盖情况，包括 FP 定点数、ECS 核心等模块的测试覆盖度。</p>
         <div style="margin-top: 15px;">
             <span class="tag tag-green">实时更新</span>
-            <span class="tag">当前: 74%</span>
+            <span class="tag">自动发布</span>
         </div>
     </a>
     
@@ -28,10 +28,10 @@ description: Lattice 框架代码覆盖率与性能基准测试报告
     <a href="{{ '/reports/benchmark/' | relative_url }}" class="pixel-card feature-item" style="text-decoration: none; color: inherit; display: block;">
         <div class="feature-icon">⚡</div>
         <h3>性能基准</h3>
-        <p>对比 FP 定点数与 float 的性能表现，包括运算速度、内存分配和批量处理测试。</p>
+        <p>基于固定 GitHub Actions Linux 环境的 BenchmarkDotNet 回归跟踪，用于观察关键路径是否出现性能退化。</p>
         <div style="margin-top: 15px;">
             <span class="tag tag-green">自动测试</span>
-            <span class="tag">多平台</span>
+            <span class="tag">回归跟踪</span>
         </div>
     </a>
     
@@ -44,11 +44,11 @@ description: Lattice 框架代码覆盖率与性能基准测试报告
         <p>本页面展示 Sideline 项目自研 Lattice ECS 框架的自动化测试报告，包括：</p>
         <ul style="line-height: 1.8;">
             <li><strong>代码覆盖率</strong>：通过 170+ 单元测试验证框架稳定性</li>
-            <li><strong>性能基准</strong>：定点数运算性能对比与回归测试</li>
+            <li><strong>性能基准</strong>：基于固定 CI 环境的 BenchmarkDotNet 自动回归测试与结果归档</li>
             <li><strong>确定性验证</strong>：跨平台帧同步一致性检测</li>
         </ul>
         <p style="margin-top: 20px; color: var(--color-text-muted);">
-            报告由 GitHub Actions 自动生成并部署，每次代码提交后自动更新。
+            报告由 GitHub Actions 在 main 分支自动生成并发布到文档站点。
         </p>
     </div>
 </section>
