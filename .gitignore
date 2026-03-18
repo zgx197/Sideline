@@ -105,3 +105,5 @@ coverage/
 # Test Results
 TestResults/
 
+# Codex 本地临时 .NET SDK 工作区
+.codex-temp-dotnet8/

@@ -2,178 +2,213 @@ using System;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Jobs;
 using Lattice.Core;
+using Lattice.ECS.Core;
 
 namespace Lattice.Benchmarks
 {
     /// <summary>
-    /// EntityRegistry P2/P3 高级功能基准测试
+    /// 实体有效性与组件访问热路径基准测试
     /// </summary>
     [MemoryDiagnoser]
     [RankColumn]
     [SimpleJob(RuntimeMoniker.Net80, launchCount: 1, warmupCount: 3, iterationCount: 5)]
     public class EntityBranchlessBenchmarks
     {
-        private EntityRegistry _registry = null!;
-        private Entity[] _entities = null!;
-        
+        private Frame _frame = null!;
+        private EntityRef[] _activeEntities = null!;
+        private EntityRef[] _mixedEntities = null!;
+
         [Params(100, 1000, 10000)]
         public int EntityCount { get; set; }
 
         [GlobalSetup]
         public void Setup()
         {
-            _registry = new EntityRegistry(EntityCount);
-            _entities = new Entity[EntityCount];
-            
+            BenchmarkComponentRegistration.EnsureRegistered();
+
+            _frame = new Frame(EntityCount * 2);
+            _activeEntities = new EntityRef[EntityCount];
+            _mixedEntities = new EntityRef[EntityCount];
+
             for (int i = 0; i < EntityCount; i++)
             {
-                _entities[i] = _registry.Create();
+                var entity = _frame.CreateEntity();
+                _frame.Add(entity, new PositionComponent(i, i + 1));
+                _activeEntities[i] = entity;
+                _mixedEntities[i] = entity;
+            }
+
+            for (int i = 0; i < EntityCount; i += 4)
+            {
+                _frame.DestroyEntity(_mixedEntities[i]);
             }
         }
 
-        /// <summary>
-        /// 标准验证（有分支）
-        /// </summary>
         [Benchmark(Baseline = true)]
-        public int ValidateStandard()
+        public int ValidateActiveHandles()
         {
             int count = 0;
-            for (int i = 0; i < EntityCount; i++)
+            for (int i = 0; i < _activeEntities.Length; i++)
             {
-                if (_registry.IsValid(_entities[i])) count++;
+                if (_frame.IsValid(_activeEntities[i]))
+                {
+                    count++;
+                }
             }
+
             return count;
         }
 
-        /// <summary>
-        /// 快速验证（无边界检查）
-        /// </summary>
         [Benchmark]
-        public int ValidateFast()
+        public int ValidateMixedHandles()
         {
             int count = 0;
-            for (int i = 0; i < EntityCount; i++)
+            for (int i = 0; i < _mixedEntities.Length; i++)
             {
-                if (_registry.IsValidFast(_entities[i])) count++;
+                if (_frame.IsValid(_mixedEntities[i]))
+                {
+                    count++;
+                }
             }
+
             return count;
         }
 
-        /// <summary>
-        /// 无分支验证（位运算）
-        /// </summary>
         [Benchmark]
-        public int ValidateBranchless()
+        public int HasPositionOnDenseSet()
         {
             int count = 0;
-            for (int i = 0; i < EntityCount; i++)
+            for (int i = 0; i < _activeEntities.Length; i++)
             {
-                if (_registry.IsValidBranchless(_entities[i])) count++;
+                if (_frame.Has<PositionComponent>(_activeEntities[i]))
+                {
+                    count++;
+                }
             }
+
             return count;
         }
 
-        /// <summary>
-        /// 批量验证
-        /// </summary>
         [Benchmark]
-        public int ValidateBatch()
+        public int TryGetPositionOnMixedSet()
         {
-            Span<bool> results = stackalloc bool[EntityCount];
-            return _registry.ValidateBatch(_entities, results);
+            int count = 0;
+            for (int i = 0; i < _mixedEntities.Length; i++)
+            {
+                if (_frame.TryGet<PositionComponent>(_mixedEntities[i], out _))
+                {
+                    count++;
+                }
+            }
+
+            return count;
         }
     }
 
     /// <summary>
-    /// 实体预留功能基准测试
+    /// 批量生命周期操作基准测试
     /// </summary>
     [MemoryDiagnoser]
     [RankColumn]
     public class EntityReservationBenchmarks
     {
-        private EntityRegistry _registry = null!;
-        private Entity[] _reserved = null!;
-
         [Params(100, 1000)]
         public int Count { get; set; }
 
         [GlobalSetup]
         public void Setup()
         {
-            _registry = new EntityRegistry(Count * 2);
+            BenchmarkComponentRegistration.EnsureRegistered();
         }
 
-        /// <summary>
-        /// 顺序预留
-        /// </summary>
-        [Benchmark]
-        public int ReserveSequential()
-        {
-            for (int i = 0; i < Count; i++)
-            {
-                _registry.Reserve();
-            }
-            return _registry.ReservedCount;
-        }
-
-        /// <summary>
-        /// 批量预留
-        /// </summary>
-        [Benchmark]
-        public int ReserveBatch()
-        {
-            Span<Entity> reserved = stackalloc Entity[Count];
-            _registry.ReserveBatch(reserved);
-            return _registry.ReservedCount;
-        }
-
-        /// <summary>
-        /// 预留并激活
-        /// </summary>
-        [Benchmark]
-        public int ReserveAndActivate()
-        {
-            _reserved = new Entity[Count];
-            
-            // 预留
-            for (int i = 0; i < Count; i++)
-            {
-                _reserved[i] = _registry.Reserve();
-            }
-            
-            // 激活
-            for (int i = 0; i < Count; i++)
-            {
-                _registry.ActivateReserved(_reserved[i]);
-            }
-            
-            return _registry.AliveCount;
-        }
-
-        /// <summary>
-        /// 对比：直接创建 vs 预留+激活
-        /// </summary>
         [Benchmark(Baseline = true)]
         public int DirectCreate()
         {
+            using var frame = new Frame(Count);
+
             for (int i = 0; i < Count; i++)
             {
-                _registry.Create();
+                frame.CreateEntity();
             }
-            return _registry.AliveCount;
+
+            return frame.EntityCount;
+        }
+
+        [Benchmark]
+        public int CreateThenDestroyBurst()
+        {
+            using var frame = new Frame(Count);
+            var entities = new EntityRef[Count];
+
+            for (int i = 0; i < Count; i++)
+            {
+                entities[i] = frame.CreateEntity();
+            }
+
+            int destroyed = 0;
+            for (int i = 0; i < Count; i++)
+            {
+                if (frame.IsValid(entities[i]))
+                {
+                    frame.DestroyEntity(entities[i]);
+                    destroyed++;
+                }
+            }
+
+            return destroyed;
+        }
+
+        [Benchmark]
+        public int CreateWithComponentBurst()
+        {
+            using var frame = new Frame(Count);
+
+            for (int i = 0; i < Count; i++)
+            {
+                var entity = frame.CreateEntity();
+                frame.Add(entity, new PositionComponent(i, i));
+                frame.Add(entity, new HealthComponent(100));
+            }
+
+            return frame.EntityCount;
+        }
+
+        [Benchmark]
+        public int RecreateAfterDestroy()
+        {
+            using var frame = new Frame(Count);
+            var entities = new EntityRef[Count];
+
+            for (int i = 0; i < Count; i++)
+            {
+                entities[i] = frame.CreateEntity();
+            }
+
+            for (int i = 0; i < Count; i++)
+            {
+                frame.DestroyEntity(entities[i]);
+            }
+
+            int recreated = 0;
+            for (int i = 0; i < Count; i++)
+            {
+                frame.CreateEntity();
+                recreated++;
+            }
+
+            return recreated;
         }
     }
 
     /// <summary>
-    /// 缓存行对齐遍历基准测试
+    /// 稠密访问与组件读取模式基准测试
     /// </summary>
     [MemoryDiagnoser]
     [RankColumn]
     public class EntityCacheLineBenchmarks
     {
-        private EntityRegistry _registry = null!;
-        private const int CacheLineSize = 64;
-        private const int EntitiesPerCacheLine = CacheLineSize / sizeof(int); // 16
+        private Frame _frame = null!;
+        private EntityRef[] _entities = null!;
 
         [Params(16, 64, 256, 1024)]
         public int EntityCount { get; set; }
@@ -181,59 +216,77 @@ namespace Lattice.Benchmarks
         [GlobalSetup]
         public void Setup()
         {
-            _registry = new EntityRegistry(EntityCount);
-            
-            // 创建实体，模拟混合模式（部分活跃）
+            BenchmarkComponentRegistration.EnsureRegistered();
+
+            _frame = new Frame(EntityCount);
+            _entities = new EntityRef[EntityCount];
+
             for (int i = 0; i < EntityCount; i++)
             {
-                _registry.Create();
+                var entity = _frame.CreateEntity();
+                _frame.Add(entity, new PositionComponent(i, i + 1));
+
+                if ((i & 1) == 0)
+                {
+                    _frame.Add(entity, new VelocityComponent(i + 2, i + 3));
+                }
+
+                _entities[i] = entity;
             }
         }
 
-        /// <summary>
-        /// 标准遍历（foreach）
-        /// </summary>
         [Benchmark(Baseline = true)]
-        public int IterateStandard()
+        public int ReadDensePositionComponents()
         {
-            int count = 0;
-            foreach (var entity in _registry.GetAliveEnumerable())
+            int sum = 0;
+            for (int i = 0; i < _entities.Length; i++)
             {
-                count++;
+                sum += _frame.Get<PositionComponent>(_entities[i]).X;
             }
-            return count;
+
+            return sum;
         }
 
-        /// <summary>
-        /// 缓存行对齐遍历
-        /// </summary>
         [Benchmark]
-        public int IterateCacheLineAligned()
+        public int ReadOptionalVelocityComponents()
         {
-            int count = 0;
-            _registry.ForEachAliveAligned(_ => count++);
-            return count;
+            int sum = 0;
+            for (int i = 0; i < _entities.Length; i++)
+            {
+                if (_frame.TryGet<VelocityComponent>(_entities[i], out var velocity))
+                {
+                    sum += velocity.X;
+                }
+            }
+
+            return sum;
         }
 
-        /// <summary>
-        /// 获取活跃实体到 Span
-        /// </summary>
         [Benchmark]
-        public int GetAliveSpan()
+        public int HasChecksBeforeRead()
         {
-            Span<Entity> buffer = stackalloc Entity[EntityCount];
-            return _registry.GetAliveEntities(buffer);
+            int sum = 0;
+            for (int i = 0; i < _entities.Length; i++)
+            {
+                if (_frame.Has<PositionComponent>(_entities[i]))
+                {
+                    sum += _frame.Get<PositionComponent>(_entities[i]).Y;
+                }
+            }
+
+            return sum;
         }
     }
 
     /// <summary>
-    /// 统计与诊断基准测试
+    /// 统计聚合类基准测试
     /// </summary>
     [MemoryDiagnoser]
     [RankColumn]
     public class EntityDiagnosticsBenchmarks
     {
-        private EntityRegistry _registry = null!;
+        private Frame _frame = null!;
+        private EntityRef[] _entities = null!;
 
         [Params(100, 1000, 10000)]
         public int EntityCount { get; set; }
@@ -241,62 +294,80 @@ namespace Lattice.Benchmarks
         [GlobalSetup]
         public void Setup()
         {
-            _registry = new EntityRegistry(EntityCount);
-            
-            // 创建混合场景
+            BenchmarkComponentRegistration.EnsureRegistered();
+
+            _frame = new Frame(EntityCount);
+            _entities = new EntityRef[EntityCount];
+
             for (int i = 0; i < EntityCount; i++)
             {
-                if (i % 4 == 0)
+                var entity = _frame.CreateEntity();
+                _frame.Add(entity, new PositionComponent(i, i));
+
+                if ((i % 3) != 0)
                 {
-                    _registry.Reserve(); // 25% 预留
+                    _frame.Add(entity, new HealthComponent(100 - (i % 50)));
                 }
-                else
-                {
-                    var entity = _registry.Create();
-                    if (i % 3 == 0)
-                    {
-                        _registry.Destroy(entity); // 25% 销毁
-                    }
-                }
+
+                _entities[i] = entity;
             }
         }
 
-        /// <summary>
-        /// 获取统计信息
-        /// </summary>
         [Benchmark]
-        public EntityStats GetStats()
+        public int CountValidEntities()
         {
-            return _registry.GetStats();
+            int count = 0;
+            for (int i = 0; i < _entities.Length; i++)
+            {
+                if (_frame.IsValid(_entities[i]))
+                {
+                    count++;
+                }
+            }
+
+            return count;
         }
 
-        /// <summary>
-        /// 生成诊断报告
-        /// </summary>
         [Benchmark]
-        public string GetDiagnosticsReport()
+        public int CountEntitiesWithHealth()
         {
-            return _registry.GetDiagnosticsReport();
+            int count = 0;
+            for (int i = 0; i < _entities.Length; i++)
+            {
+                if (_frame.Has<HealthComponent>(_entities[i]))
+                {
+                    count++;
+                }
+            }
+
+            return count;
         }
 
-        /// <summary>
-        /// 计算内存使用
-        /// </summary>
         [Benchmark]
-        public int CalculateMemoryUsage()
+        public int SumHealthValues()
         {
-            var stats = _registry.GetStats();
-            return stats.MemoryUsed;
+            int total = 0;
+            for (int i = 0; i < _entities.Length; i++)
+            {
+                if (_frame.TryGet<HealthComponent>(_entities[i], out var health))
+                {
+                    total += health.Value;
+                }
+            }
+
+            return total;
         }
 
-        /// <summary>
-        /// 计算缓存效率
-        /// </summary>
         [Benchmark]
-        public float CalculateCacheEfficiency()
+        public int HashEntityRefs()
         {
-            var stats = _registry.GetStats();
-            return stats.CacheLineEfficiency;
+            int hash = 17;
+            for (int i = 0; i < _entities.Length; i++)
+            {
+                hash = HashCode.Combine(hash, _entities[i].GetHashCode());
+            }
+
+            return hash;
         }
     }
 
@@ -307,74 +378,45 @@ namespace Lattice.Benchmarks
     [RankColumn]
     public class EntityScenarioBenchmarks
     {
-        private const int EntityCount = 1000;
+        private const int MaxEntities = 1000;
 
-        /// <summary>
-        /// 模拟游戏帧：创建、销毁、验证混合
-        /// </summary>
+        [GlobalSetup]
+        public void Setup()
+        {
+            BenchmarkComponentRegistration.EnsureRegistered();
+        }
+
         [Benchmark]
         public int GameFrameSimulation()
         {
-            var registry = new EntityRegistry(EntityCount);
-            var entities = new Entity[EntityCount];
-            int entityCount = 0;
+            using var frame = new Frame(MaxEntities);
+            var entities = new EntityRef[MaxEntities];
+            int aliveCount = 0;
             int processed = 0;
 
-            // 模拟 100 帧
-            for (int frame = 0; frame < 100; frame++)
+            for (int frameIndex = 0; frameIndex < 100; frameIndex++)
             {
-                // 每帧创建 5 个新实体
-                for (int i = 0; i < 5 && entityCount < EntityCount; i++)
+                for (int i = 0; i < 5 && aliveCount < MaxEntities; i++)
                 {
-                    entities[entityCount++] = registry.Create();
+                    var entity = frame.CreateEntity();
+                    frame.Add(entity, new PositionComponent(frameIndex, i));
+                    entities[aliveCount++] = entity;
                 }
 
-                // 每帧销毁 3 个旧实体
-                for (int i = 0; i < 3 && entityCount > 10; i++)
+                for (int i = 0; i < 3 && aliveCount > 10; i++)
                 {
-                    int idx = (frame * 3 + i) % (entityCount - 10) + 10;
-                    if (registry.Destroy(entities[idx]))
+                    int index = (frameIndex * 3 + i) % (aliveCount - 10) + 10;
+                    frame.Remove<PositionComponent>(entities[index]);
+                    frame.DestroyEntity(entities[index]);
+                    entities[index] = entities[aliveCount - 1];
+                    aliveCount--;
+                }
+
+                for (int i = 0; i < aliveCount; i++)
+                {
+                    if (frame.TryGet<PositionComponent>(entities[i], out _))
                     {
-                        entities[idx] = entities[--entityCount];
-                    }
-                }
-
-                // 验证所有实体
-                for (int i = 0; i < entityCount; i++)
-                {
-                    if (registry.IsValid(entities[i])) processed++;
-                }
-            }
-
-            return processed;
-        }
-
-        /// <summary>
-        /// 批量创建销毁场景
-        /// </summary>
-        [Benchmark]
-        public int BulkCreateDestroy()
-        {
-            var registry = new EntityRegistry(EntityCount);
-            Span<Entity> buffer = stackalloc Entity[100];
-            int processed = 0;
-
-            for (int cycle = 0; cycle < 10; cycle++)
-            {
-                // 批量创建
-                for (int i = 0; i < 10; i++)
-                {
-                    registry.CreateBatch(buffer);
-                    processed += buffer.Length;
-                }
-
-                // 批量销毁
-                for (int i = 0; i < registry.Count; i++)
-                {
-                    var entity = new Entity(i, registry.GetVersion(i));
-                    if ((entity.Version & EntityRegistry.ActiveBit) != 0)
-                    {
-                        registry.Destroy(entity);
+                        processed++;
                     }
                 }
             }
@@ -382,37 +424,70 @@ namespace Lattice.Benchmarks
             return processed;
         }
 
-        /// <summary>
-        /// 预留激活场景
-        /// </summary>
         [Benchmark]
-        public int ReserveActivateScenario()
+        public int BulkCreateAddRemove()
         {
-            var registry = new EntityRegistry(EntityCount);
-            Span<Entity> reserved = stackalloc Entity[50];
-            int processed = 0;
+            using var frame = new Frame(MaxEntities);
+            var entities = new EntityRef[MaxEntities];
 
-            for (int cycle = 0; cycle < 20; cycle++)
+            for (int i = 0; i < MaxEntities; i++)
             {
-                // 批量预留
-                registry.ReserveBatch(reserved);
+                var entity = frame.CreateEntity();
+                frame.Add(entity, new PositionComponent(i, i + 1));
+                entities[i] = entity;
+            }
 
-                // 处理部分预留（模拟异步准备）
-                for (int i = 0; i < 25; i++)
+            int processed = 0;
+            for (int i = 0; i < MaxEntities; i++)
+            {
+                if ((i & 1) == 0)
                 {
-                    processed++;
+                    frame.Add(entities[i], new HealthComponent(100));
+                }
+                else if (frame.Has<PositionComponent>(entities[i]))
+                {
+                    frame.Remove<PositionComponent>(entities[i]);
                 }
 
-                // 激活已处理的
-                for (int i = 0; i < 25; i++)
+                processed++;
+            }
+
+            return processed;
+        }
+
+        [Benchmark]
+        public int ValidateAndReadScenario()
+        {
+            using var frame = new Frame(MaxEntities);
+            var entities = new EntityRef[MaxEntities];
+
+            for (int i = 0; i < MaxEntities; i++)
+            {
+                var entity = frame.CreateEntity();
+                frame.Add(entity, new PositionComponent(i, i));
+                if ((i % 5) == 0)
                 {
-                    registry.ActivateReserved(reserved[i]);
+                    frame.Add(entity, new VelocityComponent(i + 1, i + 2));
                 }
 
-                // 取消未处理的
-                for (int i = 25; i < 50; i++)
+                entities[i] = entity;
+            }
+
+            int processed = 0;
+            for (int i = 0; i < MaxEntities; i++)
+            {
+                if (!frame.IsValid(entities[i]))
                 {
-                    registry.CancelReservation(reserved[i]);
+                    continue;
+                }
+
+                if (frame.TryGet<VelocityComponent>(entities[i], out var velocity))
+                {
+                    processed += velocity.X;
+                }
+                else
+                {
+                    processed += frame.Get<PositionComponent>(entities[i]).X;
                 }
             }
 
