@@ -163,4 +163,92 @@ namespace Lattice.ECS.Core
 #endif
         }
     }
+
+    /// <summary>
+    /// 增强版块迭代器 - 带预取优化
+    /// </summary>
+    public unsafe struct PrefetchedBlockIterator<T> where T : unmanaged
+    {
+        private readonly Storage<T>* _storage;
+        private readonly int _version;
+        private readonly int _blockCapacity;
+        private readonly int _prefetchDistance;
+
+        private int _currentBlock;
+        private int _currentOffset;
+        private int _remaining;
+
+        public PrefetchedBlockIterator(Storage<T>* storage, int prefetchDistance = 2)
+        {
+            _storage = storage;
+            _version = storage->Version;
+            _blockCapacity = storage->BlockItemCapacity;
+            _prefetchDistance = prefetchDistance;
+            _currentBlock = 0;
+            _currentOffset = 1;
+            _remaining = storage->Count;
+
+            // 预取前几个块
+            PrefetchUpcoming();
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public bool NextBlock(out EntityRef* entities, out T* components, out int count)
+        {
+            ValidateVersion();
+
+            while (_currentBlock < _storage->BlockCount && _remaining > 0)
+            {
+                int itemsInBlock = _blockCapacity - _currentOffset;
+                if (itemsInBlock > 0)
+                {
+                    count = System.Math.Min(_remaining, itemsInBlock);
+                    entities = _storage->GetBlockEntityRefs(_currentBlock) + _currentOffset;
+                    components = _storage->GetBlockData(_currentBlock) + _currentOffset;
+
+                    _remaining -= count;
+                    _currentOffset += count;
+
+                    // 预取后续块
+                    PrefetchUpcoming();
+
+                    return true;
+                }
+
+                _currentBlock++;
+                _currentOffset = 0;
+            }
+
+            entities = default;
+            components = default;
+            count = 0;
+            return false;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void PrefetchUpcoming()
+        {
+            for (int i = 1; i <= _prefetchDistance; i++)
+            {
+                int prefetchBlock = _currentBlock + i;
+                if (prefetchBlock >= _storage->BlockCount) break;
+
+                // 预取实体引用和数据
+                SIMDUtils.PrefetchL2(_storage->GetBlockEntityRefs(prefetchBlock));
+                SIMDUtils.PrefetchL2(_storage->GetBlockData(prefetchBlock));
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void ValidateVersion()
+        {
+#if DEBUG
+            if (_storage->Version != _version)
+            {
+                throw new InvalidOperationException(
+                    $"Cannot modify Storage<{typeof(T).Name}> while iterating over it.");
+            }
+#endif
+        }
+    }
 }

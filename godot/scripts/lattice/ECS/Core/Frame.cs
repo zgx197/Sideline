@@ -62,6 +62,9 @@ namespace Lattice.ECS.Core
         /// <summary>组件存储是否已初始化</summary>
         private bool* _storageInitialized;
 
+        /// <summary>内存分配器</summary>
+        private Allocator* _allocator;
+
         #endregion
 
         #region 属性
@@ -85,11 +88,15 @@ namespace Lattice.ECS.Core
             _entityCount = 0;
             _freeListHead = -1;
 
+            // 创建分配器
+            _allocator = (Allocator*)System.Runtime.InteropServices.Marshal.AllocHGlobal(sizeof(Allocator)).ToPointer();
+            *_allocator = new Allocator();
+
             // 分配实体数组
-            _entities = (EntityRef*)Alloc(sizeof(EntityRef) * maxEntities);
-            _entityVersions = (ushort*)Alloc(sizeof(ushort) * maxEntities);
-            _entityNextFree = (int*)Alloc(sizeof(int) * maxEntities);
-            _entityComponentMasks = (ulong*)Alloc(sizeof(ulong) * maxEntities * ComponentMaskBlockCount);
+            _entities = (EntityRef*)_allocator->Alloc(sizeof(EntityRef) * maxEntities);
+            _entityVersions = (ushort*)_allocator->Alloc(sizeof(ushort) * maxEntities);
+            _entityNextFree = (int*)_allocator->Alloc(sizeof(int) * maxEntities);
+            _entityComponentMasks = (ulong*)_allocator->Alloc(sizeof(ulong) * maxEntities * ComponentMaskBlockCount);
 
             // 初始化实体版本
             for (int i = 0; i < maxEntities; i++)
@@ -99,8 +106,8 @@ namespace Lattice.ECS.Core
             }
 
             // 分配组件存储数组
-            _componentStorages = (void**)Alloc(sizeof(void*) * MaxComponentTypes);
-            _storageInitialized = (bool*)Alloc(sizeof(bool) * MaxComponentTypes);
+            _componentStorages = (void**)_allocator->Alloc(sizeof(void*) * MaxComponentTypes);
+            _storageInitialized = (bool*)_allocator->Alloc(sizeof(bool) * MaxComponentTypes);
 
             for (int i = 0; i < MaxComponentTypes; i++)
             {
@@ -375,41 +382,31 @@ namespace Lattice.ECS.Core
                 if (_storageInitialized[i] && _componentStorages[i] != null)
                 {
                     // 这里需要知道类型来正确释放 Storage<T>
-                    // 简化处理：依赖 GC 或添加类型注册表
+                    // 简化处理：依赖 Allocator 统一释放
                     _componentStorages[i] = null;
                     _storageInitialized[i] = false;
                 }
             }
 
-            Free(_entities);
-            Free(_entityVersions);
-            Free(_entityNextFree);
-            Free(_entityComponentMasks);
-            Free(_componentStorages);
-            Free(_storageInitialized);
+            // 释放分配器（这会释放所有通过它分配的内存）
+            if (_allocator != null)
+            {
+                _allocator->Dispose();
+                System.Runtime.InteropServices.Marshal.FreeHGlobal((IntPtr)_allocator);
+                _allocator = null;
+            }
         }
 
         #endregion
 
         #region 私有辅助
 
-        private static void* Alloc(int size)
-        {
-            return System.Runtime.InteropServices.Marshal.AllocHGlobal(size).ToPointer();
-        }
-
-        private static void Free(void* ptr)
-        {
-            if (ptr != null)
-                System.Runtime.InteropServices.Marshal.FreeHGlobal((IntPtr)ptr);
-        }
-
         private Storage<T>* GetOrCreateStorage<T>(int typeId) where T : unmanaged
         {
             if (!_storageInitialized[typeId])
             {
-                var storage = (Storage<T>*)Alloc(sizeof(Storage<T>));
-                storage->Initialize(_entityCapacity);
+                var storage = (Storage<T>*)_allocator->Alloc(sizeof(Storage<T>));
+                storage->Initialize(_entityCapacity, _allocator);
                 _componentStorages[typeId] = storage;
                 _storageInitialized[typeId] = true;
                 return storage;
