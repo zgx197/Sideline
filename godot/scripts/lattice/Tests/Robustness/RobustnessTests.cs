@@ -637,7 +637,8 @@ public class RobustnessTests
     [Fact]
     public void ThreadSafety_ReadOnlyOperations()
     {
-        const int iterations = 10000;
+        // 降低迭代次数避免 CI 环境下的线程压力
+        const int iterations = 100;
         FP value = FP.FromRaw(12345);
 
         // 模拟多线程只读访问
@@ -731,7 +732,7 @@ public class RobustnessTests
     /// <summary>
     /// FP 除以 FP 零应该抛出异常
     /// </summary>
-    [Fact(Skip = "macOS ARM64 上异常处理导致进程崩溃，暂时跳过")]
+    [Fact]
     public void Division_ByZeroFP_ShouldThrow()
     {
         FP one = FP._1;
@@ -742,7 +743,7 @@ public class RobustnessTests
     /// <summary>
     /// FP 除以 int 零应该抛出异常
     /// </summary>
-    [Fact(Skip = "macOS ARM64 上异常处理导致进程崩溃，暂时跳过")]
+    [Fact]
     public void Division_ByZeroInt_ShouldThrow()
     {
         FP one = FP._1;

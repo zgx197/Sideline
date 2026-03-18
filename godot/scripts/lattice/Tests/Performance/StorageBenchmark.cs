@@ -16,8 +16,8 @@ namespace Lattice.Tests.Performance
     /// </summary>
     public unsafe class StorageBenchmark
     {
-        private const int EntityCount = 10000;
-        private const int IterationCount = 100;
+        private const int EntityCount = 1000;
+        private const int IterationCount = 10;
 
         private readonly ITestOutputHelper _output;
 
@@ -119,7 +119,8 @@ namespace Lattice.Tests.Performance
             long sum = 0;
             var sw = Stopwatch.StartNew();
 
-            for (int iter = 0; iter < IterationCount * 10; iter++)
+            // 降低迭代次数避免 CI 环境下的内存压力
+            for (int iter = 0; iter < IterationCount; iter++)
             {
                 for (int i = 0; i < EntityCount; i++)
                 {
@@ -135,7 +136,7 @@ namespace Lattice.Tests.Performance
             sw.Stop();
             storage.Dispose();
 
-            double opsPerSecond = (EntityCount * IterationCount * 10) / (sw.ElapsedMilliseconds / 1000.0);
+            double opsPerSecond = (EntityCount * IterationCount) / (sw.ElapsedMilliseconds / 1000.0);
             _output.WriteLine($"RandomAccess: {opsPerSecond:F0} ops/sec ({sw.ElapsedMilliseconds}ms)");
         }
 
