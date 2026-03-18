@@ -1,230 +1,272 @@
 using System;
+using System.Threading;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Jobs;
 using Lattice.Core;
+using Lattice.ECS.Core;
 
 namespace Lattice.Benchmarks
 {
+    internal struct PositionComponent
+    {
+        public int X;
+        public int Y;
+
+        public PositionComponent(int x, int y)
+        {
+            X = x;
+            Y = y;
+        }
+    }
+
+    internal struct VelocityComponent
+    {
+        public int X;
+        public int Y;
+
+        public VelocityComponent(int x, int y)
+        {
+            X = x;
+            Y = y;
+        }
+    }
+
+    internal struct HealthComponent
+    {
+        public int Value;
+
+        public HealthComponent(int value)
+        {
+            Value = value;
+        }
+    }
+
+    internal static class BenchmarkComponentRegistration
+    {
+        private static int _initialized;
+
+        public static void EnsureRegistered()
+        {
+            if (Volatile.Read(ref _initialized) != 0)
+            {
+                return;
+            }
+
+            lock (typeof(BenchmarkComponentRegistration))
+            {
+                if (_initialized != 0)
+                {
+                    return;
+                }
+
+                RegisterIfNeeded<PositionComponent>();
+                RegisterIfNeeded<VelocityComponent>();
+                RegisterIfNeeded<HealthComponent>();
+
+                Volatile.Write(ref _initialized, 1);
+            }
+        }
+
+        private static void RegisterIfNeeded<T>() where T : unmanaged
+        {
+            if (!ComponentTypeId<T>.IsRegistered)
+            {
+                ComponentRegistry.Register<T>();
+            }
+        }
+    }
+
     /// <summary>
-    /// EntityRegistry 性能基准测试
-    /// 
-    /// 运行方式:
-    ///   dotnet run --configuration Release -- --filter "*Entity*"
+    /// 基于当前 Frame / EntityRef 架构的实体生命周期基准测试
     /// </summary>
     [MemoryDiagnoser]
     [RankColumn]
     [SimpleJob(RuntimeMoniker.Net80, launchCount: 1, warmupCount: 3, iterationCount: 5)]
     public class EntityRegistryBenchmarks
     {
-        private EntityRegistry _registry = null!;
-        private Entity[] _entities = null!;
-        
         [Params(100, 1000, 10000)]
         public int EntityCount { get; set; }
 
         [GlobalSetup]
         public void Setup()
         {
-            _registry = new EntityRegistry(EntityCount);
-            _entities = new Entity[EntityCount];
+            BenchmarkComponentRegistration.EnsureRegistered();
         }
 
-        [GlobalCleanup]
-        public void Cleanup()
-        {
-            _registry.Clear();
-        }
-
-        /// <summary>
-        /// 测试：顺序创建实体
-        /// </summary>
         [Benchmark(Baseline = true)]
-        public void CreateSequential()
+        public int CreateSequential()
         {
-            var registry = new EntityRegistry(EntityCount);
+            using var frame = new Frame(EntityCount);
+
             for (int i = 0; i < EntityCount; i++)
             {
-                registry.Create();
+                frame.CreateEntity();
             }
+
+            return frame.EntityCount;
         }
 
-        /// <summary>
-        /// 测试：批量创建实体（SOA优化）
-        /// </summary>
         [Benchmark]
-        public void CreateBatch()
+        public int CreateWithSingleComponent()
         {
-            var registry = new EntityRegistry(EntityCount);
-            Span<Entity> entities = stackalloc Entity[EntityCount];
-            registry.CreateBatch(entities);
+            using var frame = new Frame(EntityCount);
+
+            for (int i = 0; i < EntityCount; i++)
+            {
+                var entity = frame.CreateEntity();
+                frame.Add(entity, new PositionComponent(i, i + 1));
+            }
+
+            return frame.EntityCount;
         }
 
-        /// <summary>
-        /// 测试：创建并立即销毁（典型游戏循环模式）
-        /// </summary>
         [Benchmark]
-        public void CreateAndDestroy()
+        public int CreateAndDestroy()
         {
-            var registry = new EntityRegistry(EntityCount);
-            for (int i = 0; i < EntityCount; i++)
-            {
-                var entity = registry.Create();
-                registry.Destroy(entity);
-            }
-        }
+            using var frame = new Frame(EntityCount);
+            var entities = new EntityRef[EntityCount];
 
-        /// <summary>
-        /// 测试：ID复用性能（创建-销毁-再创建）
-        /// </summary>
-        [Benchmark]
-        public void ReuseIds()
-        {
-            var registry = new EntityRegistry(EntityCount / 2);
-            
-            // 第一轮创建
-            for (int i = 0; i < EntityCount / 2; i++)
+            for (int i = 0; i < EntityCount; i++)
             {
-                _entities[i] = registry.Create();
+                entities[i] = frame.CreateEntity();
             }
-            
-            // 全部销毁
-            for (int i = 0; i < EntityCount / 2; i++)
-            {
-                registry.Destroy(_entities[i]);
-            }
-            
-            // 第二轮创建（应复用ID）
-            for (int i = 0; i < EntityCount / 2; i++)
-            {
-                registry.Create();
-            }
-        }
 
-        /// <summary>
-        /// 测试：实体验证性能（高频操作）
-        /// </summary>
-        [Benchmark]
-        public void ValidateEntities()
-        {
-            // 预创建实体
+            int destroyed = 0;
             for (int i = 0; i < EntityCount; i++)
             {
-                _entities[i] = _registry.Create();
-            }
-            
-            // 验证所有实体
-            for (int i = 0; i < EntityCount; i++)
-            {
-                _ = _registry.IsValid(_entities[i]);
-            }
-        }
-
-        /// <summary>
-        /// 测试：快速验证（无边界检查）
-        /// </summary>
-        [Benchmark]
-        public void ValidateFast()
-        {
-            // 预创建实体
-            for (int i = 0; i < EntityCount; i++)
-            {
-                _entities[i] = _registry.Create();
-            }
-            
-            // 快速验证所有实体
-            for (int i = 0; i < EntityCount; i++)
-            {
-                _ = _registry.IsValidFast(_entities[i]);
-            }
-        }
-
-        /// <summary>
-        /// 测试：遍历活跃实体（foreach）
-        /// </summary>
-        [Benchmark]
-        public void IterateAliveForeach()
-        {
-            // 预创建实体
-            for (int i = 0; i < EntityCount; i++)
-            {
-                _registry.Create();
-            }
-            
-            int count = 0;
-            foreach (var entity in _registry.GetAliveEnumerable())
-            {
-                count++;
-            }
-        }
-
-        /// <summary>
-        /// 测试：获取活跃实体到Span
-        /// </summary>
-        [Benchmark]
-        public void GetAliveSpan()
-        {
-            // 预创建实体
-            for (int i = 0; i < EntityCount; i++)
-            {
-                _registry.Create();
-            }
-            
-            Span<Entity> buffer = stackalloc Entity[EntityCount];
-            _registry.GetAliveEntities(buffer);
-        }
-
-        /// <summary>
-        /// 测试：混合操作（模拟真实游戏场景）
-        /// 60%创建，30%销毁，10%验证
-        /// </summary>
-        [Benchmark]
-        public void MixedOperations()
-        {
-            var registry = new EntityRegistry(EntityCount);
-            var entities = new Entity[EntityCount];
-            int entityCount = 0;
-            
-            for (int i = 0; i < EntityCount; i++)
-            {
-                int op = i % 10;
-                if (op < 6) // 60% 创建
+                if (frame.IsValid(entities[i]))
                 {
-                    entities[entityCount++] = registry.Create();
-                }
-                else if (op < 9 && entityCount > 0) // 30% 销毁
-                {
-                    registry.Destroy(entities[--entityCount]);
-                }
-                else if (entityCount > 0) // 10% 验证
-                {
-                    _ = registry.IsValid(entities[i % entityCount]);
+                    frame.DestroyEntity(entities[i]);
+                    destroyed++;
                 }
             }
+
+            return destroyed;
         }
 
-        /// <summary>
-        /// 测试：ArchetypeID读写性能
-        /// </summary>
         [Benchmark]
-        public void ArchetypeIdOperations()
+        public int ReuseEntitySlots()
         {
-            // 预创建实体
+            int initialCount = System.Math.Max(1, EntityCount / 2);
+            using var frame = new Frame(initialCount + 16);
+            var entities = new EntityRef[initialCount];
+
+            for (int i = 0; i < initialCount; i++)
+            {
+                entities[i] = frame.CreateEntity();
+            }
+
+            for (int i = 0; i < initialCount; i++)
+            {
+                frame.DestroyEntity(entities[i]);
+            }
+
+            int reused = 0;
+            for (int i = 0; i < initialCount; i++)
+            {
+                if (frame.CreateEntity().Index == entities[i].Index)
+                {
+                    reused++;
+                }
+            }
+
+            return reused;
+        }
+
+        [Benchmark]
+        public int ValidateEntities()
+        {
+            using var frame = new Frame(EntityCount);
+            var entities = new EntityRef[EntityCount];
+
             for (int i = 0; i < EntityCount; i++)
             {
-                _entities[i] = _registry.Create();
+                entities[i] = frame.CreateEntity();
             }
-            
-            // 读写ArchetypeID
+
+            int validCount = 0;
             for (int i = 0; i < EntityCount; i++)
             {
-                _registry.SetArchetypeId(_entities[i].Index, i % 10);
-                _ = _registry.GetArchetypeId(_entities[i].Index);
+                if (frame.IsValid(entities[i]))
+                {
+                    validCount++;
+                }
             }
+
+            return validCount;
+        }
+
+        [Benchmark]
+        public int MixedOperations()
+        {
+            using var frame = new Frame(EntityCount);
+            var entities = new EntityRef[EntityCount];
+            int aliveCount = 0;
+            int validations = 0;
+
+            for (int i = 0; i < EntityCount; i++)
+            {
+                int operation = i % 10;
+                if (operation < 6)
+                {
+                    if (aliveCount < entities.Length)
+                    {
+                        var entity = frame.CreateEntity();
+                        frame.Add(entity, new PositionComponent(i, i));
+                        entities[aliveCount++] = entity;
+                    }
+                }
+                else if (operation < 8)
+                {
+                    if (aliveCount > 0)
+                    {
+                        int last = aliveCount - 1;
+                        frame.Remove<PositionComponent>(entities[last]);
+                        frame.DestroyEntity(entities[last]);
+                        aliveCount = last;
+                    }
+                }
+                else if (aliveCount > 0)
+                {
+                    var entity = entities[i % aliveCount];
+                    if (frame.IsValid(entity) && frame.Has<PositionComponent>(entity))
+                    {
+                        validations++;
+                    }
+                }
+            }
+
+            return validations + aliveCount;
+        }
+
+        [Benchmark]
+        public int AddRemoveComponents()
+        {
+            using var frame = new Frame(EntityCount);
+            var entities = new EntityRef[EntityCount];
+
+            for (int i = 0; i < EntityCount; i++)
+            {
+                entities[i] = frame.CreateEntity();
+                frame.Add(entities[i], new PositionComponent(i, i));
+            }
+
+            int removed = 0;
+            for (int i = 0; i < EntityCount; i++)
+            {
+                if (frame.Has<PositionComponent>(entities[i]))
+                {
+                    frame.Remove<PositionComponent>(entities[i]);
+                    removed++;
+                }
+            }
+
+            return removed;
         }
     }
 
     /// <summary>
-    /// 内存分配对比测试
+    /// 实体与组件分配规模基准测试
     /// </summary>
     [MemoryDiagnoser]
     [RankColumn]
@@ -233,102 +275,106 @@ namespace Lattice.Benchmarks
         [Params(100, 1000, 10000)]
         public int EntityCount { get; set; }
 
-        /// <summary>
-        /// 测试：创建大量实体的内存分配
-        /// </summary>
+        [GlobalSetup]
+        public void Setup()
+        {
+            BenchmarkComponentRegistration.EnsureRegistered();
+        }
+
         [Benchmark(Baseline = true)]
-        public int CreateEntitiesMemory()
+        public int CreateEntitiesOnly()
         {
-            var registry = new EntityRegistry(EntityCount);
+            using var frame = new Frame(EntityCount);
+
             for (int i = 0; i < EntityCount; i++)
             {
-                registry.Create();
+                frame.CreateEntity();
             }
-            return registry.AliveCount;
+
+            return frame.EntityCount;
         }
 
-        /// <summary>
-        /// 测试：获取活跃实体列表的内存分配（旧方式）
-        /// 注：这是为了对比，我们实际使用Span方式
-        /// </summary>
         [Benchmark]
-        public int GetAliveEntitiesArray()
+        public int CreateEntitiesWithOneComponent()
         {
-            var registry = new EntityRegistry(EntityCount);
+            using var frame = new Frame(EntityCount);
+
             for (int i = 0; i < EntityCount; i++)
             {
-                registry.Create();
+                var entity = frame.CreateEntity();
+                frame.Add(entity, new PositionComponent(i, i + 1));
             }
-            
-            // 模拟返回数组（会有分配）
-            var array = new Entity[registry.AliveCount];
-            Span<Entity> span = stackalloc Entity[registry.AliveCount];
-            registry.GetAliveEntities(span);
-            span.CopyTo(array);
-            return array.Length;
+
+            return frame.EntityCount;
         }
 
-        /// <summary>
-        /// 测试：获取活跃实体的零分配方式
-        /// </summary>
         [Benchmark]
-        public int GetAliveEntitiesSpan()
+        public int CreateEntitiesWithThreeComponents()
         {
-            var registry = new EntityRegistry(EntityCount);
+            using var frame = new Frame(EntityCount);
+
             for (int i = 0; i < EntityCount; i++)
             {
-                registry.Create();
+                var entity = frame.CreateEntity();
+                frame.Add(entity, new PositionComponent(i, i + 1));
+                frame.Add(entity, new VelocityComponent(i + 2, i + 3));
+                frame.Add(entity, new HealthComponent(100));
             }
-            
-            Span<Entity> buffer = stackalloc Entity[EntityCount];
-            return registry.GetAliveEntities(buffer);
+
+            return frame.EntityCount;
         }
     }
 
     /// <summary>
-    /// 与理论最优性能对比的微观测试
+    /// 实体热路径微基准测试
     /// </summary>
     [MemoryDiagnoser]
     public class EntityMicroBenchmarks
     {
-        private EntityRegistry _registry = null!;
-        private Entity _entity;
+        private Frame _frame = null!;
+        private EntityRef _entity;
 
         [GlobalSetup]
         public void Setup()
         {
-            _registry = new EntityRegistry(1000);
-            _entity = _registry.Create();
+            BenchmarkComponentRegistration.EnsureRegistered();
+
+            _frame = new Frame(1024);
+            _entity = _frame.CreateEntity();
+            _frame.Add(_entity, new PositionComponent(10, 20));
+            _frame.Add(_entity, new VelocityComponent(2, 3));
         }
 
-        /// <summary>
-        /// 测试：单次创建的最小开销
-        /// </summary>
         [Benchmark]
-        public Entity SingleCreate() => _registry.Create();
+        public bool SingleValidate()
+        {
+            return _frame.IsValid(_entity);
+        }
 
-        /// <summary>
-        /// 测试：单次验证的最小开销
-        /// </summary>
         [Benchmark]
-        public bool SingleValidate() => _registry.IsValid(_entity);
+        public bool HasPosition()
+        {
+            return _frame.Has<PositionComponent>(_entity);
+        }
 
-        /// <summary>
-        /// 测试：单次快速验证的最小开销
-        /// </summary>
         [Benchmark]
-        public bool SingleValidateFast() => _registry.IsValidFast(_entity);
+        public int GetPositionX()
+        {
+            return _frame.Get<PositionComponent>(_entity).X;
+        }
 
-        /// <summary>
-        /// 测试：获取版本号的最小开销
-        /// </summary>
         [Benchmark]
-        public int GetVersion() => _registry.GetVersion(_entity.Index);
+        public bool TryGetVelocity()
+        {
+            return _frame.TryGet<VelocityComponent>(_entity, out _);
+        }
 
-        /// <summary>
-        /// 测试：检查活跃状态的最小开销
-        /// </summary>
         [Benchmark]
-        public bool IsAlive() => _registry.IsAlive(_entity.Index);
+        public int SingleCreateDestroy()
+        {
+            var entity = _frame.CreateEntity();
+            _frame.DestroyEntity(entity);
+            return entity.Index;
+        }
     }
 }
