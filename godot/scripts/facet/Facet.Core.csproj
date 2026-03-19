@@ -10,6 +10,7 @@
 
   <ItemGroup>
     <Compile Include="Runtime\FacetConfig.cs" />
+    <Compile Include="Runtime\FacetLogEntry.cs" />
     <Compile Include="Runtime\FacetLogLevel.cs" />
     <Compile Include="Runtime\FacetRuntimeContext.cs" />
     <Compile Include="Runtime\FacetServices.cs" />

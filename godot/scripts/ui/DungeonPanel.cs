@@ -6,9 +6,9 @@ using Godot;
 /// </summary>
 public partial class DungeonPanel : PanelContainer
 {
-    private Label _titleLabel;
-    private Label _statusLabel;
-    private Button _switchButton;
+    private Label _titleLabel = null!;
+    private Label _statusLabel = null!;
+    private Button _switchButton = null!;
 
     [Signal]
     public delegate void SwitchToIdleRequestedEventHandler();

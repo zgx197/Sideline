@@ -1,4 +1,4 @@
-#nullable enable
+﻿#nullable enable
 
 namespace Sideline.Facet.Runtime
 {
@@ -16,6 +16,26 @@ namespace Sideline.Facet.Runtime
         /// 是否启用调试日志。
         /// </summary>
         public bool EnableDebugLogging { get; init; } = true;
+
+        /// <summary>
+        /// 是否启用结构化日志。
+        /// </summary>
+        public bool EnableStructuredLogging { get; init; } = true;
+
+        /// <summary>
+        /// 结构化日志输出路径。
+        /// </summary>
+        public string StructuredLogPath { get; init; } = "user://logs/facet-structured.jsonl";
+
+        /// <summary>
+        /// 内存缓冲中保留的最近日志上限。
+        /// </summary>
+        public int StructuredLogBufferCapacity { get; init; } = 256;
+
+        /// <summary>
+        /// 结构化日志历史会话最多保留数量。
+        /// </summary>
+        public int StructuredLogHistoryLimit { get; init; } = 10;
 
         /// <summary>
         /// 是否启用 Lua 热重载。

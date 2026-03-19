@@ -6,11 +6,11 @@ using Godot;
 /// </summary>
 public partial class IdlePanel : PanelContainer
 {
-    private Label _titleLabel;
-    private Label _statusLabel;
-    private Label _resourceLabel;
-    private Button _switchButton;
-    private Button _closeButton;
+    private Label _titleLabel = null!;
+    private Label _statusLabel = null!;
+    private Label _resourceLabel = null!;
+    private Button _switchButton = null!;
+    private Button _closeButton = null!;
 
     // 模拟资源收集
     private int _gold;

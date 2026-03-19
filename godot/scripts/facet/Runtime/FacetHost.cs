@@ -1,157 +1,202 @@
-#nullable enable
+﻿#nullable enable
 
+using System.Collections.Generic;
 using Godot;
 
 namespace Sideline.Facet.Runtime
 {
-	/// <summary>
-	/// Facet 全局宿主入口。
-	/// </summary>
-	public partial class FacetHost : Node
-	{
-		/// <summary>
-		/// 最小启动验证日志标记。
-		/// 启动主场景后可直接搜索该文本，确认 Facet 宿主已接入。
-		/// </summary>
-		public const string StartupVerificationMarker = "FacetHost 启动验证成功";
+    /// <summary>
+    /// Facet 全局宿主入口。
+    /// </summary>
+    public partial class FacetHost : Node
+    {
+        /// <summary>
+        /// 最小启动验证日志标记。
+        /// 启动主场景后可直接搜索该文本，确认 Facet 宿主已接入。
+        /// </summary>
+        public const string StartupVerificationMarker = "FacetHost 启动验证成功";
 
-		[Signal]
-		public delegate void InitializedEventHandler();
+        [Signal]
+        public delegate void InitializedEventHandler();
 
-		[Export]
-		public bool AutoInitialize { get; set; } = true;
+        [Export]
+        public bool AutoInitialize { get; set; } = true;
 
-		[Export]
-		public bool EnableDebugLogging { get; set; } = true;
+        [Export]
+        public bool EnableDebugLogging { get; set; } = true;
 
-		[Export]
-		public bool EnableHotReload { get; set; } = true;
+        [Export]
+        public bool EnableStructuredLogging { get; set; } = true;
 
-		[Export]
-		public bool EnablePageCacheByDefault { get; set; } = true;
+        [Export]
+        public string StructuredLogPath { get; set; } = "user://logs/facet-structured.jsonl";
 
-		[Export(PropertyHint.Range, "1,128,1")]
-		public int DefaultPageCacheCapacity { get; set; } = 8;
+        [Export(PropertyHint.Range, "32,2048,32")]
+        public int StructuredLogBufferCapacity { get; set; } = 256;
 
-		/// <summary>
-		/// 当前宿主实例。
-		/// </summary>
-		public static FacetHost? Instance { get; private set; }
+        [Export(PropertyHint.Range, "1,50,1")]
+        public int StructuredLogHistoryLimit { get; set; } = 10;
 
-		/// <summary>
-		/// 是否已完成初始化。
-		/// </summary>
-		public bool IsInitialized { get; private set; }
+        [Export]
+        public bool EnableHotReload { get; set; } = true;
 
-		/// <summary>
-		/// Facet 当前配置。
-		/// </summary>
-		public FacetConfig Config { get; private set; } = FacetConfig.Default;
+        [Export]
+        public bool EnablePageCacheByDefault { get; set; } = true;
 
-		/// <summary>
-		/// Facet 当前服务容器。
-		/// </summary>
-		public FacetServices Services { get; private set; } = new();
+        [Export(PropertyHint.Range, "1,128,1")]
+        public int DefaultPageCacheCapacity { get; set; } = 8;
 
-		/// <summary>
-		/// Facet 当前日志器。
-		/// </summary>
-		public IFacetLogger Logger { get; private set; } = new FacetLogger(FacetConfig.Default.MinimumLogLevel);
+        /// <summary>
+        /// 当前宿主实例。
+        /// </summary>
+        public static FacetHost? Instance { get; private set; }
 
-		/// <summary>
-		/// Facet 当前运行时上下文。
-		/// </summary>
-		public FacetRuntimeContext Context { get; private set; } = null!;
+        /// <summary>
+        /// 是否已完成初始化。
+        /// </summary>
+        public bool IsInitialized { get; private set; }
 
-		public override void _EnterTree()
-		{
-			if (Instance != null && Instance != this)
-			{
-				GD.PushWarning("[Facet][Host] 检测到多个 FacetHost 实例，后进入的实例将覆盖前一个引用。");
-			}
+        /// <summary>
+        /// 当前运行会话标识。
+        /// </summary>
+        public string CurrentSessionId => Logger is FacetLogger facetLogger ? facetLogger.SessionId : string.Empty;
 
-			Instance = this;
-		}
+        /// <summary>
+        /// Facet 当前配置。
+        /// </summary>
+        public FacetConfig Config { get; private set; } = FacetConfig.Default;
 
-		public override void _Ready()
-		{
-			if (!AutoInitialize)
-			{
-				GD.Print($"[Facet][Bootstrap] FacetHost 已加载，等待手动初始化。Path={GetPath()}");
-				return;
-			}
+        /// <summary>
+        /// Facet 当前服务容器。
+        /// </summary>
+        public FacetServices Services { get; private set; } = new();
 
-			GD.Print($"[Facet][Bootstrap] FacetHost 自动初始化开始。Path={GetPath()}");
-			Initialize();
-		}
+        /// <summary>
+        /// Facet 当前日志器。
+        /// </summary>
+        public IFacetLogger Logger { get; private set; } = CreateLogger(FacetConfig.Default);
 
-		/// <summary>
-		/// 初始化 Facet 宿主。
-		/// </summary>
-		public void Initialize()
-		{
-			if (IsInitialized)
-			{
-				Logger.Warning("Host", "FacetHost 重复初始化请求已忽略。");
-				return;
-			}
+        /// <summary>
+        /// Facet 当前运行时上下文。
+        /// </summary>
+        public FacetRuntimeContext Context { get; private set; } = null!;
 
-			Config = BuildConfig();
-			Services = new FacetServices();
-			Logger = new FacetLogger(Config.MinimumLogLevel);
-			Context = new FacetRuntimeContext(Config, Services, Logger);
+        public override void _EnterTree()
+        {
+            if (Instance != null && Instance != this)
+            {
+                GD.PushWarning("[Facet][Host] 检测到多个 FacetHost 实例，后进入的实例将覆盖前一个引用。");
+            }
 
-			RegisterCoreServices();
+            Instance = this;
+        }
 
-			IsInitialized = true;
-			LogStartupSummary();
-			EmitSignal(SignalName.Initialized);
-		}
+        public override void _Ready()
+        {
+            if (!AutoInitialize)
+            {
+                GD.Print($"[Facet][Bootstrap] FacetHost 已加载，等待手动初始化。Path={GetPath()}");
+                return;
+            }
 
-		/// <summary>
-		/// 重置宿主运行时状态。
-		/// </summary>
-		public void ResetHost()
-		{
-			IsInitialized = false;
-			Services = new FacetServices();
-			Config = FacetConfig.Default;
-			Logger = new FacetLogger(Config.MinimumLogLevel);
-			Context = new FacetRuntimeContext(Config, Services, Logger);
-		}
+            GD.Print($"[Facet][Bootstrap] FacetHost 自动初始化开始。Path={GetPath()}");
+            Initialize();
+        }
 
-		/// <summary>
-		/// 获取必须存在的 Facet 服务。
-		/// </summary>
-		public TService GetRequired<TService>() where TService : class
-		{
-			return Services.GetRequired<TService>();
-		}
+        /// <summary>
+        /// 初始化 Facet 宿主。
+        /// </summary>
+        public void Initialize()
+        {
+            if (IsInitialized)
+            {
+                Logger.Warning("Host", "FacetHost 重复初始化请求已忽略。");
+                return;
+            }
 
-		private FacetConfig BuildConfig()
-		{
-			return new FacetConfig
-			{
-				EnableDebugLogging = EnableDebugLogging,
-				EnableHotReload = EnableHotReload,
-				EnablePageCacheByDefault = EnablePageCacheByDefault,
-				DefaultPageCacheCapacity = DefaultPageCacheCapacity,
-			};
-		}
+            Config = BuildConfig();
+            Services = new FacetServices();
+            Logger = CreateLogger(Config);
+            Context = new FacetRuntimeContext(Config, Services, Logger);
 
-		private void RegisterCoreServices()
-		{
-			Services.RegisterSingleton(Config);
-			Services.RegisterSingleton(Logger);
-			Services.RegisterSingleton((FacetLogger)Logger);
-			Services.RegisterSingleton(Context);
-		}
+            RegisterCoreServices();
 
-		private void LogStartupSummary()
-		{
-			Logger.Info(
-				"Bootstrap",
-				$"{StartupVerificationMarker}。Path={GetPath()} AutoInitialize={AutoInitialize} HotReload={Config.EnableHotReload} PageCache={Config.EnablePageCacheByDefault} CacheCapacity={Config.DefaultPageCacheCapacity}");
-		}
-	}
+            IsInitialized = true;
+            LogStartupSummary();
+            EmitSignal(SignalName.Initialized);
+        }
+
+        /// <summary>
+        /// 重置宿主运行时状态。
+        /// </summary>
+        public void ResetHost()
+        {
+            IsInitialized = false;
+            Services = new FacetServices();
+            Config = FacetConfig.Default;
+            Logger = CreateLogger(Config);
+            Context = new FacetRuntimeContext(Config, Services, Logger);
+        }
+
+        /// <summary>
+        /// 获取必须存在的 Facet 服务。
+        /// </summary>
+        public TService GetRequired<TService>() where TService : class
+        {
+            return Services.GetRequired<TService>();
+        }
+
+        private FacetConfig BuildConfig()
+        {
+            return new FacetConfig
+            {
+                EnableDebugLogging = EnableDebugLogging,
+                EnableStructuredLogging = EnableStructuredLogging,
+                StructuredLogPath = StructuredLogPath,
+                StructuredLogBufferCapacity = StructuredLogBufferCapacity,
+                StructuredLogHistoryLimit = StructuredLogHistoryLimit,
+                EnableHotReload = EnableHotReload,
+                EnablePageCacheByDefault = EnablePageCacheByDefault,
+                DefaultPageCacheCapacity = DefaultPageCacheCapacity,
+            };
+        }
+
+        private void RegisterCoreServices()
+        {
+            Services.RegisterSingleton(Config);
+            Services.RegisterSingleton(Logger);
+            Services.RegisterSingleton((FacetLogger)Logger);
+            Services.RegisterSingleton(Context);
+        }
+
+        private void LogStartupSummary()
+        {
+            Logger.Info(
+                "Bootstrap",
+                StartupVerificationMarker,
+                new Dictionary<string, object?>
+                {
+                    ["path"] = GetPath().ToString(),
+                    ["sessionId"] = CurrentSessionId,
+                    ["autoInitialize"] = AutoInitialize,
+                    ["hotReload"] = Config.EnableHotReload,
+                    ["pageCache"] = Config.EnablePageCacheByDefault,
+                    ["cacheCapacity"] = Config.DefaultPageCacheCapacity,
+                    ["structuredLogging"] = Config.EnableStructuredLogging,
+                    ["structuredLogPath"] = Config.StructuredLogPath,
+                    ["structuredLogBufferCapacity"] = Config.StructuredLogBufferCapacity,
+                    ["structuredLogHistoryLimit"] = Config.StructuredLogHistoryLimit,
+                });
+        }
+
+        private static FacetLogger CreateLogger(FacetConfig config)
+        {
+            return new FacetLogger(
+                config.MinimumLogLevel,
+                config.EnableStructuredLogging,
+                config.StructuredLogPath,
+                config.StructuredLogBufferCapacity,
+                config.StructuredLogHistoryLimit);
+        }
+    }
 }

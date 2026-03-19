@@ -1,5 +1,7 @@
 #nullable enable
 
+using System.Collections.Generic;
+
 namespace Sideline.Facet.Runtime
 {
     /// <summary>
@@ -15,31 +17,31 @@ namespace Sideline.Facet.Runtime
         /// <summary>
         /// 记录一条日志。
         /// </summary>
-        void Log(FacetLogLevel level, string category, string message);
+        void Log(FacetLogLevel level, string category, string message, IReadOnlyDictionary<string, object?>? payload = null);
 
         /// <summary>
         /// 记录 Trace 日志。
         /// </summary>
-        void Trace(string category, string message);
+        void Trace(string category, string message, IReadOnlyDictionary<string, object?>? payload = null);
 
         /// <summary>
         /// 记录 Debug 日志。
         /// </summary>
-        void Debug(string category, string message);
+        void Debug(string category, string message, IReadOnlyDictionary<string, object?>? payload = null);
 
         /// <summary>
         /// 记录 Info 日志。
         /// </summary>
-        void Info(string category, string message);
+        void Info(string category, string message, IReadOnlyDictionary<string, object?>? payload = null);
 
         /// <summary>
         /// 记录 Warning 日志。
         /// </summary>
-        void Warning(string category, string message);
+        void Warning(string category, string message, IReadOnlyDictionary<string, object?>? payload = null);
 
         /// <summary>
         /// 记录 Error 日志。
         /// </summary>
-        void Error(string category, string message);
+        void Error(string category, string message, IReadOnlyDictionary<string, object?>? payload = null);
     }
 }
