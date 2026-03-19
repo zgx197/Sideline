@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>Sideline.Facet.Core</AssemblyName>
+    <RootNamespace>Sideline.Facet</RootNamespace>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="Runtime\FacetConfig.cs" />
+    <Compile Include="Runtime\FacetLogLevel.cs" />
+    <Compile Include="Runtime\FacetRuntimeContext.cs" />
+    <Compile Include="Runtime\FacetServices.cs" />
+    <Compile Include="Runtime\IFacetLogger.cs" />
+  </ItemGroup>
+</Project>

@@ -52,7 +52,7 @@ namespace Lattice.Analyzers
             description: "如果此方法是热路径，考虑添加 AggressiveInlining。",
             helpLinkUri: "https://docs.lattice.dev/analyzers/LATTICE003");
 
-        public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => 
+        public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics =>
             ImmutableArray.Create(RequiredRule, RecommendedRule, ConsiderRule);
 
         public override void Initialize(AnalysisContext context)
@@ -67,33 +67,25 @@ namespace Lattice.Analyzers
         private void AnalyzeMethod(SyntaxNodeAnalysisContext context)
         {
             var method = (MethodDeclarationSyntax)context.Node;
-            
+
             // 跳过已有 AggressiveInlining 的方法
-            if (HasAggressiveInlining(method)) return;
-            
+            if (HasAggressiveInlining(method))
+            {
+                return;
+            }
+
             // 检查返回类型
             var returnType = method.ReturnType.ToString();
             bool returnsFP = IsFPOrVectorType(returnType);
             bool returnsBoolOrInt = returnType == "bool" || returnType == "int" || returnType == "long";
-            
+
             // 计算方法体大小
             int statementCount = GetStatementCount(method);
             bool isSimple = statementCount <= 1;
             bool isSmall = statementCount <= 3;
-            
-            // 检查是否是运算符
-            bool isOperator = method.OperatorKeyword != null;
-            
-            // P0: 简单运算符必须内联
-            if (isOperator && returnsFP)
-            {
-                context.ReportDiagnostic(Diagnostic.Create(
-                    RequiredRule, 
-                    method.Identifier.GetLocation(), 
-                    method.Identifier.Text));
-                return;
-            }
-            
+
+            // 运算符由 OperatorDeclarationSyntax 单独处理
+
             // P0: 简单方法（如 FP.Abs, FP.Min）必须内联
             if (returnsFP && isSimple && method.ParameterList.Parameters.Count <= 2)
             {
@@ -103,7 +95,7 @@ namespace Lattice.Analyzers
                     method.Identifier.Text));
                 return;
             }
-            
+
             // P1: 小型数学方法建议内联
             if (returnsFP && isSmall)
             {
@@ -113,8 +105,8 @@ namespace Lattice.Analyzers
                     method.Identifier.Text));
                 return;
             }
-            
-            // P1: 比较运算符建议内联
+
+            // P1: 比较方法建议内联
             if (returnsBoolOrInt && isSimple && method.Identifier.Text.Contains("Compare"))
             {
                 context.ReportDiagnostic(Diagnostic.Create(
@@ -123,7 +115,7 @@ namespace Lattice.Analyzers
                     method.Identifier.Text));
                 return;
             }
-            
+
             // P2: 其他返回 FP 的方法考虑内联
             if (returnsFP)
             {
@@ -137,26 +129,38 @@ namespace Lattice.Analyzers
         private void AnalyzeProperty(SyntaxNodeAnalysisContext context)
         {
             var property = (PropertyDeclarationSyntax)context.Node;
-            
+
             // 跳过已有 AggressiveInlining 的属性
-            if (HasAggressiveInlining(property)) return;
-            
+            if (HasAggressiveInlining(property))
+            {
+                return;
+            }
+
             // 检查返回类型
             var returnType = property.Type.ToString();
-            if (!IsFPOrVectorType(returnType)) return;
-            
+            if (!IsFPOrVectorType(returnType))
+            {
+                return;
+            }
+
             // 检查是否是简单的 getter-only 属性
-            if (property.AccessorList == null) return;
-            
+            if (property.AccessorList == null)
+            {
+                return;
+            }
+
             var getter = property.AccessorList.Accessors
                 .FirstOrDefault(a => a.Keyword.IsKind(SyntaxKind.GetKeyword));
-            
-            if (getter == null) return;
-            
+
+            if (getter == null)
+            {
+                return;
+            }
+
             // 简单的表达式体或单行 getter
-            bool isSimple = getter.ExpressionBody != null || 
-                           (getter.Body?.Statements.Count ?? 0) <= 1;
-            
+            bool isSimple = getter.ExpressionBody != null ||
+                            (getter.Body?.Statements.Count ?? 0) <= 1;
+
             if (isSimple)
             {
                 context.ReportDiagnostic(Diagnostic.Create(
@@ -169,14 +173,20 @@ namespace Lattice.Analyzers
         private void AnalyzeOperator(SyntaxNodeAnalysisContext context)
         {
             var op = (OperatorDeclarationSyntax)context.Node;
-            
+
             // 跳过已有 AggressiveInlining 的运算符
-            if (HasAggressiveInlining(op)) return;
-            
+            if (HasAggressiveInlining(op))
+            {
+                return;
+            }
+
             // 检查返回类型
             var returnType = op.ReturnType.ToString();
-            if (!IsFPOrVectorType(returnType)) return;
-            
+            if (!IsFPOrVectorType(returnType))
+            {
+                return;
+            }
+
             // 所有 FP/FPVector 运算符必须内联
             context.ReportDiagnostic(Diagnostic.Create(
                 RequiredRule,
@@ -188,34 +198,34 @@ namespace Lattice.Analyzers
         {
             return method.AttributeLists
                 .SelectMany(a => a.Attributes)
-                .Any(a => IsAggressiveInliningAttribute(a));
+                .Any(IsAggressiveInliningAttribute);
         }
 
         private static bool HasAggressiveInlining(PropertyDeclarationSyntax property)
         {
             return property.AttributeLists
                 .SelectMany(a => a.Attributes)
-                .Any(a => IsAggressiveInliningAttribute(a));
+                .Any(IsAggressiveInliningAttribute);
         }
 
         private static bool HasAggressiveInlining(OperatorDeclarationSyntax op)
         {
             return op.AttributeLists
                 .SelectMany(a => a.Attributes)
-                .Any(a => IsAggressiveInliningAttribute(a));
+                .Any(IsAggressiveInliningAttribute);
         }
 
         private static bool IsAggressiveInliningAttribute(AttributeSyntax attribute)
         {
             var name = attribute.Name.ToString();
-            return name.Contains("MethodImpl") && 
+            return name.Contains("MethodImpl") &&
                    attribute.ArgumentList?.ToString().Contains("AggressiveInlining") == true;
         }
 
         private static bool IsFPOrVectorType(string typeName)
         {
-            return typeName == "FP" || 
-                   typeName == "FPVector2" || 
+            return typeName == "FP" ||
+                   typeName == "FPVector2" ||
                    typeName == "FPVector3" ||
                    typeName.Contains("FP");
         }
@@ -223,23 +233,29 @@ namespace Lattice.Analyzers
         private static int GetStatementCount(MethodDeclarationSyntax method)
         {
             // 表达式体
-            if (method.ExpressionBody != null) return 1;
-            
+            if (method.ExpressionBody != null)
+            {
+                return 1;
+            }
+
             // 语句体
-            if (method.Body == null) return 0;
-            
+            if (method.Body == null)
+            {
+                return 0;
+            }
+
             int count = method.Body.Statements.Count;
-            
+
             // 忽略 #if DEBUG 块
             foreach (var stmt in method.Body.Statements)
             {
-                if (stmt is IfStatementSyntax ifStmt && 
+                if (stmt is IfStatementSyntax ifStmt &&
                     ifStmt.Condition.ToString().Contains("DEBUG"))
                 {
-                    count--; // 不计算调试代码
+                    count--;
                 }
             }
-            
+
             return count;
         }
     }

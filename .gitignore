@@ -4,7 +4,8 @@
 godot/.godot/
 godot/.import/
 godot/export/
-godot/*.translation
+godot/**/*.translation
+godot/**/*.import
 godot/android/
 
 # Godot C# 构建产物
