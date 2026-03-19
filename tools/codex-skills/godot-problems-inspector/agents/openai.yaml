@@ -1,0 +1,4 @@
+interface:
+  display_name: "Godot Problems"
+  short_description: "Summarize Godot, MSBuild, and editor log problems"
+  default_prompt: "Use $godot-problems-inspector to collect and summarize the current Godot/MSBuild problems for this project."
