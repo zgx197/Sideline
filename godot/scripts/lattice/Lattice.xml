@@ -2554,6 +2554,29 @@
             否则可能产生未定义行为（内存损坏、崩溃等）。
             </remarks>
         </member>
+        <member name="M:Lattice.Math.FPUnsafe.CheckNotNull(System.Void*,System.String)">
+            <summary>
+            DEBUG 模式下检查指针是否为 null
+            </summary>
+            <param name="ptr">要检查的指针</param>
+            <param name="name">参数名（用于异常消息）</param>
+            <exception cref="T:System.ArgumentNullException">指针为 null 时抛出</exception>
+        </member>
+        <member name="M:Lattice.Math.FPUnsafe.CheckCount(System.Int32)">
+            <summary>
+            DEBUG 模式下检查 count 是否为非负数
+            </summary>
+            <param name="count">要检查的数量</param>
+            <exception cref="T:System.ArgumentOutOfRangeException">count 为负数时抛出</exception>
+        </member>
+        <member name="M:Lattice.Math.FPUnsafe.CheckPointers(System.Void*,System.Void*,System.Int32)">
+            <summary>
+            DEBUG 模式下检查指针和 count 的有效性
+            </summary>
+            <param name="source">源指针</param>
+            <param name="destination">目标指针</param>
+            <param name="count">元素数量</param>
+        </member>
         <member name="M:Lattice.Math.FPUnsafe.Copy(Lattice.Math.FP*,Lattice.Math.FP*,System.Int32)">
             <summary>
             直接内存复制：FP[] -> FP[]
