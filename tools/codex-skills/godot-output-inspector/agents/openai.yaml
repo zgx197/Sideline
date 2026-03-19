@@ -1,0 +1,4 @@
+interface:
+  display_name: "Godot Output"
+  short_description: "Read and summarize Godot runtime output logs"
+  default_prompt: "Use $godot-output-inspector to collect and summarize the latest Godot output log for this project."

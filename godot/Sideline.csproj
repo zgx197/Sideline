@@ -4,10 +4,12 @@
     <TargetFramework Condition=" '$(GodotTargetPlatform)' == 'android' ">net9.0</TargetFramework>
     <EnableDynamicLoading>true</EnableDynamicLoading>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <Nullable>enable</Nullable>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Include="addons/facet-tools/**/*.cs" />
     <Compile Include="scripts/main/**/*.cs" />
     <Compile Include="scripts/ui/**/*.cs" />
     <Compile Include="scripts/window/**/*.cs" />
