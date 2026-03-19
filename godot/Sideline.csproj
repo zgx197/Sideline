@@ -4,16 +4,19 @@
     <TargetFramework Condition=" '$(GodotTargetPlatform)' == 'android' ">net9.0</TargetFramework>
     <EnableDynamicLoading>true</EnableDynamicLoading>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
   </PropertyGroup>
-  
+
   <ItemGroup>
-    <!-- 排除工具目录，它们有自己的项目文件 -->
-    <Compile Remove="scripts/lattice/Tools/**" />
-    <Compile Remove="scripts/lattice/Properties/**" />
-    <!-- 排除测试和基准目录，它们有自己的项目文件 -->
-    <Compile Remove="Lattice.Tests/**" />
-    <Compile Remove="Lattice.Benchmarks/**" />
-    <!-- 排除 Godot 生成的临时文件 -->
-    <Compile Remove=".godot/mono/temp/obj/**" />
+    <Compile Include="scripts/main/**/*.cs" />
+    <Compile Include="scripts/ui/**/*.cs" />
+    <Compile Include="scripts/window/**/*.cs" />
+    <Compile Include="scripts/facet/Runtime/FacetHost.cs" />
+    <Compile Include="scripts/facet/Runtime/FacetLogger.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="scripts/lattice/Lattice.csproj" />
+    <ProjectReference Include="scripts/facet/Facet.Core.csproj" />
   </ItemGroup>
 </Project>
