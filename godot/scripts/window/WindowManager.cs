@@ -80,7 +80,7 @@ public partial class WindowManager : Node
             screenSize.X - IdleWindowSize.X - 50,
             screenSize.Y - IdleWindowSize.Y - 100);
 
-        EmitSignal(SignalName.ModeChanged, (int)CurrentMode);
+        EmitSignal("ModeChanged", (int)CurrentMode);
         LogModeChange("切换到挂机模式", window);
     }
 
@@ -102,7 +102,7 @@ public partial class WindowManager : Node
             (screenSize.X - DungeonWindowSize.X) / 2,
             (screenSize.Y - DungeonWindowSize.Y) / 2);
 
-        EmitSignal(SignalName.ModeChanged, (int)CurrentMode);
+        EmitSignal("ModeChanged", (int)CurrentMode);
         LogModeChange("切换到刷宝模式", window);
     }
 

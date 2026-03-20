@@ -2,83 +2,59 @@
 
 using System;
 using System.Collections.Generic;
-using System.Text;
 using Godot;
 using Sideline.Facet.Projection;
 using Sideline.Facet.Projection.Client;
 using Sideline.Facet.Projection.Diagnostics;
 using Sideline.Facet.Runtime;
+using Sideline.Facet.UI;
 
 /// <summary>
-/// 地下城模式面板：通过 Projection 驱动页面状态与指标列表刷新。
+/// 地下城模式面板。
+/// 通过 Projection 驱动页面状态，并使用模板化复杂列表展示运行时指标。
 /// </summary>
-public partial class DungeonPanel : PanelContainer
+public partial class DungeonPanel : PanelContainer, IUIPageLifecycle
 {
-    /// <summary>
-    /// 指标展示区域及其关键控件。
-    /// </summary>
     private PanelContainer _metricsPanel = null!;
     private Label _titleLabel = null!;
     private Label _statusLabel = null!;
     private Label _metricsTitleLabel = null!;
-    private Label _metricsListLabel = null!;
+    private Label _metricsEmptyLabel = null!;
+    private VBoxContainer _metricsListContainer = null!;
+    private Control _metricsItemTemplate = null!;
     private Button _switchButton = null!;
 
-    /// <summary>
-    /// Projection 订阅句柄，面板退出时需要释放。
-    /// </summary>
     private IDisposable? _clientShellSubscription;
     private IDisposable? _metricsSubscription;
+    private UIContext? _pageContext;
+    private ClientShellProjection? _currentShellProjection;
+    private FacetRuntimeMetricListProjection? _currentMetricsProjection;
+    private IUIComponentBindingScope? _metricsPanelBindings;
+    private IUIComplexListBinding<FacetRuntimeMetricItem>? _metricsListBinding;
+    private bool _nodesBound;
+    private bool _bindingsRegistered;
 
     [Signal]
     public delegate void SwitchToIdleRequestedEventHandler();
 
-    /// <summary>
-    /// 初始化地下城面板，并设置基础占位文案与按钮事件。
-    /// </summary>
-    public override void _Ready()
-    {
-        _metricsPanel = GetNode<PanelContainer>("%MetricsPanel");
-        _titleLabel = GetNode<Label>("%TitleLabel");
-        _statusLabel = GetNode<Label>("%StatusLabel");
-        _metricsTitleLabel = GetNode<Label>("%MetricsTitleLabel");
-        _metricsListLabel = GetNode<Label>("%MetricsListLabel");
-        _switchButton = GetNode<Button>("%SwitchButton");
-
-        _switchButton.Pressed += OnSwitchPressed;
-        _statusLabel.AutowrapMode = TextServer.AutowrapMode.WordSmart;
-        _metricsTitleLabel.AutowrapMode = TextServer.AutowrapMode.WordSmart;
-        _metricsListLabel.AutowrapMode = TextServer.AutowrapMode.WordSmart;
-
-        ApplyShellFallback();
-        ApplyMetricsPlaceholder();
-    }
-
-    /// <summary>
-    /// 面板退出时释放 Projection 订阅，避免重复回调。
-    /// </summary>
     public override void _ExitTree()
     {
-        _clientShellSubscription?.Dispose();
-        _clientShellSubscription = null;
-        _metricsSubscription?.Dispose();
-        _metricsSubscription = null;
+        ReleaseProjectionSubscriptions();
     }
 
     /// <summary>
     /// 绑定 Facet Projection。
-    /// 这里同时监听 ClientShell 和 RuntimeMetrics 两类投影。
+    /// 这里同时监听 ClientShell 与 RuntimeMetrics 两类 Projection。
     /// </summary>
     public void BindFacetProjection()
     {
-        _clientShellSubscription?.Dispose();
-        _clientShellSubscription = null;
-        _metricsSubscription?.Dispose();
-        _metricsSubscription = null;
+        ReleaseProjectionSubscriptions();
 
         if (FacetHost.Instance?.IsInitialized != true)
         {
-            ApplyMetricsPlaceholder();
+            _currentShellProjection = null;
+            _currentMetricsProjection = null;
+            RefreshView("projection.pending");
             ClientLog.Warning("DungeonPanel", "FacetHost 尚未初始化，Projection 绑定延后。", null);
             return;
         }
@@ -90,13 +66,28 @@ public partial class DungeonPanel : PanelContainer
         bool initialClientShellApplied = false;
         if (projectionStore.TryGet(FacetProjectionKeys.ClientShell, out ClientShellProjection? shellProjection) && shellProjection != null)
         {
-            ApplyClientShellProjection(shellProjection);
-            LogInitialClientShellProjection(shellProjection);
-            initialClientShellApplied = true;
+            if (ShouldApplyInitialClientShellProjection(shellProjection))
+            {
+                ApplyClientShellProjection(shellProjection);
+                LogInitialClientShellProjection(shellProjection);
+                initialClientShellApplied = true;
+            }
+            else
+            {
+                ClientLog.Info(
+                    "DungeonPanel",
+                    "DungeonPanel 跳过了不匹配当前页面模式的初始 ClientShellProjection。",
+                    new Dictionary<string, object?>
+                    {
+                        ["expectedMode"] = GetExpectedShellMode(),
+                        ["actualMode"] = shellProjection.Mode,
+                    });
+                ApplyShellFallback("projection.initial.shell_mismatch");
+            }
         }
         else
         {
-            ApplyShellFallback();
+            ApplyShellFallback("projection.initial.shell_missing");
         }
 
         bool initialMetricsApplied = false;
@@ -108,7 +99,7 @@ public partial class DungeonPanel : PanelContainer
         }
         else
         {
-            ApplyMetricsPlaceholder();
+            ApplyMetricsPlaceholder("projection.initial.metrics_missing");
         }
 
         ClientLog.Info(
@@ -123,29 +114,222 @@ public partial class DungeonPanel : PanelContainer
             });
     }
 
-    /// <summary>
-    /// 当壳层 Projection 尚未到达时，使用本地兜底文案保证页面仍可阅读。
-    /// </summary>
-    private void ApplyShellFallback()
+    public void OnPageInitialize(UIContext context)
     {
-        _titleLabel.Text = "Sideline / 地下城";
-        _statusLabel.Text = "Projection 驱动战斗窗口 / Projection-driven battle panel";
-        _switchButton.Text = "返回挂机 / Idle";
-        _switchButton.Disabled = false;
+        _pageContext = context;
+        EnsureNodesResolved(context);
+        EnsureBindingsRegistered(context);
+        BindFacetProjection();
+        ClientLog.Info("DungeonPanel", "DungeonPanel 生命周期 Initialize。", CreateLifecyclePayload(context, _metricsPanelBindings, _metricsListBinding));
     }
 
-    /// <summary>
-    /// 在指标 Projection 尚未就绪前先显示占位文案。
-    /// </summary>
-    private void ApplyMetricsPlaceholder()
+    public void OnPageShow(UIContext context)
     {
-        _metricsTitleLabel.Text = "运行时指标 / Runtime Metrics";
-        _metricsListLabel.Text = "等待指标数据 / Waiting for metrics...";
+        _pageContext = context;
+        EnsureNodesResolved(context);
+        EnsureBindingsRegistered(context);
+        if (_clientShellSubscription == null || _metricsSubscription == null)
+        {
+            BindFacetProjection();
+        }
+
+        RefreshView("page.show");
+        ClientLog.Info("DungeonPanel", "DungeonPanel 生命周期 Show。", CreateLifecyclePayload(context, _metricsPanelBindings, _metricsListBinding));
     }
 
-    /// <summary>
-    /// 响应 ClientShellProjection 变化。
-    /// </summary>
+    public void OnPageRefresh(UIContext context)
+    {
+        _pageContext = context;
+        EnsureNodesResolved(context);
+        EnsureBindingsRegistered(context);
+        if (_clientShellSubscription == null || _metricsSubscription == null)
+        {
+            BindFacetProjection();
+        }
+
+        RefreshView("page.refresh");
+        ClientLog.Info("DungeonPanel", "DungeonPanel 生命周期 Refresh。", CreateLifecyclePayload(context, _metricsPanelBindings, _metricsListBinding));
+    }
+
+    public void OnPageHide(UIContext context)
+    {
+        _pageContext = context;
+        ReleaseProjectionSubscriptions();
+        ClientLog.Info("DungeonPanel", "DungeonPanel 生命周期 Hide。", CreateLifecyclePayload(context, _metricsPanelBindings, _metricsListBinding));
+    }
+
+    public void OnPageDispose(UIContext context)
+    {
+        _pageContext = context;
+        ReleaseProjectionSubscriptions();
+        _metricsPanelBindings = null;
+        _metricsListBinding = null;
+        ClientLog.Info("DungeonPanel", "DungeonPanel 生命周期 Dispose。", CreateLifecyclePayload(context, null, null));
+    }
+
+    private void EnsureNodesResolved(UIContext? context)
+    {
+        if (_nodesBound)
+        {
+            return;
+        }
+
+        UINodeResolver? resolver = context?.Resolver as UINodeResolver;
+        _metricsPanel = ResolveRequiredNode<PanelContainer>(resolver, "MetricsPanel", "%MetricsPanel");
+        _titleLabel = ResolveRequiredNode<Label>(resolver, "TitleLabel", "%TitleLabel");
+        _statusLabel = ResolveRequiredNode<Label>(resolver, "StatusLabel", "%StatusLabel");
+        _metricsTitleLabel = ResolveRequiredNode<Label>(resolver, "MetricsTitleLabel", "%MetricsTitleLabel");
+        _metricsEmptyLabel = ResolveRequiredNode<Label>(resolver, "MetricsEmptyLabel", "%MetricsEmptyLabel");
+        _metricsListContainer = ResolveRequiredNode<VBoxContainer>(resolver, "MetricsListContainer", "%MetricsListContainer");
+        _metricsItemTemplate = ResolveRequiredNode<Control>(resolver, "MetricsItemTemplate", "%MetricsItemTemplate");
+        _switchButton = ResolveRequiredNode<Button>(resolver, "SwitchButton", "%SwitchButton");
+
+        _statusLabel.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+        _metricsTitleLabel.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+        _metricsEmptyLabel.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+        _metricsItemTemplate.Visible = false;
+
+        _nodesBound = true;
+        ApplyShellFallback("nodes.resolved.shell_fallback");
+        ApplyMetricsPlaceholder("nodes.resolved.metrics_placeholder");
+    }
+
+    private void EnsureBindingsRegistered(UIContext? context)
+    {
+        if (_bindingsRegistered)
+        {
+            return;
+        }
+
+        IUIBindingScope? bindings = context?.Bindings;
+        if (bindings == null)
+        {
+            ConnectButtonPressed(_switchButton, OnSwitchPressed);
+            _bindingsRegistered = true;
+            return;
+        }
+
+        bindings.BindText("TitleLabel", GetTitleText);
+        bindings.BindText("StatusLabel", GetStatusText);
+        bindings.BindText("SwitchButton", GetPrimaryActionText);
+        bindings.BindInteractable("SwitchButton", IsPrimaryActionEnabled);
+        bindings.BindCommand("SwitchButton", OnSwitchPressed);
+
+        if (context?.Resolver is UINodeResolver resolver)
+        {
+            UINodeResolver metricsResolver = resolver.CreateSubtreeResolver("MetricsPanel");
+            _metricsPanelBindings = bindings.CreateComponentScope("metrics-panel", metricsResolver);
+            _metricsPanelBindings.BindVisibility("MetricsPanel", ShouldShowMetricsPanel);
+            _metricsPanelBindings.BindText("MetricsTitleLabel", GetMetricsTitle);
+            _metricsListBinding = _metricsPanelBindings.BindComplexList(
+                "MetricsListContainer",
+                "MetricsItemTemplate",
+                GetMetricItems,
+                new MetricsItemBindingAdapter(),
+                "MetricsEmptyLabel");
+        }
+
+        _bindingsRegistered = true;
+        bindings.RefreshAll("binding.registered");
+
+        ClientLog.Info(
+            "DungeonPanel",
+            "DungeonPanel Binding 已注册。",
+            new Dictionary<string, object?>
+            {
+                ["pageId"] = context?.PageId,
+                ["bindingCount"] = bindings.Count,
+                ["bindingRefreshCount"] = bindings.RefreshCount,
+                ["bindingScopeId"] = bindings.ScopeId,
+                ["metricsPanelScopeId"] = _metricsPanelBindings?.ScopeId,
+                ["metricsListItemCount"] = _metricsListBinding?.ItemCount ?? 0,
+                ["hasResolver"] = context?.Resolver != null,
+            });
+    }
+
+    private TNode ResolveRequiredNode<TNode>(UINodeResolver? resolver, string key, string fallbackPath) where TNode : Node
+    {
+        return resolver?.GetRequired<TNode>(key) ?? GetNode<TNode>(fallbackPath);
+    }
+
+    private static void ConnectButtonPressed(Button button, Action handler)
+    {
+        Callable callable = Callable.From(handler);
+        if (!button.IsConnected(Button.SignalName.Pressed, callable))
+        {
+            button.Connect(Button.SignalName.Pressed, callable);
+        }
+    }
+
+    private void RefreshView(string? reason = null)
+    {
+        if (_pageContext?.Bindings != null)
+        {
+            _pageContext.Bindings.RefreshAll(reason);
+            return;
+        }
+
+        ApplyLegacyView();
+    }
+
+    private void ApplyLegacyView()
+    {
+        _titleLabel.Text = GetTitleText();
+        _statusLabel.Text = GetStatusText();
+        _switchButton.Text = GetPrimaryActionText();
+        _switchButton.Disabled = !IsPrimaryActionEnabled();
+        _metricsPanel.Visible = ShouldShowMetricsPanel();
+        _metricsTitleLabel.Text = GetMetricsTitle();
+        RenderLegacyMetricItems();
+    }
+
+    private string GetTitleText()
+    {
+        return _currentShellProjection?.Title ?? "Sideline / 地下城";
+    }
+
+    private string GetStatusText()
+    {
+        return _currentShellProjection?.Status ?? "Projection 驱动战斗窗口 / Projection-driven battle panel";
+    }
+
+    private string GetPrimaryActionText()
+    {
+        return _currentShellProjection?.PrimaryActionLabel ?? "返回挂机 / Idle";
+    }
+
+    private bool IsPrimaryActionEnabled()
+    {
+        return _currentShellProjection?.IsPrimaryActionEnabled != false;
+    }
+
+    private bool ShouldShowMetricsPanel()
+    {
+        return _currentShellProjection?.ShowMetricsList ?? true;
+    }
+
+    private string GetMetricsTitle()
+    {
+        return _currentMetricsProjection?.Title ?? "运行时指标 / Runtime Metrics";
+    }
+
+    private IReadOnlyList<FacetRuntimeMetricItem> GetMetricItems()
+    {
+        return _currentMetricsProjection?.Items ?? Array.Empty<FacetRuntimeMetricItem>();
+    }
+
+    private void ApplyShellFallback(string reason)
+    {
+        _currentShellProjection = null;
+        RefreshView(reason);
+    }
+
+    private void ApplyMetricsPlaceholder(string reason)
+    {
+        _currentMetricsProjection = null;
+        RefreshView(reason);
+    }
+
     private void OnClientShellChanged(ProjectionChange change)
     {
         if (change.CurrentValue is ClientShellProjection projection)
@@ -163,21 +347,12 @@ public partial class DungeonPanel : PanelContainer
         }
     }
 
-    /// <summary>
-    /// 应用客户端壳层 Projection 到地下城界面。
-    /// </summary>
     private void ApplyClientShellProjection(ClientShellProjection projection)
     {
-        _titleLabel.Text = projection.Title;
-        _statusLabel.Text = projection.Status;
-        _switchButton.Text = projection.PrimaryActionLabel;
-        _switchButton.Disabled = projection.IsPrimaryActionEnabled == false;
-        _metricsPanel.Visible = projection.ShowMetricsList;
+        _currentShellProjection = projection;
+        RefreshView("projection.client_shell");
     }
 
-    /// <summary>
-    /// 记录初次应用 ClientShellProjection 的日志，便于验证初始化同步链路。
-    /// </summary>
     private void LogInitialClientShellProjection(ClientShellProjection projection)
     {
         ClientLog.Info(
@@ -191,14 +366,11 @@ public partial class DungeonPanel : PanelContainer
             });
     }
 
-    /// <summary>
-    /// 响应 RuntimeMetricsProjection 变化。
-    /// </summary>
     private void OnRuntimeMetricsChanged(ProjectionChange change)
     {
         if (change.Kind == ProjectionChangeKind.Removed)
         {
-            ApplyMetricsPlaceholder();
+            ApplyMetricsPlaceholder("projection.runtime_metrics.removed");
             return;
         }
 
@@ -216,28 +388,12 @@ public partial class DungeonPanel : PanelContainer
         }
     }
 
-    /// <summary>
-    /// 把运行时指标 Projection 渲染为地下城面板中的列表文本。
-    /// </summary>
     private void ApplyRuntimeMetricsProjection(FacetRuntimeMetricListProjection projection)
     {
-        _metricsTitleLabel.Text = projection.Title;
-
-        StringBuilder builder = new();
-        foreach (FacetRuntimeMetricItem item in projection.Items)
-        {
-            builder.Append("- ");
-            builder.Append(item.Label);
-            builder.Append(": ");
-            builder.AppendLine(item.Value);
-        }
-
-        _metricsListLabel.Text = builder.ToString().TrimEnd();
+        _currentMetricsProjection = projection;
+        RefreshView("projection.runtime_metrics");
     }
 
-    /// <summary>
-    /// 记录初次应用 RuntimeMetricsProjection 的日志，便于核对初始数据是否完整。
-    /// </summary>
     private void LogInitialRuntimeMetricsProjection(FacetRuntimeMetricListProjection projection)
     {
         ClientLog.Info(
@@ -250,11 +406,99 @@ public partial class DungeonPanel : PanelContainer
             });
     }
 
-    /// <summary>
-    /// 触发切换回挂机模式的信号。
-    /// </summary>
+    private void ReleaseProjectionSubscriptions()
+    {
+        _clientShellSubscription?.Dispose();
+        _clientShellSubscription = null;
+        _metricsSubscription?.Dispose();
+        _metricsSubscription = null;
+    }
+
+    private void RenderLegacyMetricItems()
+    {
+        IReadOnlyList<FacetRuntimeMetricItem> items = GetMetricItems();
+
+        foreach (Node child in _metricsListContainer.GetChildren())
+        {
+            if (!ReferenceEquals(child, _metricsItemTemplate))
+            {
+                child.QueueFree();
+            }
+        }
+
+        _metricsItemTemplate.Visible = false;
+        _metricsListContainer.Visible = items.Count > 0;
+        _metricsEmptyLabel.Visible = items.Count == 0;
+
+        for (int index = 0; index < items.Count; index++)
+        {
+            if (_metricsItemTemplate.Duplicate() is not Control itemRoot)
+            {
+                continue;
+            }
+
+            itemRoot.Name = $"LegacyMetricItem_{index}";
+            itemRoot.Visible = true;
+            _metricsListContainer.AddChild(itemRoot);
+
+            itemRoot.GetNode<Label>("MetricsItemMargin/MetricsItemRow/MetricLabel").Text = items[index].Label;
+            itemRoot.GetNode<Label>("MetricsItemMargin/MetricsItemRow/MetricValueLabel").Text = items[index].Value;
+            itemRoot.GetNode<Label>("MetricsItemMargin/MetricsItemRow/MetricStatusLabel").Text = items[index].Key;
+        }
+    }
+
+    private static Dictionary<string, object?> CreateLifecyclePayload(
+        UIContext context,
+        IUIComponentBindingScope? metricsPanelBindings,
+        IUIComplexListBinding<FacetRuntimeMetricItem>? metricsListBinding)
+    {
+        UIBindingDiagnosticsSnapshot? bindingDiagnostics = context.Bindings?.GetDiagnosticsSnapshot();
+        UIBindingDiagnosticsSnapshot? metricsPanelDiagnostics = metricsPanelBindings?.GetDiagnosticsSnapshot();
+        return new Dictionary<string, object?>
+        {
+            ["pageId"] = context.PageId,
+            ["layer"] = context.Layer,
+            ["argumentCount"] = context.Arguments.Count,
+            ["bindingCount"] = bindingDiagnostics?.BindingCount ?? 0,
+            ["bindingRefreshCount"] = bindingDiagnostics?.RefreshCount ?? 0,
+            ["bindingLastReason"] = bindingDiagnostics?.LastRefreshReason,
+            ["metricsPanelScopeId"] = metricsPanelDiagnostics?.ScopeId,
+            ["metricsPanelBindingCount"] = metricsPanelDiagnostics?.BindingCount ?? 0,
+            ["metricsListItemCount"] = metricsListBinding?.ItemCount ?? 0,
+        };
+    }
+
+    private bool ShouldApplyInitialClientShellProjection(ClientShellProjection projection)
+    {
+        return string.Equals(projection.Mode, GetExpectedShellMode(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string GetExpectedShellMode()
+    {
+        return "Dungeon";
+    }
+
     private void OnSwitchPressed()
     {
-        EmitSignal(SignalName.SwitchToIdleRequested);
+        EmitSignal("SwitchToIdleRequested");
+    }
+
+    /// <summary>
+    /// 指标项模板适配器。
+    /// 每个列表项都会获得独立组件作用域，用于绑定标签、数值和诊断标识。
+    /// </summary>
+    private sealed class MetricsItemBindingAdapter : IUIComplexListAdapter<FacetRuntimeMetricItem>
+    {
+        public string GetItemKey(FacetRuntimeMetricItem item, int index)
+        {
+            return item.Key;
+        }
+
+        public void BindItem(IUIComponentBindingScope itemScope, FacetRuntimeMetricItem item, int index)
+        {
+            itemScope.BindText("MetricLabel", () => item.Label);
+            itemScope.BindText("MetricValueLabel", () => item.Value);
+            itemScope.BindText("MetricStatusLabel", () => $"Key: {item.Key} / #{index + 1}");
+        }
     }
 }

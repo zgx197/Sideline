@@ -76,12 +76,51 @@ size_flags_horizontal = 3
 text = "运行时指标 / Runtime Metrics"
 autowrap_mode = 2
 
-[node name="MetricsListLabel" type="Label" parent="ScrollContainer/MarginContainer/VBox/MetricsPanel/MetricsMargin/MetricsVBox"]
+[node name="MetricsEmptyLabel" type="Label" parent="ScrollContainer/MarginContainer/VBox/MetricsPanel/MetricsMargin/MetricsVBox"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 text = "等待指标数据 / Waiting for metrics..."
 autowrap_mode = 2
+
+[node name="MetricsListContainer" type="VBoxContainer" parent="ScrollContainer/MarginContainer/VBox/MetricsPanel/MetricsMargin/MetricsVBox"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 6
+
+[node name="MetricsItemTemplate" type="PanelContainer" parent="ScrollContainer/MarginContainer/VBox/MetricsPanel/MetricsMargin/MetricsVBox/MetricsListContainer"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="MetricsItemMargin" type="MarginContainer" parent="ScrollContainer/MarginContainer/VBox/MetricsPanel/MetricsMargin/MetricsVBox/MetricsListContainer/MetricsItemTemplate"]
+layout_mode = 2
+theme_override_constants/margin_left = 10
+theme_override_constants/margin_top = 8
+theme_override_constants/margin_right = 10
+theme_override_constants/margin_bottom = 8
+
+[node name="MetricsItemRow" type="HBoxContainer" parent="ScrollContainer/MarginContainer/VBox/MetricsPanel/MetricsMargin/MetricsVBox/MetricsListContainer/MetricsItemTemplate/MetricsItemMargin"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="MetricLabel" type="Label" parent="ScrollContainer/MarginContainer/VBox/MetricsPanel/MetricsMargin/MetricsVBox/MetricsListContainer/MetricsItemTemplate/MetricsItemMargin/MetricsItemRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Metric"
+autowrap_mode = 2
+
+[node name="MetricValueLabel" type="Label" parent="ScrollContainer/MarginContainer/VBox/MetricsPanel/MetricsMargin/MetricsVBox/MetricsListContainer/MetricsItemTemplate/MetricsItemMargin/MetricsItemRow"]
+layout_mode = 2
+horizontal_alignment = 2
+text = "Value"
+
+[node name="MetricStatusLabel" type="Label" parent="ScrollContainer/MarginContainer/VBox/MetricsPanel/MetricsMargin/MetricsVBox/MetricsListContainer/MetricsItemTemplate/MetricsItemMargin/MetricsItemRow"]
+layout_mode = 2
+modulate = Color(0.68, 0.74, 0.84, 1)
+text = "Key"
 
 [node name="SwitchButton" type="Button" parent="ScrollContainer/MarginContainer/VBox"]
 unique_name_in_owner = true

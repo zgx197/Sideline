@@ -13,9 +13,15 @@
     <Compile Include="scripts/main/**/*.cs" />
     <Compile Include="scripts/ui/**/*.cs" />
     <Compile Include="scripts/window/**/*.cs" />
+    <Compile Include="scripts/facet/Layout/**/*.cs" />
+    <Compile Include="scripts/facet/UI/**/*.cs" />
     <Compile Include="scripts/facet/Runtime/FacetHost.cs" />
     <Compile Include="scripts/facet/Runtime/FacetLogger.cs" />
     <Compile Include="scripts/facet/Runtime/FacetPlainTextLogEncoding.cs" />
+    <Compile Include="scripts/facet/Runtime/LuaReloadCoordinator.cs" />
+    <Compile Include="scripts/facet/Runtime/Pages/UIManager.cs" />
+    <Compile Include="scripts/facet/Runtime/Pages/UIPageLoader.cs" />
+    <Compile Include="scripts/facet/Runtime/Pages/UIPageRuntime.cs" />
   </ItemGroup>
 
   <ItemGroup>
