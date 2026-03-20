@@ -1,517 +1,351 @@
-# Facet 长期实现方案
+# Facet 长期实现方案（进度更新至 2026-03-20）
 
-本文档从 `README.md` 中拆分，用于维护 Facet 的长期落地路线、阶段状态、验证方式和推进结论。
-
-Facet 的总体设计、术语、生命周期、边界规范和模块职责，仍以 `README.md` 为主说明。
+本文档用于维护 Facet 的长期落地路线、阶段状态、验证方式和当前推进结论。
+主设计说明请查看 [README.md](./README.md)。
 
 ## 阶段状态标记规则
 
-- `[已完成]`：该阶段目标与交付物已经完成，并已在当前文档中校准
-- `[进行中]`：该阶段已经启动，但尚未达到完成标准
+- `[已完成]`：该阶段目标与交付物已经完成，并已通过当前文档校准
+- `[进行中]`：该阶段已经进入正式实现，但尚未达到完成标准
 - `[未开始]`：该阶段尚未进入正式实现
+
+## 最新进度
+
+- 阶段 0：[已完成]
+- 阶段 1：[已完成]
+- 阶段 2：[已完成]
+- 阶段 3：[已完成]
+- 阶段 4：[已完成]
+- 阶段 5：[已完成]
+- 阶段 6：[已完成]
+- 阶段 7：[已完成]
+- 阶段 8：[进行中]
+- 阶段 9：[未开始]
+- 阶段 10：[未开始]
+- 阶段 11：[未开始]
+- 阶段 12：[未开始]
+
+## 当前代码库已经具备
+
+- FacetHost 宿主入口与基础运行时依赖
+- Command、Query、AppResult、Gateway 等应用边界骨架
+- ProjectionStore、ProjectionRefreshCoordinator、ProjectionUpdater 刷新骨架
+- UIPageDefinition、UIPageRegistry、UIPageLoader、UIManager、UIRouteService、UIPageRuntime 等正式页面运行时
+- SceneLayoutProvider、UINodeRegistry、UINodeResolver 等布局提供者与节点解析基础设施
+- UIBindingService 与页面级、组件级、复杂列表级 Binding 最小能力
+- IdlePanel / DungeonPanel 两个真实 Projection 驱动样例
+- Facet 编辑器工作区、结构化日志与基础诊断能力
+
+## 当前仍未具备
+
+- 真实 Lua VM 与脚本执行沙箱
+- Lua 热重载与页面恢复链路
+- 红点树正式实现
+- TemplateLayoutProvider / GeneratedLayoutProvider 正式落地
+- 页面定义外部文件化与校验工具
 
 ## 实现顺序原则
 
-Facet 的实现应坚持“先底层约束，后页面能力；先运行时骨架，后业务页面接入”的顺序。不要一开始就直接写页面框架表层 API，否则后续很容易因为生命周期、投影模型、热更新边界不稳而返工。
+Facet 的推进顺序必须坚持：
 
-整体上建议分阶段推进，并按底层到上层的顺序逐步落地。
+1. 先宿主与基础依赖
+2. 再应用边界
+3. 再 Projection
+4. 再 Runtime
+5. 再布局与 Binding
+6. 再 Lua 宿主与热更新
+7. 最后扩展系统与工具化
 
-## 阶段路线
+不要跳过 Application 和 Projection，直接在页面里堆业务逻辑。
+不要先做表层 API，再回头补生命周期和运行时约束。
 
-### 阶段 0：实现前校准 `[已完成]`
+---
 
-目标：
-
-- 把当前 README 作为唯一设计基线
-- 明确 Facet 与现有临时 UI 原型代码的边界
-- 决定 Facet 第一阶段不接入真实业务页面
-
-交付物：
-
-- 稳定目录结构
-- 统一术语
-- 生命周期与模块边界说明
-
-完成标准：
-
-- 团队后续讨论都以 Facet 术语为准
-- 不再在子目录维护平行设计文档
-
-### 阶段 1：底层宿主与基础依赖 `[已完成]`
-
-这是 Facet 的真正起点，优先级最高。
+## 阶段 0：实现前校准 `[已完成]`
 
 目标：
 
-- 建立 Facet 在 Godot 中的宿主入口
-- 定义基础依赖注入方式
-- 建立日志、配置、运行时上下文等基础设施
+- 明确 Facet 的定位、边界、术语和生命周期规范
+- 把 README 作为 Facet 的主设计说明
+- 决定早期不直接接入真实业务页面
 
-建议实现：
+完成结论：
 
-- `FacetHost`
-  作为 Facet 全局宿主入口，负责启动 Runtime、注册服务、持有全局配置
-- `FacetConfig`
-  运行时配置，例如调试开关、热重载开关、页面缓存策略默认值
-- `FacetServices`
-  简单服务注册器，用于组织 Application、Projection、Runtime、Lua 等模块依赖
-- `FacetLogger`
-  统一日志入口，便于后续调试页面生命周期与热重载
+- 设计术语和模块边界已统一
+- 目录结构与职责划分已稳定
 
-为什么先做这一层：
+## 阶段 1：底层宿主与基础依赖 `[已完成]`
 
-- 后续所有模块都需要稳定的宿主与依赖组织方式
-- 如果这层不先立住，后面模块之间会很快变成互相硬引用
+目标：
 
-完成标准：
+- 建立 `FacetHost`
+- 建立 `FacetConfig`、`FacetServices`、`FacetRuntimeContext`
+- 建立统一日志入口
 
-- Godot 启动后能初始化 Facet Host
-- 各模块可以通过统一方式取到共享服务
-
-当前已落地项：
+当前已落地：
 
 - `FacetHost`
-  已提供最小宿主入口、初始化流程、核心服务注册与初始化信号
 - `FacetConfig`
-  已提供最小运行时配置对象
 - `FacetServices`
-  已提供最小服务注册与按类型解析能力
 - `FacetRuntimeContext`
-  已提供配置、服务、日志三者组成的基础运行时上下文
 - `FacetLogger` / `IFacetLogger`
-  已提供基于 Godot 的统一日志实现与日志接口
-- 启动验证日志
-  已可通过启动主场景并检索“FacetHost 启动验证成功”确认宿主接入
+- 启动验证日志与结构化日志基础能力
 
-后续补强项：
+完成标准结论：
 
-- 阶段 1 的自动化验证与编译隔离仍未完成
-- 针对后续模块的默认服务注册策略收敛
-- `FacetHost` 之外的宿主基础依赖仍需继续补齐
+- Facet 可以在 Godot 主场景中稳定初始化
+- 运行时服务可以通过统一方式访问
 
-### 阶段 2：应用边界与结果模型 `[已完成]`
+## 阶段 2：应用边界与结果模型 `[已完成]`
 
 目标：
 
-- 把 UI 与底层逻辑之间的调用边界先抽出来
-- 即使现在没有网络层，也先建立 `Command / Query / Result` 范式
+- 把页面与底层逻辑之间的调用边界抽离出来
+- 让页面未来统一面向 Command / Query / Result 编程
 
-建议实现：
-
-- `ICommandBus`
-- `IQueryBus`
-- `AppResult<T>`
-- `IAppService`
-- `IGateway`
-
-第一阶段可以只提供本地空实现或 Mock 实现。
-
-为什么先做这一层：
-
-- Lua 控制器和页面运行时之后都要依赖它
-- 这能避免 UI 直接调用 Lattice 或本地存档对象
-
-完成标准：
-
-- 页面层未来只面向 `Command / Query` 编程
-- 本地模式和未来远程模式共享同一调用范式
-
-当前已落地项：
+当前已落地：
 
 - `ICommandBus` / `IQueryBus`
-  已定义命令与查询总线接口，作为 UI 与应用层之间的统一调用入口
 - `AppResult` / `AppResult<T>`
-  已提供标准成功失败结果模型，后续本地实现与远程实现都复用同一返回范式
 - `IAppService` / `IGateway`
-  已提供应用服务与数据源网关标记接口，先把边界立住
 - `LocalCommandBus` / `LocalQueryBus`
-  已提供最小本地总线实现与按类型注册 handler 的骨架
-- `FacetHost` / `FacetRuntimeContext`
-  已把命令总线与查询总线注册进宿主服务容器，并提供运行时快捷访问入口
-- `FacetRuntimeProbeQuery` / `FacetRuntimeProbeService`
-  已提供阶段 2 的最小应用服务样例，并由宿主在启动时执行一次查询链路自检
-- `RecordFacetRuntimeProbeCommand` / `IFacetRuntimeProbeGateway`
-  已补齐命令写入与本地网关抽象，形成 `Query -> Command -> Gateway -> Query` 的最小闭环参考实现
-- `InMemoryFacetRuntimeProbeGateway`
-  已提供阶段 2 默认本地网关实现，用于验证未来本地模式与远程模式共享同一应用层范式
+- 运行时探针服务与 Query -> Command -> Gateway -> Query 闭环样例
 
-当前仍未完成：
+完成标准结论：
 
-- 还没有接入真实游戏业务页面或 Lua 控制器
-- 阶段 2 的闭环样例目前仍以运行时诊断为主，后续真实业务会在阶段 3 之后逐步替换进来
+- 页面层已具备统一调用协议，不再依赖底层实现细节
 
-### 阶段 3：Projection 层与数据刷新骨架 `[已完成]`
+## 阶段 3：Projection 层与数据刷新骨架 `[已完成]`
 
 目标：
 
-- 把 UI 的数据来源从底层对象解耦出来
-- 建立可局部刷新的 ViewModel 组织方式
+- 建立统一 Projection 数据中心
+- 让页面刷新由 Projection 变化驱动
 
-建议实现：
+当前已落地：
 
 - `ProjectionKey`
 - `ProjectionStore`
-- `ViewModel`
-- `ProjectionChange`
-- `ProjectionUpdater`
-
-优先实现的能力：
-
-- 按 Key 存取投影对象
-- 发布投影变更事件
-- 让页面能订阅和取消订阅投影变化
-
-为什么在 Runtime 前实现 Projection：
-
-- 页面运行时如果没有稳定的数据模型，很容易退化成“打开页面后手写赋值”
-- 红点、列表、按钮状态等后续能力都依赖 Projection
-
-完成标准：
-
-- Runtime 能拿到统一投影数据
-- 页面刷新可以由投影变化驱动
-
-当前已落地项：
-
-- `ProjectionKey`
-  已提供投影主键类型，用于统一标识 ProjectionStore 中的数据槽位
-- `ProjectionStore`
-  已提供按 Key 存取 Projection、存在性检查、强制获取与订阅/取消订阅能力
 - `ProjectionRefreshCoordinator`
-  已提供 ProjectionUpdater 注册、单项刷新与全量刷新调度能力
-- `ProjectionChange` / `ProjectionChangeKind`
-  已提供投影变更快照与变更类型定义，用于后续驱动页面局部刷新
-- `IViewModel` / `IProjectionUpdater`
-  已补齐 Projection 层的最小术语与扩展入口
-- `RuntimeProbeProjectionUpdater` / `RuntimeMetricsProjectionUpdater`
-  已补齐由应用边界驱动的正式 Projection 刷新器，并统一交由协调器调度
-- `FacetRuntimeContext`
-  已提供 ProjectionStore 的运行时快捷访问入口
-- `FacetRuntimeProbeProjection`
-  已提供阶段 3 的最小投影样例，并由宿主把阶段 2 的探针状态投影进 ProjectionStore
-- `IdlePanel`
-  已接入真实页面样例，通过订阅 `client.shell` 与 `diagnostics.runtime_probe` Projection 完成页面状态、按钮态与摘要刷新
-- `DungeonPanel`
-  已接入第二个真实页面样例，通过订阅 `client.shell` 与 `diagnostics.runtime_metrics` Projection 完成页面状态、显隐态与列表刷新
-- `ClientShellProjection`
-  已补齐更接近真实业务页面状态的 Projection 样例，统一承载标题、状态、主按钮可用态与显隐策略
-- `FacetRuntimeMetricListProjection`
-  已补齐列表型 Projection 样例，用于验证页面消费结构化条目集合的能力
-- 页面侧结构化日志
-  已补齐 `IdlePanel` / `DungeonPanel` 的 Projection 绑定与刷新日志，提升页面层可观测性
-- Projection 启动验证
-  已在宿主启动时通过协调器统一刷新 Projection，并验证投影写入、订阅通知与再次读取链路
+- `ProjectionChange`
+- `RuntimeProbeProjectionUpdater`
+- `RuntimeMetricsProjectionUpdater`
+- Idle / Dungeon 两个真实 Projection 驱动页面样例
 
-当前仍未完成：
+完成标准结论：
 
-- 阶段 3 的完成标准已经满足；后续更复杂的分页列表、组合组件投影、红点与动态增量更新将进入后续阶段继续扩展
+- Projection 已成为页面层的正式数据来源
 
-### 阶段 4：页面定义与注册系统 `[进行中]`
+## 阶段 4：页面定义与注册系统 `[已完成]`
 
 目标：
 
-- 把页面从“代码约定”变成“运行时可识别单元”
-- 建立页面注册表与页面元数据系统
+- 把页面从硬编码约定变成运行时可识别单元
+- 建立页面元数据与注册表
 
-建议实现：
+当前已落地：
 
 - `UIPageDefinition`
 - `UIPageRegistry`
-- `UIPageLoader`
 - `IPageDefinitionSource`
+- `InMemoryPageDefinitionSource`
+- `FacetBuiltInPageDefinitions`
+- `UIPageLoader`
 
-第一阶段先不急着做复杂格式解析器，可以先用：
+完成标准结论：
 
-- C# 描述对象
-- 或 JSON 配置
+- `UIManager.Open(pageId)` 已经成为正式打开入口
 
-最小字段优先支持：
-
-- `pageId`
-- `layoutType`
-- `layoutPath` / `layoutBuilder`
-- `controllerScript`
-- `layer`
-- `cachePolicy`
-
-完成标准：
-
-- `UIManager.Open(pageId)` 不再依赖硬编码页面构造逻辑
-
-### 阶段 5：Runtime 核心与页面生命周期 `[未开始]`
-
-这是 Facet 的第一块核心运行时代码。
+## 阶段 5：Runtime 核心与页面生命周期 `[已完成]`
 
 目标：
 
-- 实现页面状态机
-- 实现页面打开、关闭、隐藏、销毁、返回栈
-- 统一管理页面上下文与层级
+- 建立页面状态机
+- 建立页面上下文与统一生命周期
+- 建立返回栈和缓存策略
 
-建议实现：
+当前已落地：
 
-- `UIManager`
-- `UIRouteService`
-- `UIPageRuntime`
+- `UIPageState`
 - `UIContext`
-- `UILayerRoot`
+- `IUIPageLifecycle`
+- `UIPageRuntime`
+- `UIRouteService`
+- `UIManager`
 
-第一阶段只支持最基本页面能力：
+完成标准结论：
 
-- 打开页面
-- 关闭页面
-- 隐藏页面
-- 返回上一级
-- 缓存页面
+- 页面已经具备统一的 `Create / Initialize / Show / Refresh / Hide / Dispose` 生命周期日志
 
-此阶段要严格实现文档里的生命周期：
-
-- `Create`
-- `Initialize`
-- `Show`
-- `Refresh`
-- `Hide`
-- `Dispose`
-
-完成标准：
-
-- 页面生命周期有统一日志
-- 返回栈与页面缓存行为稳定
-
-### 阶段 6：布局提供者与节点注册 `[未开始]`
+## 阶段 6：布局提供者与节点注册 `[已完成]`
 
 目标：
 
-- 让页面控制器不关心布局来源
-- 让手工布局和自动生成布局走统一协议
+- 让页面控制器不直接依赖 Godot 路径
+- 统一手工布局和后续自动布局的运行时接入协议
 
-建议实现：
+当前已落地：
 
 - `IUILayoutProvider`
 - `SceneLayoutProvider`
+- `UILayoutResult`
 - `UINodeRegistry`
 - `UINodeResolver`
 
-实现顺序建议：
+完成标准结论：
 
-1. 先做 `SceneLayoutProvider`
-2. 再做节点注册和稳定 `Node Key`
-3. 最后再引入 `TemplateLayoutProvider`
-4. `GeneratedLayoutProvider` 放在更后面
+- 页面、Binding 与控制器已经能够通过稳定节点标识工作，而不是直接依赖 Godot 路径
 
-为什么不要先做自动生成布局：
-
-- 自动生成布局依赖更稳定的 Runtime 和 Binding 协议
-- 先把 `.tscn` 页面纳入统一运行时，更容易验证框架正确性
-
-完成标准：
-
-- Lua 控制器和 Binding 系统不直接依赖 Godot 路径
-
-### 阶段 7：Binding 系统 `[未开始]`
+## 阶段 7：Binding 系统 `[已完成]`
 
 目标：
 
-- 把页面更新逻辑从“散落的节点赋值”收敛为统一绑定机制
+- 把散落的节点赋值逻辑收敛成统一 Binding 机制
 
-建议实现：
+当前已落地：
 
+- `IUIBindingScope`
+- `IUIComponentBindingScope`
+- `IUIComplexListBinding<T>`
 - `UIBindingService`
-- `TextBinding`
-- `VisibilityBinding`
-- `InteractableBinding`
-- `CommandBinding`
-- `ListBinding`
+- Text / Visibility / Interactable / Command / List / ComplexList Binding
+- Idle / Dungeon 页面上的真实 Binding 接入
+- Binding 诊断快照与结构化日志
 
-第一阶段先实现四类最关键绑定：
+完成标准结论：
 
-1. 文本绑定
-2. 显隐绑定
-3. 按钮命令绑定
-4. 简单列表绑定
+- 页面刷新已明显从“手写节点赋值”收敛为“Binding 驱动刷新”
 
-完成标准：
-
-- 大部分页面刷新不再需要手写节点赋值逻辑
-
-### 阶段 8：Lua 宿主与页面控制器 `[未开始]`
+## 阶段 8：Lua 宿主与页面控制器 `[进行中]`
 
 目标：
 
-- 把页面行为从 C# 页面脚本中抽离出来
+- 把页面行为从 C# 页面脚本中逐步抽离出来
 - 建立受限 Lua 控制器宿主
+- 为后续热重载建立稳定入口
 
-建议实现：
+设计对象：
+
+- `ILuaRuntimeHost` / `LuaRuntimeHost`
+- `ILuaScriptSource`
+- `LuaApiBridge`
+- `LuaControllerHandle`
+- `ILuaRedDotBridge`
+
+当前已落地：
 
 - `LuaRuntimeHost`
-- `LuaPageController`
+  已按 `controllerScript` 创建控制器实例，并把受限桥接对象注入控制器
+- `InMemoryLuaScriptSource`
+  已提供内存脚本注册表，用于在没有真实 Lua VM 的前提下先打通宿主边界
 - `LuaApiBridge`
-- `LuaScriptSource`
+  已暴露节点解析、Binding 刷新、命令/查询、页面路由与红点占位能力
+- `IUIPageNavigator`
+  已把页面路由以受限接口方式暴露给 Lua 宿主
+- `UIPageRuntime`
+  已开始统一转发 `OnInit / OnShow / OnRefresh / OnHide / OnDispose` 给 Lua 控制器
+- `FacetBuiltInPageDefinitions`
+  已给 `client.idle` 与 `client.dungeon` 配置内置 `controllerScript`
+- `FacetBuiltInLuaControllers`
+  已提供两个阶段 8 样例控制器，用于验证生命周期日志、查询调用与路由状态
+- `FacetHost`
+  已注册脚本源、红点桥与 Lua 宿主，并输出阶段 8 启动验证日志
+- `Main`
+  已补充阶段 8 主场景日志，方便直接确认当前页面是否已经挂到 Lua 控制器
 
-第一阶段建议只支持：
+当前仍待补强：
 
-- `OnInit`
-- `OnShow`
-- `OnRefresh`
-- `OnHide`
-- `OnDispose`
+- 接入真实 Lua VM
+- 设计脚本热重载与恢复链路
+- 建立更细粒度的 Lua API 白名单
+- 校准组件级、列表级 Lua 接口
 
-注入给 Lua 的能力先收窄到：
+当前阶段结论：
 
-- 节点访问
-- 绑定注册
-- 命令调用
-- 查询调用
-- 页面路由
-- 红点绑定预留接口
+- 阶段 8 已不再停留在设计层，而是已经完成“宿主边界、生命周期接线、桥接 API、页面定义配置、样例控制器”的最小闭环
+- 但要把阶段 8 标记为完成，还需要补齐真实脚本宿主与更稳定的恢复策略
 
-完成标准：
-
-- 页面行为可以逐步迁移到 Lua
-- Lua 不直接穿透到底层逻辑与网络
-
-### 阶段 9：热重载协调器 `[未开始]`
+## 阶段 9：热重载协调器 `[未开始]`
 
 目标：
 
 - 支持 Lua 页面行为热更新
 - 支持页面级受控重载
 
-建议实现：
+计划重点：
 
 - `LuaReloadCoordinator`
-- 页面控制器失效检测
-- 页面重绑流程
-- 运行时状态恢复逻辑
+- 控制器失效检测
+- 页面重绑与状态恢复
+- 重载过程日志与错误定位
 
-第一阶段只支持：
-
-- Lua 脚本变更重载
-- 页面绑定重建
-- 基于页面参数与 Projection 的状态恢复
-
-暂不支持：
-
-- 页面任意局部状态持久化
-- 任意 C# 逻辑热更
-- 任意场景资源热更
-
-完成标准：
-
-- Lua 代码变更后，已打开页面可以在不重启客户端的情况下恢复运行
-
-### 阶段 10：扩展系统与红点树 `[未开始]`
+## 阶段 10：扩展系统与红点树 `[未开始]`
 
 目标：
 
 - 把高频通用能力从页面中剥离出来
 
-建议优先实现：
+计划重点：
 
 - `RedDotService`
 - `RedDotProvider`
 - `RedDotBinding`
 - `RedDotAggregator`
 
-后续扩展可继续补：
-
-- 权限控制
-- 引导锚点
-- 推荐标记
-- 锁定态装饰
-
-为什么红点不更早做：
-
-- 红点树本质上依赖 Projection、Binding、Runtime 和稳定节点标识
-- 过早实现只会变成页面私有逻辑
-
-完成标准：
-
-- 页面只声明红点挂载关系，不负责红点计算
-
-### 阶段 11：模板布局与自动生成布局 `[未开始]`
+## 阶段 11：模板布局与自动生成布局 `[未开始]`
 
 目标：
 
-- 在 Runtime、Binding、NodeRegistry 已稳定后，引入更高阶的页面构造方式
+- 在 Runtime、Binding、NodeRegistry 稳定后引入更高阶页面构造方式
 
-建议实现：
+计划重点：
 
 - `TemplateLayoutProvider`
 - `GeneratedLayoutProvider`
 - 动态区域节点工厂
 - 配置化布局描述对象
 
-适合在这时接入的页面类型：
-
-- 列表页
-- 数据面板页
-- 调试页
-- 配置页
-
-完成标准：
-
-- 手工布局和自动布局共享同一控制器、绑定和扩展协议
-
-### 阶段 12：工具化与工程化 `[未开始]`
+## 阶段 12：工具化与工程化 `[未开始]`
 
 目标：
 
 - 让 Facet 从“能运行”进入“能维护、能扩展、能调试”的阶段
 
-建议实现：
+计划重点：
 
 - 页面定义校验工具
 - 生命周期调试面板
-- 页面注册表浏览工具
-- 热重载日志与错误定位
+- 页面注册浏览器
 - Projection 观察器
-- RedDot 树调试工具
+- Lua 热重载诊断工具
+- 红点树调试工具
 
-完成标准：
+---
 
-- 新页面接入成本明显下降
-- 框架问题具备可观测性
+## 每阶段验证方式建议
 
-## 实施原则
-
-在长期实现过程中，应持续遵守以下原则：
-
-1. 不要跳过 Application 和 Projection，直接写页面逻辑
-2. 不要先做页面表层 API，再补生命周期底座
-3. 不要让 Lua 越过 `UIContext` 直接触底层系统
-4. 不要过早追求复杂自动布局和全量热更
-5. 每完成一个阶段，都要用最小示例页面验证而不是直接接业务大页面
-
-## 每阶段的验证方式
-
-建议每个阶段都配一个最小验证样例，而不是一上来接入真实复杂页面。
+建议每个阶段都配一个最小验证样例，而不是一开始就接入复杂业务页面。
 
 例如：
 
-- 阶段 1：启动 `Main.tscn`，确认日志中出现“FacetHost 启动验证成功”
-- 阶段 2：启动 `Main.tscn`，确认日志中出现“Facet 阶段 2 应用边界闭环验证成功”
-- 阶段 3：启动 `Main.tscn`，确认日志中出现“Facet 阶段 3 Projection 骨架验证成功”，并观察 `IdlePanel` 与 `DungeonPanel` 的标题、状态、按钮态、显隐区块和列表内容均由 Projection 填充，同时能看到“已应用初始 Projection”与后续变更日志
-- 阶段 5：验证页面打开、隐藏、返回栈
-- 阶段 8：验证 Lua 控制器是否能接管一个简单页面
-- 阶段 9：验证修改 Lua 后页面是否可以安全恢复
-- 阶段 10：验证红点树聚合和节点挂载
+- 阶段 1：启动 `Main.tscn`，确认日志中出现 `FacetHost 启动验证成功`
+- 阶段 2：确认日志中出现应用边界闭环验证成功
+- 阶段 3：确认 Projection 更新与页面刷新日志正常出现
+- 阶段 4：确认页面通过 `pageId` 打开，而不是节点可见性硬切换
+- 阶段 5：确认生命周期 `Create / Initialize / Show / Refresh / Hide` 全部出现
+- 阶段 6：确认节点通过稳定节点键解析，不再依赖 Godot 路径
+- 阶段 7：确认 Binding、组件作用域和复杂列表作用域日志出现
+- 阶段 8：确认页面已经创建 Lua 控制器，并能看到 `Lua 控制器已创建` 与各生命周期日志
+- 阶段 9：确认脚本改动后页面可在不重启客户端的前提下恢复
+- 阶段 10：确认红点路径、聚合和页面挂载关系都能稳定工作
 
-## 推荐的最小里程碑
+## 当前结论
 
-如果要把长期路线压缩成几个可交付里程碑，我建议是：
+截至 2026-03-20，阶段 0 至阶段 7 已完成，阶段 8 已进入正式实现。
+当前 Facet 已经具备：宿主、应用边界、Projection、正式页面运行时、布局提供者、Binding 系统，以及阶段 8 的最小 Lua 宿主闭环。
 
-1. `M1`
-   Facet Host + Application 边界 + Projection Store
-2. `M2`
-   Page Definition + Runtime + SceneLayoutProvider
-3. `M3`
-   Binding 系统 + 基础页面接入
-4. `M4`
-   Lua 控制器 + 基础热重载
-5. `M5`
-   RedDot + 模板布局 + 工具化
+后续工作的重点将放在：
 
-## 当前阶段结论
-
-阶段 0、阶段 1、阶段 2 与阶段 3 已完成，并已通过启动日志与页面首帧 Projection 应用日志完成校准。当前 Facet 已具备稳定的宿主、应用边界、ProjectionStore、ProjectionRefreshCoordinator、正式 ProjectionUpdater、双页面 Projection 消费样例、页面状态 Projection、列表型 Projection，以及页面侧结构化日志。阶段 4 已进入进行中状态，后续工作的重点将正式转向页面定义与注册系统。
+- 阶段 8 的真实 Lua VM 接入
+- 阶段 9 的热重载协调与恢复策略
+- 阶段 10 以后扩展系统与工具化能力的持续落地
