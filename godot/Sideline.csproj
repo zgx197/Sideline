@@ -28,4 +28,9 @@
     <ProjectReference Include="scripts/lattice/Lattice.csproj" />
     <ProjectReference Include="scripts/facet/Facet.Core.csproj" />
   </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="scripts/lattice/Lattice.csproj" />
+    <ProjectReference Include="scripts/facet/Facet.Core.csproj" />
+  </ItemGroup>
 </Project>
