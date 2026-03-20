@@ -10,54 +10,87 @@ grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("1")
 
-[node name="MarginContainer" type="MarginContainer" parent="."]
+[node name="ScrollContainer" type="ScrollContainer" parent="."]
 layout_mode = 2
-theme_override_constants/margin_left = 16
-theme_override_constants/margin_top = 12
-theme_override_constants/margin_right = 16
-theme_override_constants/margin_bottom = 12
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+horizontal_scroll_mode = 0
 
-[node name="VBox" type="VBoxContainer" parent="MarginContainer"]
+[node name="MarginContainer" type="MarginContainer" parent="ScrollContainer"]
 layout_mode = 2
-theme_override_constants/separation = 8
+size_flags_horizontal = 3
+theme_override_constants/margin_left = 12
+theme_override_constants/margin_top = 10
+theme_override_constants/margin_right = 12
+theme_override_constants/margin_bottom = 10
 
-[node name="TopBar" type="HBoxContainer" parent="MarginContainer/VBox"]
+[node name="VBox" type="VBoxContainer" parent="ScrollContainer/MarginContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 6
+
+[node name="TopBar" type="HBoxContainer" parent="ScrollContainer/MarginContainer/VBox"]
 layout_mode = 2
 
-[node name="TitleLabel" type="Label" parent="MarginContainer/VBox/TopBar"]
+[node name="TitleLabel" type="Label" parent="ScrollContainer/MarginContainer/VBox/TopBar"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
-text = "Sideline · 挂机中"
+text = "Sideline / 挂机"
 horizontal_alignment = 0
+autowrap_mode = 2
 
-[node name="CloseButton" type="Button" parent="MarginContainer/VBox/TopBar"]
+[node name="CloseButton" type="Button" parent="ScrollContainer/MarginContainer/VBox/TopBar"]
 unique_name_in_owner = true
 layout_mode = 2
 custom_minimum_size = Vector2(28, 28)
 text = "×"
 flat = true
 
-[node name="HSeparator" type="HSeparator" parent="MarginContainer/VBox"]
+[node name="HSeparator" type="HSeparator" parent="ScrollContainer/MarginContainer/VBox"]
 layout_mode = 2
 
-[node name="StatusLabel" type="Label" parent="MarginContainer/VBox"]
+[node name="StatusLabel" type="Label" parent="ScrollContainer/MarginContainer/VBox"]
 unique_name_in_owner = true
 layout_mode = 2
-text = "正在自动收集资源..."
+size_flags_horizontal = 3
+text = "自动收集资源 / Auto collecting"
 horizontal_alignment = 1
+autowrap_mode = 2
 
-[node name="ResourceLabel" type="Label" parent="MarginContainer/VBox"]
+[node name="ResourceLabel" type="Label" parent="ScrollContainer/MarginContainer/VBox"]
 unique_name_in_owner = true
 layout_mode = 2
-text = "金币: 0"
+size_flags_horizontal = 3
+text = "金币 / Gold: 0"
 horizontal_alignment = 1
 
-[node name="Spacer" type="Control" parent="MarginContainer/VBox"]
+[node name="FacetProjectionPanel" type="PanelContainer" parent="ScrollContainer/MarginContainer/VBox"]
+unique_name_in_owner = true
 layout_mode = 2
+size_flags_horizontal = 3
 size_flags_vertical = 3
 
-[node name="SwitchButton" type="Button" parent="MarginContainer/VBox"]
+[node name="FacetProjectionMargin" type="MarginContainer" parent="ScrollContainer/MarginContainer/VBox/FacetProjectionPanel"]
+layout_mode = 2
+theme_override_constants/margin_left = 10
+theme_override_constants/margin_top = 8
+theme_override_constants/margin_right = 10
+theme_override_constants/margin_bottom = 8
+
+[node name="FacetProjectionLabel" type="Label" parent="ScrollContainer/MarginContainer/VBox/FacetProjectionPanel/FacetProjectionMargin"]
 unique_name_in_owner = true
 layout_mode = 2
-text = "进入地下城 (ESC)"
+size_flags_horizontal = 3
+text = "Facet Runtime / 等待数据"
+autowrap_mode = 2
+
+[node name="SwitchButton" type="Button" parent="ScrollContainer/MarginContainer/VBox"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+custom_minimum_size = Vector2(0, 34)
+text = "进入地下城 / Dungeon"
