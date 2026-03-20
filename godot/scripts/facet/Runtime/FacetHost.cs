@@ -5,8 +5,11 @@ using System.Collections.Generic;
 using Godot;
 using Sideline.Facet.Application;
 using Sideline.Facet.Application.Diagnostics;
+using Sideline.Facet.Layout;
+using Sideline.Facet.Lua;
 using Sideline.Facet.Projection;
 using Sideline.Facet.Projection.Diagnostics;
+using Sideline.Facet.UI;
 
 namespace Sideline.Facet.Runtime
 {
@@ -18,9 +21,11 @@ namespace Sideline.Facet.Runtime
         private static readonly ProjectionKey RuntimeProbeProjectionKey = FacetProjectionKeys.RuntimeProbe;
         private static readonly ProjectionKey RuntimeMetricsProjectionKey = FacetProjectionKeys.RuntimeMetrics;
 
+        private double _hotReloadPollTimer;
+
         /// <summary>
-        /// 最小启动验证日志标记。
-        /// 启动主场景后可直接搜索该文本，确认 Facet 宿主已接入。
+        /// 最小启动验证标记。
+        /// 启动主场景后可以直接搜索该文本，确认 Facet 宿主已接入。
         /// </summary>
         public const string StartupVerificationMarker = "FacetHost 启动验证成功";
 
@@ -56,6 +61,9 @@ namespace Sideline.Facet.Runtime
 
         [Export]
         public bool EnableHotReload { get; set; } = true;
+
+        [Export(PropertyHint.Range, "0.1,5,0.1")]
+        public double HotReloadPollIntervalSeconds { get; set; } = 0.5d;
 
         [Export]
         public bool EnablePageCacheByDefault { get; set; } = true;
@@ -122,6 +130,23 @@ namespace Sideline.Facet.Runtime
             Initialize();
         }
 
+        public override void _Process(double delta)
+        {
+            if (!IsInitialized || !Config.EnableHotReload)
+            {
+                return;
+            }
+
+            _hotReloadPollTimer += delta;
+            if (_hotReloadPollTimer < Config.HotReloadPollIntervalSeconds)
+            {
+                return;
+            }
+
+            _hotReloadPollTimer = 0;
+            Services.GetRequired<LuaReloadCoordinator>().Poll("host.poll");
+        }
+
         /// <summary>
         /// 初始化 Facet 宿主。
         /// </summary>
@@ -129,7 +154,7 @@ namespace Sideline.Facet.Runtime
         {
             if (IsInitialized)
             {
-                Logger.Warning("Host", "FacetHost 重复初始化请求已忽略。");
+                Logger.Warning("Host", "FacetHost 重复初始化请求已忽略。", null);
                 return;
             }
 
@@ -137,12 +162,14 @@ namespace Sideline.Facet.Runtime
             Services = new FacetServices();
             Logger = CreateLogger(Config);
             Context = new FacetRuntimeContext(Config, Services, Logger);
+            _hotReloadPollTimer = 0;
 
             RegisterCoreServices();
 
             IsInitialized = true;
+            SetProcess(Config.EnableHotReload);
             LogStartupSummary();
-            EmitSignal(SignalName.Initialized);
+            EmitSignal("Initialized");
         }
 
         /// <summary>
@@ -155,6 +182,8 @@ namespace Sideline.Facet.Runtime
             Config = FacetConfig.Default;
             Logger = CreateLogger(Config);
             Context = new FacetRuntimeContext(Config, Services, Logger);
+            _hotReloadPollTimer = 0;
+            SetProcess(false);
         }
 
         /// <summary>
@@ -178,6 +207,7 @@ namespace Sideline.Facet.Runtime
                 ConsoleMirrorLogPath = ConsoleMirrorLogPath,
                 ConsoleMirrorLogHistoryLimit = ConsoleMirrorLogHistoryLimit,
                 EnableHotReload = EnableHotReload,
+                HotReloadPollIntervalSeconds = HotReloadPollIntervalSeconds,
                 EnablePageCacheByDefault = EnablePageCacheByDefault,
                 DefaultPageCacheCapacity = DefaultPageCacheCapacity,
             };
@@ -193,6 +223,24 @@ namespace Sideline.Facet.Runtime
             FacetRuntimeProbeService runtimeProbeService = new(Context, runtimeProbeGateway, CurrentSessionId);
             RuntimeProbeProjectionUpdater runtimeProbeProjectionUpdater = new(Context);
             RuntimeMetricsProjectionUpdater runtimeMetricsProjectionUpdater = new(Context);
+            IPageDefinitionSource pageDefinitionSource = new InMemoryPageDefinitionSource(FacetBuiltInPageDefinitions.CreateMainSceneDefinitions());
+            UIPageRegistry pageRegistry = new();
+            SceneLayoutProvider sceneLayoutProvider = new(Logger);
+            IUILayoutProvider[] layoutProviders =
+            {
+                sceneLayoutProvider,
+            };
+            UIPageLoader pageLoader = new(layoutProviders, Logger);
+            UIBindingService bindingService = new(Logger);
+            UIRouteService routeService = new();
+            UIManager uiManager = new(pageRegistry, pageLoader, routeService, Context, Logger);
+            string projectRootPath = ProjectSettings.GlobalizePath("res://");
+            ILuaScriptSource luaScriptSource = new FileSystemLuaScriptSource(projectRootPath, FacetLuaScriptIds.All);
+            ILuaRedDotBridge luaRedDotBridge = new NullLuaRedDotBridge();
+            ILuaRuntimeHost luaRuntimeHost = new LuaRuntimeHost(luaScriptSource, luaRedDotBridge);
+            LuaReloadCoordinator luaReloadCoordinator = new(uiManager, Logger);
+
+            pageRegistry.RegisterRange(pageDefinitionSource);
 
             Services.RegisterSingleton(Config);
             Services.RegisterSingleton(Logger);
@@ -208,6 +256,18 @@ namespace Sideline.Facet.Runtime
             Services.RegisterSingleton(runtimeProbeService);
             Services.RegisterSingleton(runtimeProbeProjectionUpdater);
             Services.RegisterSingleton(runtimeMetricsProjectionUpdater);
+            Services.RegisterSingleton(pageDefinitionSource);
+            Services.RegisterSingleton(pageRegistry);
+            Services.RegisterSingleton(sceneLayoutProvider);
+            Services.RegisterSingleton(pageLoader);
+            Services.RegisterSingleton(bindingService);
+            Services.RegisterSingleton(routeService);
+            Services.RegisterSingleton<IUIPageNavigator>(uiManager);
+            Services.RegisterSingleton(uiManager);
+            Services.RegisterSingleton(luaScriptSource);
+            Services.RegisterSingleton(luaRedDotBridge);
+            Services.RegisterSingleton(luaRuntimeHost);
+            Services.RegisterSingleton(luaReloadCoordinator);
 
             commandBus.RegisterHandler<RecordFacetRuntimeProbeCommand>(runtimeProbeService.RecordAsync);
             queryBus.RegisterHandler<FacetRuntimeProbeQuery, FacetRuntimeProbeSnapshot>(runtimeProbeService.QueryCurrentAsync);
@@ -228,6 +288,7 @@ namespace Sideline.Facet.Runtime
                     ["sessionId"] = CurrentSessionId,
                     ["autoInitialize"] = AutoInitialize,
                     ["hotReload"] = Config.EnableHotReload,
+                    ["hotReloadPollIntervalSeconds"] = Config.HotReloadPollIntervalSeconds,
                     ["pageCache"] = Config.EnablePageCacheByDefault,
                     ["cacheCapacity"] = Config.DefaultPageCacheCapacity,
                     ["structuredLogging"] = Config.EnableStructuredLogging,
@@ -243,10 +304,18 @@ namespace Sideline.Facet.Runtime
                     ["projectionRefreshCoordinator"] = nameof(ProjectionRefreshCoordinator),
                     ["registeredProjectionUpdaters"] = Context.ProjectionRefreshCoordinator.Count,
                     ["runtimeProbeGateway"] = nameof(InMemoryFacetRuntimeProbeGateway),
+                    ["registeredPages"] = Services.GetRequired<UIPageRegistry>().Count,
+                    ["pageDefinitionSource"] = nameof(InMemoryPageDefinitionSource),
+                    ["layoutProvider"] = nameof(SceneLayoutProvider),
+                    ["bindingService"] = nameof(UIBindingService),
+                    ["routeService"] = nameof(UIRouteService),
+                    ["backStackDepth"] = Services.GetRequired<UIRouteService>().Count,
                 });
 
             VerifyApplicationBoundary();
             VerifyProjectionLayer();
+            VerifyPageDefinitions();
+            VerifyLuaRuntime();
         }
 
         private void VerifyApplicationBoundary()
@@ -407,10 +476,75 @@ namespace Sideline.Facet.Runtime
             }
         }
 
+        private void VerifyPageDefinitions()
+        {
+            try
+            {
+                UIPageRegistry pageRegistry = Services.GetRequired<UIPageRegistry>();
+
+                Logger.Info(
+                    "UI.Page",
+                    "Facet 阶段 4 页面定义注册完成。",
+                    new Dictionary<string, object?>
+                    {
+                        ["registeredPages"] = pageRegistry.Count,
+                        ["containsIdlePage"] = pageRegistry.Contains(UIPageIds.Idle),
+                        ["containsDungeonPage"] = pageRegistry.Contains(UIPageIds.Dungeon),
+                        ["routeServiceReady"] = Services.Contains<UIRouteService>(),
+                    });
+            }
+            catch (Exception exception)
+            {
+                Logger.Error(
+                    "UI.Page",
+                    "Facet 阶段 4 页面定义注册验证失败。",
+                    new Dictionary<string, object?>
+                    {
+                        ["exceptionType"] = exception.GetType().FullName,
+                        ["message"] = exception.Message,
+                    });
+            }
+        }
+
+        private void VerifyLuaRuntime()
+        {
+            try
+            {
+                ILuaScriptSource scriptSource = Services.GetRequired<ILuaScriptSource>();
+                Logger.Info(
+                    "Lua.Runtime",
+                    "Facet 阶段 8 真实 Lua 宿主已就绪。",
+                    new Dictionary<string, object?>
+                    {
+                        ["scriptSourceType"] = scriptSource.GetType().Name,
+                        ["runtimeHostType"] = Services.GetRequired<ILuaRuntimeHost>().GetType().Name,
+                        ["reloadCoordinatorReady"] = Services.Contains<LuaReloadCoordinator>(),
+                        ["hotReloadEnabled"] = Config.EnableHotReload,
+                        ["hotReloadPollIntervalSeconds"] = Config.HotReloadPollIntervalSeconds,
+                        ["registeredScriptCount"] = scriptSource.GetRegisteredScripts().Count,
+                        ["registeredScripts"] = string.Join(",", scriptSource.GetRegisteredScripts()),
+                        ["routeBridgeReady"] = Services.Contains<IUIPageNavigator>(),
+                        ["bindingBridgeReady"] = Services.Contains<UIBindingService>(),
+                        ["redDotBridgeReady"] = Services.Contains<ILuaRedDotBridge>(),
+                    });
+            }
+            catch (Exception exception)
+            {
+                Logger.Error(
+                    "Lua.Runtime",
+                    "Facet 阶段 8 Lua 宿主验证失败。",
+                    new Dictionary<string, object?>
+                    {
+                        ["exceptionType"] = exception.GetType().FullName,
+                        ["message"] = exception.Message,
+                    });
+            }
+        }
+
         private static FacetLogger CreateLogger(FacetConfig config)
         {
             return new FacetLogger(
-                config.MinimumLogLevel,
+                config.MinimumLevel,
                 config.EnableStructuredLogging,
                 config.StructuredLogPath,
                 config.StructuredLogBufferCapacity,

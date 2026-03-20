@@ -33,7 +33,7 @@ namespace Sideline.Facet.Runtime
         public int StructuredLogBufferCapacity { get; init; } = 256;
 
         /// <summary>
-        /// 结构化日志历史会话最多保留数量。
+        /// 结构化日志历史会话保留数量。
         /// </summary>
         public int StructuredLogHistoryLimit { get; init; } = 10;
 
@@ -49,7 +49,7 @@ namespace Sideline.Facet.Runtime
         public string ConsoleMirrorLogPath { get; init; } = "user://logs/facet-console.log";
 
         /// <summary>
-        /// 纯文本镜像日志历史会话最多保留数量。
+        /// 纯文本镜像日志历史会话保留数量。
         /// </summary>
         public int ConsoleMirrorLogHistoryLimit { get; init; } = 10;
 
@@ -57,6 +57,11 @@ namespace Sideline.Facet.Runtime
         /// 是否启用 Lua 热重载。
         /// </summary>
         public bool EnableHotReload { get; init; } = true;
+
+        /// <summary>
+        /// Lua 热重载轮询间隔，单位秒。
+        /// </summary>
+        public double HotReloadPollIntervalSeconds { get; init; } = 0.5d;
 
         /// <summary>
         /// 默认是否启用页面缓存。
