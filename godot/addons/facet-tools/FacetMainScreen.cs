@@ -1,4 +1,4 @@
-﻿#nullable enable
+#nullable enable
 
 using System;
 using System.Collections.Generic;
@@ -7,12 +7,26 @@ using System.Text;
 using System.Text.Json;
 using Godot;
 
+/// <summary>
+/// Facet 编辑器主工作区页面。
+/// 负责在 Godot 编辑器中展示结构化日志、过滤控件、保留策略以及后续扩展入口。
+/// </summary>
 [Tool]
 public partial class FacetMainScreen : Control
 {
+    /// <summary>
+    /// 日志页签中最多展示的最近日志条数。
+    /// </summary>
     private const int MaxVisibleEntries = 150;
+
+    /// <summary>
+    /// 工作台文案中显示的历史保留份数，需要与实际日志清理策略保持一致。
+    /// </summary>
     private const int HistoryLimit = 10;
 
+    /// <summary>
+    /// 页面上关键控件的缓存引用，避免重复查询节点并集中表达界面结构。
+    /// </summary>
     private Label _pathLabel = null!;
     private Label _summaryLabel = null!;
     private Label _totalValueLabel = null!;
@@ -34,8 +48,15 @@ public partial class FacetMainScreen : Control
     private HSplitContainer _contentSplit = null!;
     private PanelContainer _sidebarCard = null!;
     private ScrollContainer _sidebarScroll = null!;
+
+    /// <summary>
+    /// 标记 UI 是否已经完成构建，避免布局和刷新逻辑在控件未就绪时提前执行。
+    /// </summary>
     private bool _isUiReady;
 
+    /// <summary>
+    /// 初始化主工作区界面，并在首次进入时立即执行布局校准和日志刷新。
+    /// </summary>
     public override void _Ready()
     {
         try
@@ -61,6 +82,10 @@ public partial class FacetMainScreen : Control
         }
     }
 
+    /// <summary>
+    /// 立即刷新当前工作区日志视图。
+    /// 包括读取活动日志文件、应用过滤条件、刷新指标卡和正文区域。
+    /// </summary>
     public void RefreshNow()
     {
         if (!_isUiReady)
@@ -93,6 +118,9 @@ public partial class FacetMainScreen : Control
         }
     }
 
+    /// <summary>
+    /// 监听编辑器尺寸变化，并在面板被拉伸时重新计算响应式布局。
+    /// </summary>
     public override void _Notification(int what)
     {
         base._Notification(what);
@@ -109,6 +137,9 @@ public partial class FacetMainScreen : Control
         }
     }
 
+    /// <summary>
+    /// 强制让主工作区铺满当前编辑器主面板，避免页签切换后尺寸丢失。
+    /// </summary>
     public void EnsureViewportLayout()
     {
         try
@@ -135,6 +166,9 @@ public partial class FacetMainScreen : Control
         }
     }
 
+    /// <summary>
+    /// 输出当前布局快照，便于排查工作区空白、错位或最小尺寸异常。
+    /// </summary>
     public void LogLayoutSnapshot()
     {
         try
@@ -149,6 +183,10 @@ public partial class FacetMainScreen : Control
         }
     }
 
+    /// <summary>
+    /// 构建整个 Facet 工作区页面的控件树。
+    /// 顶部是总览与指标，中部是侧栏控制区与主日志区域。
+    /// </summary>
     private void BuildUi()
     {
         AddThemeStyleboxOverride("panel", CreateScreenPanel());
@@ -197,6 +235,9 @@ public partial class FacetMainScreen : Control
         AddChild(_refreshTimer);
     }
 
+    /// <summary>
+    /// 构建顶部介绍卡片，用于明确工作区定位与后续扩展方向。
+    /// </summary>
     private Control BuildHeaderCard()
     {
         PanelContainer card = CreateCardPanel();
@@ -234,6 +275,9 @@ public partial class FacetMainScreen : Control
         return card;
     }
 
+    /// <summary>
+    /// 构建顶部指标卡区域，用于快速感知日志规模、过滤效果和观测覆盖面。
+    /// </summary>
     private Control BuildMetricsRow()
     {
         _metricsGrid = new GridContainer
@@ -257,6 +301,9 @@ public partial class FacetMainScreen : Control
         return _metricsGrid;
     }
 
+    /// <summary>
+    /// 构建左侧控制栏，包括刷新、日志目录入口、保留策略卡片和筛选器。
+    /// </summary>
     private Control BuildSidebar()
     {
         _sidebarCard = CreateCardPanel();
@@ -323,8 +370,7 @@ public partial class FacetMainScreen : Control
             AutowrapMode = TextServer.AutowrapMode.WordSmart,
         };
         _retentionLabel.AddThemeColorOverride("font_color", new Color("8dc9a8"));
-        Control retentionCard = CreateRetentionStatusCard();
-        content.AddChild(retentionCard);
+        content.AddChild(CreateRetentionStatusCard());
 
         content.AddChild(CreateDivider());
         content.AddChild(CreateSectionTitle("筛选器 / Filters", "按会话、分类和级别缩小范围。\nNarrow the stream by session, category, and level."));
@@ -366,6 +412,9 @@ public partial class FacetMainScreen : Control
         return _sidebarCard;
     }
 
+    /// <summary>
+    /// 构建右侧主内容区，通过页签隔离当前日志能力和未来扩展模块。
+    /// </summary>
     private Control BuildLogSurface()
     {
         PanelContainer surface = CreateCardPanel();
@@ -417,6 +466,9 @@ public partial class FacetMainScreen : Control
         return surface;
     }
 
+    /// <summary>
+    /// 构建日志页签。
+    /// </summary>
     private Control BuildLogTab()
     {
         VBoxContainer logTab = CreateVBox(0);
@@ -440,6 +492,9 @@ public partial class FacetMainScreen : Control
         return logTab;
     }
 
+    /// <summary>
+    /// 构建未来扩展页签占位区，防止后续工具继续堆叠到日志面板中。
+    /// </summary>
     private Control BuildFutureTab()
     {
         PanelContainer futureTab = CreateCardPanel();
@@ -490,6 +545,9 @@ public partial class FacetMainScreen : Control
         return panel;
     }
 
+    /// <summary>
+    /// 创建保留策略状态卡，让“日志保留策略”以明确的状态模块呈现，而不是普通说明文本。
+    /// </summary>
     private Control CreateRetentionStatusCard()
     {
         PanelContainer card = new();
@@ -617,10 +675,7 @@ public partial class FacetMainScreen : Control
     {
         VBoxContainer section = CreateVBox(4);
 
-        Label titleLabel = new()
-        {
-            Text = title,
-        };
+        Label titleLabel = new() { Text = title };
         titleLabel.AddThemeFontSizeOverride("font_size", 17);
         titleLabel.AddThemeColorOverride("font_color", new Color("eef2fa"));
         section.AddChild(titleLabel);
@@ -640,10 +695,7 @@ public partial class FacetMainScreen : Control
     {
         VBoxContainer wrapper = CreateVBox(6);
 
-        Label label = new()
-        {
-            Text = title,
-        };
+        Label label = new() { Text = title };
         label.AddThemeColorOverride("font_color", new Color("c9d2e3"));
         wrapper.AddChild(label);
 
@@ -670,10 +722,7 @@ public partial class FacetMainScreen : Control
         VBoxContainer content = CreateVBox(6);
         padding.AddChild(content);
 
-        Label titleLabel = new()
-        {
-            Text = title,
-        };
+        Label titleLabel = new() { Text = title };
         titleLabel.AddThemeColorOverride("font_color", new Color("95a3b8"));
         content.AddChild(titleLabel);
 
@@ -711,6 +760,10 @@ public partial class FacetMainScreen : Control
         RefreshNow();
     }
 
+    /// <summary>
+    /// 自动刷新计时器回调。
+    /// 仅在页面可见且自动刷新开启时触发，避免后台无意义读盘。
+    /// </summary>
     private void OnRefreshTimerTimeout()
     {
         if (_autoRefreshToggle.ButtonPressed && IsVisibleInTree())
@@ -734,6 +787,10 @@ public partial class FacetMainScreen : Control
         _categoriesValueLabel.Text = categoryCount.ToString();
     }
 
+    /// <summary>
+    /// 从结构化日志文件中读取并解析所有有效日志条目。
+    /// 无法解析的行会被忽略，避免单条脏数据阻塞整个面板。
+    /// </summary>
     private static List<FacetEditorLogEntry> LoadEntries(string logPath)
     {
         List<FacetEditorLogEntry> entries = new();
@@ -753,6 +810,9 @@ public partial class FacetMainScreen : Control
         return entries;
     }
 
+    /// <summary>
+    /// 根据当前会话前缀、分类前缀和最低级别过滤日志。
+    /// </summary>
     private List<FacetEditorLogEntry> FilterEntries(List<FacetEditorLogEntry> allEntries)
     {
         string sessionPrefix = _sessionFilter.Text.Trim();
@@ -783,6 +843,9 @@ public partial class FacetMainScreen : Control
         return filtered;
     }
 
+    /// <summary>
+    /// 把过滤后的日志渲染到主视图，并同步更新顶部指标卡与摘要文案。
+    /// </summary>
     private void RenderEntries(List<FacetEditorLogEntry> allEntries, List<FacetEditorLogEntry> filteredEntries)
     {
         HashSet<string> sessions = new(StringComparer.OrdinalIgnoreCase);
@@ -944,6 +1007,10 @@ public partial class FacetMainScreen : Control
         return sessionId[..8];
     }
 
+    /// <summary>
+    /// 根据当前编辑器窗口尺寸调整指标卡列数、侧栏宽度和日志区域最小高度。
+    /// 目标是优先保证内容可见，再考虑大屏下的排版舒展度。
+    /// </summary>
     private void UpdateResponsiveLayout()
     {
         float viewportWidth = Size.X;
@@ -981,6 +1048,9 @@ public partial class FacetMainScreen : Control
         _entriesLabel.CustomMinimumSize = new Vector2(0.0f, (float)Math.Max(260.0, logSurfaceMinHeight - 24.0f));
     }
 
+    /// <summary>
+    /// 编辑器工作区日志条目结构。
+    /// </summary>
     private sealed record FacetEditorLogEntry(
         string SessionId,
         long EventId,
@@ -991,4 +1061,3 @@ public partial class FacetMainScreen : Control
         string LevelName,
         string PayloadJson);
 }
-

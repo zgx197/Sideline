@@ -13,16 +13,32 @@ using Sideline.Facet.Runtime;
 /// </summary>
 internal sealed partial class FacetLogOverlay : PanelContainer
 {
+    /// <summary>
+    /// 面板中最多展示的最近日志条数。
+    /// </summary>
     private const int MaxVisibleEntries = 24;
 
+    /// <summary>
+    /// 过滤与展示区域的关键控件。
+    /// </summary>
     private LineEdit _categoryFilter = null!;
     private OptionButton _levelFilter = null!;
     private Label _summaryLabel = null!;
     private RichTextLabel _entriesLabel = null!;
 
+    /// <summary>
+    /// 当前绑定的运行时日志器；为空表示面板仅显示占位状态。
+    /// </summary>
     private FacetLogger? _logger;
+
+    /// <summary>
+    /// 标记面板内容是否需要重绘，避免每帧无差别刷新富文本区域。
+    /// </summary>
     private bool _isDirty = true;
 
+    /// <summary>
+    /// 初始化日志面板基础布局，但默认保持隐藏。
+    /// </summary>
     public override void _Ready()
     {
         ProcessMode = ProcessModeEnum.Always;
@@ -31,6 +47,9 @@ internal sealed partial class FacetLogOverlay : PanelContainer
         RefreshView();
     }
 
+    /// <summary>
+    /// 仅在面板可见且存在新日志时刷新视图，避免每帧都重绘富文本内容。
+    /// </summary>
     public override void _Process(double delta)
     {
         if (_isDirty && Visible)
@@ -39,11 +58,17 @@ internal sealed partial class FacetLogOverlay : PanelContainer
         }
     }
 
+    /// <summary>
+    /// 离开场景树时解除日志事件绑定，防止悬挂引用。
+    /// </summary>
     public override void _ExitTree()
     {
         UnbindLogger();
     }
 
+    /// <summary>
+    /// 绑定 FacetLogger 并订阅日志事件。重复绑定同一实例时只触发一次重绘。
+    /// </summary>
     public void BindLogger(FacetLogger logger)
     {
         if (ReferenceEquals(_logger, logger))
@@ -60,6 +85,9 @@ internal sealed partial class FacetLogOverlay : PanelContainer
         RefreshView();
     }
 
+    /// <summary>
+    /// 构建运行时日志面板布局，包括标题、过滤器与日志正文区域。
+    /// </summary>
     private void BuildUi()
     {
         Name = "FacetLogOverlay";
@@ -162,6 +190,9 @@ internal sealed partial class FacetLogOverlay : PanelContainer
         _levelFilter.AddItem(level.ToString(), (int)level);
     }
 
+    /// <summary>
+    /// 收到新日志后仅打脏标记，由下一帧统一刷新界面。
+    /// </summary>
     private void OnEntryLogged(FacetLogEntry entry)
     {
         _isDirty = true;
@@ -179,6 +210,9 @@ internal sealed partial class FacetLogOverlay : PanelContainer
         RefreshView();
     }
 
+    /// <summary>
+    /// 根据当前过滤条件重建可见日志文本，并刷新摘要统计。
+    /// </summary>
     private void RefreshView()
     {
         _isDirty = false;
@@ -207,7 +241,8 @@ internal sealed partial class FacetLogOverlay : PanelContainer
                 continue;
             }
 
-            if (!string.IsNullOrWhiteSpace(categoryPrefix) && !entry.Category.StartsWith(categoryPrefix, StringComparison.OrdinalIgnoreCase))
+            if (!string.IsNullOrWhiteSpace(categoryPrefix) &&
+                !entry.Category.StartsWith(categoryPrefix, StringComparison.OrdinalIgnoreCase))
             {
                 continue;
             }
@@ -220,6 +255,10 @@ internal sealed partial class FacetLogOverlay : PanelContainer
         _entriesLabel.Text = BuildEntriesText(filteredEntries, startIndex);
     }
 
+    /// <summary>
+    /// 把过滤后的日志条目拼接成最终显示文本。
+    /// 这里选择纯文本方式，优先保证运行时调试稳定性。
+    /// </summary>
     private static string BuildEntriesText(IReadOnlyList<FacetLogEntry> entries, int startIndex)
     {
         if (entries.Count == 0)
@@ -255,6 +294,9 @@ internal sealed partial class FacetLogOverlay : PanelContainer
         return builder.ToString().TrimEnd();
     }
 
+    /// <summary>
+    /// 解除当前 logger 的事件订阅。
+    /// </summary>
     private void UnbindLogger()
     {
         if (_logger != null)
