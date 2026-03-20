@@ -1,4 +1,4 @@
-﻿#nullable enable
+#nullable enable
 
 namespace Sideline.Facet.Runtime
 {
@@ -36,6 +36,22 @@ namespace Sideline.Facet.Runtime
         /// 结构化日志历史会话最多保留数量。
         /// </summary>
         public int StructuredLogHistoryLimit { get; init; } = 10;
+
+        /// <summary>
+        /// 是否启用纯文本镜像日志。
+        /// 该日志独立于 Godot 自身的 godot.log，便于运行时直接调试查看。
+        /// </summary>
+        public bool EnableConsoleMirrorLogging { get; init; } = true;
+
+        /// <summary>
+        /// 纯文本镜像日志输出路径。
+        /// </summary>
+        public string ConsoleMirrorLogPath { get; init; } = "user://logs/facet-console.log";
+
+        /// <summary>
+        /// 纯文本镜像日志历史会话最多保留数量。
+        /// </summary>
+        public int ConsoleMirrorLogHistoryLimit { get; init; } = 10;
 
         /// <summary>
         /// 是否启用 Lua 热重载。

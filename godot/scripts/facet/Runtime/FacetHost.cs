@@ -1,7 +1,12 @@
-﻿#nullable enable
+#nullable enable
 
+using System;
 using System.Collections.Generic;
 using Godot;
+using Sideline.Facet.Application;
+using Sideline.Facet.Application.Diagnostics;
+using Sideline.Facet.Projection;
+using Sideline.Facet.Projection.Diagnostics;
 
 namespace Sideline.Facet.Runtime
 {
@@ -10,6 +15,9 @@ namespace Sideline.Facet.Runtime
     /// </summary>
     public partial class FacetHost : Node
     {
+        private static readonly ProjectionKey RuntimeProbeProjectionKey = FacetProjectionKeys.RuntimeProbe;
+        private static readonly ProjectionKey RuntimeMetricsProjectionKey = FacetProjectionKeys.RuntimeMetrics;
+
         /// <summary>
         /// 最小启动验证日志标记。
         /// 启动主场景后可直接搜索该文本，确认 Facet 宿主已接入。
@@ -36,6 +44,15 @@ namespace Sideline.Facet.Runtime
 
         [Export(PropertyHint.Range, "1,50,1")]
         public int StructuredLogHistoryLimit { get; set; } = 10;
+
+        [Export]
+        public bool EnableConsoleMirrorLogging { get; set; } = true;
+
+        [Export]
+        public string ConsoleMirrorLogPath { get; set; } = "user://logs/facet-console.log";
+
+        [Export(PropertyHint.Range, "1,50,1")]
+        public int ConsoleMirrorLogHistoryLimit { get; set; } = 10;
 
         [Export]
         public bool EnableHotReload { get; set; } = true;
@@ -93,6 +110,8 @@ namespace Sideline.Facet.Runtime
 
         public override void _Ready()
         {
+            FacetPlainTextLogEncoding.EnsureGodotLogUtf8Bom();
+
             if (!AutoInitialize)
             {
                 GD.Print($"[Facet][Bootstrap] FacetHost 已加载，等待手动初始化。Path={GetPath()}");
@@ -155,6 +174,9 @@ namespace Sideline.Facet.Runtime
                 StructuredLogPath = StructuredLogPath,
                 StructuredLogBufferCapacity = StructuredLogBufferCapacity,
                 StructuredLogHistoryLimit = StructuredLogHistoryLimit,
+                EnableConsoleMirrorLogging = EnableConsoleMirrorLogging,
+                ConsoleMirrorLogPath = ConsoleMirrorLogPath,
+                ConsoleMirrorLogHistoryLimit = ConsoleMirrorLogHistoryLimit,
                 EnableHotReload = EnableHotReload,
                 EnablePageCacheByDefault = EnablePageCacheByDefault,
                 DefaultPageCacheCapacity = DefaultPageCacheCapacity,
@@ -163,10 +185,36 @@ namespace Sideline.Facet.Runtime
 
         private void RegisterCoreServices()
         {
+            LocalCommandBus commandBus = new(Logger);
+            LocalQueryBus queryBus = new(Logger);
+            ProjectionStore projectionStore = new();
+            ProjectionRefreshCoordinator projectionRefreshCoordinator = new(Logger);
+            IFacetRuntimeProbeGateway runtimeProbeGateway = new InMemoryFacetRuntimeProbeGateway();
+            FacetRuntimeProbeService runtimeProbeService = new(Context, runtimeProbeGateway, CurrentSessionId);
+            RuntimeProbeProjectionUpdater runtimeProbeProjectionUpdater = new(Context);
+            RuntimeMetricsProjectionUpdater runtimeMetricsProjectionUpdater = new(Context);
+
             Services.RegisterSingleton(Config);
             Services.RegisterSingleton(Logger);
             Services.RegisterSingleton((FacetLogger)Logger);
             Services.RegisterSingleton(Context);
+            Services.RegisterSingleton<ICommandBus>(commandBus);
+            Services.RegisterSingleton(commandBus);
+            Services.RegisterSingleton<IQueryBus>(queryBus);
+            Services.RegisterSingleton(queryBus);
+            Services.RegisterSingleton(projectionStore);
+            Services.RegisterSingleton(projectionRefreshCoordinator);
+            Services.RegisterSingleton(runtimeProbeGateway);
+            Services.RegisterSingleton(runtimeProbeService);
+            Services.RegisterSingleton(runtimeProbeProjectionUpdater);
+            Services.RegisterSingleton(runtimeMetricsProjectionUpdater);
+
+            commandBus.RegisterHandler<RecordFacetRuntimeProbeCommand>(runtimeProbeService.RecordAsync);
+            queryBus.RegisterHandler<FacetRuntimeProbeQuery, FacetRuntimeProbeSnapshot>(runtimeProbeService.QueryCurrentAsync);
+            queryBus.RegisterHandler<FacetRuntimeProbeStatusQuery, FacetRuntimeProbeStatusSnapshot>(runtimeProbeService.QueryStatusAsync);
+
+            projectionRefreshCoordinator.Register(runtimeProbeProjectionUpdater);
+            projectionRefreshCoordinator.Register(runtimeMetricsProjectionUpdater);
         }
 
         private void LogStartupSummary()
@@ -186,7 +234,177 @@ namespace Sideline.Facet.Runtime
                     ["structuredLogPath"] = Config.StructuredLogPath,
                     ["structuredLogBufferCapacity"] = Config.StructuredLogBufferCapacity,
                     ["structuredLogHistoryLimit"] = Config.StructuredLogHistoryLimit,
+                    ["consoleMirrorLogging"] = Config.EnableConsoleMirrorLogging,
+                    ["consoleMirrorLogPath"] = Config.ConsoleMirrorLogPath,
+                    ["consoleMirrorLogHistoryLimit"] = Config.ConsoleMirrorLogHistoryLimit,
+                    ["commandBus"] = nameof(LocalCommandBus),
+                    ["queryBus"] = nameof(LocalQueryBus),
+                    ["projectionStore"] = nameof(ProjectionStore),
+                    ["projectionRefreshCoordinator"] = nameof(ProjectionRefreshCoordinator),
+                    ["registeredProjectionUpdaters"] = Context.ProjectionRefreshCoordinator.Count,
+                    ["runtimeProbeGateway"] = nameof(InMemoryFacetRuntimeProbeGateway),
                 });
+
+            VerifyApplicationBoundary();
+            VerifyProjectionLayer();
+        }
+
+        private void VerifyApplicationBoundary()
+        {
+            try
+            {
+                AppResult<FacetRuntimeProbeSnapshot> currentProbeResult = Context.QueryBus
+                    .QueryAsync(new FacetRuntimeProbeQuery())
+                    .GetAwaiter()
+                    .GetResult();
+
+                if (!currentProbeResult.IsSuccess || currentProbeResult.Value == null)
+                {
+                    Logger.Warning(
+                        "Application",
+                        "Facet 阶段 2 当前快照查询失败。",
+                        new Dictionary<string, object?>
+                        {
+                            ["errorCode"] = currentProbeResult.ErrorCode,
+                            ["errorMessage"] = currentProbeResult.ErrorMessage,
+                        });
+                    return;
+                }
+
+                FacetRuntimeProbeSnapshot snapshot = currentProbeResult.Value;
+                AppResult recordResult = Context.CommandBus
+                    .SendAsync(new RecordFacetRuntimeProbeCommand(snapshot))
+                    .GetAwaiter()
+                    .GetResult();
+
+                if (!recordResult.IsSuccess)
+                {
+                    Logger.Warning(
+                        "Application",
+                        "Facet 阶段 2 探针记录命令失败。",
+                        new Dictionary<string, object?>
+                        {
+                            ["errorCode"] = recordResult.ErrorCode,
+                            ["errorMessage"] = recordResult.ErrorMessage,
+                        });
+                    return;
+                }
+
+                AppResult<FacetRuntimeProbeStatusSnapshot> statusResult = Context.QueryBus
+                    .QueryAsync(new FacetRuntimeProbeStatusQuery())
+                    .GetAwaiter()
+                    .GetResult();
+
+                if (!statusResult.IsSuccess || statusResult.Value == null)
+                {
+                    Logger.Warning(
+                        "Application",
+                        "Facet 阶段 2 探针状态查询失败。",
+                        new Dictionary<string, object?>
+                        {
+                            ["errorCode"] = statusResult.ErrorCode,
+                            ["errorMessage"] = statusResult.ErrorMessage,
+                        });
+                    return;
+                }
+
+                FacetRuntimeProbeStatusSnapshot status = statusResult.Value;
+                Logger.Info(
+                    "Application",
+                    "Facet 阶段 2 应用边界闭环验证成功。",
+                    new Dictionary<string, object?>
+                    {
+                        ["sessionId"] = snapshot.SessionId,
+                        ["hotReload"] = snapshot.HotReloadEnabled,
+                        ["pageCache"] = snapshot.PageCacheEnabled,
+                        ["pageCacheCapacity"] = snapshot.PageCacheCapacity,
+                        ["structuredLogging"] = snapshot.StructuredLoggingEnabled,
+                        ["structuredLogPath"] = snapshot.StructuredLogPath,
+                        ["commandBusRegistered"] = snapshot.CommandBusRegistered,
+                        ["queryBusRegistered"] = snapshot.QueryBusRegistered,
+                        ["capturedAtUtc"] = snapshot.CapturedAtUtc.ToString("O"),
+                        ["probeRecorded"] = status.HasSnapshot,
+                        ["probeRecordCount"] = status.RecordedCount,
+                    });
+            }
+            catch (Exception exception)
+            {
+                Logger.Error(
+                    "Application",
+                    "Facet 阶段 2 应用边界自检抛出异常。",
+                    new Dictionary<string, object?>
+                    {
+                        ["exceptionType"] = exception.GetType().FullName,
+                        ["message"] = exception.Message,
+                    });
+            }
+        }
+
+        private void VerifyProjectionLayer()
+        {
+            try
+            {
+                bool probeSubscriberTriggered = false;
+                bool metricsSubscriberTriggered = false;
+                ProjectionChange? probeObservedChange = null;
+                ProjectionChange? metricsObservedChange = null;
+
+                using IDisposable probeSubscription = Context.ProjectionStore.Subscribe(
+                    RuntimeProbeProjectionKey,
+                    change =>
+                    {
+                        probeSubscriberTriggered = true;
+                        probeObservedChange = change;
+                    });
+
+                using IDisposable metricsSubscription = Context.ProjectionStore.Subscribe(
+                    RuntimeMetricsProjectionKey,
+                    change =>
+                    {
+                        metricsSubscriberTriggered = true;
+                        metricsObservedChange = change;
+                    });
+
+                int refreshedCount = Context.ProjectionRefreshCoordinator
+                    .RefreshAllAsync()
+                    .GetAwaiter()
+                    .GetResult();
+
+                bool probeProjectionExists = Context.ProjectionStore.TryGet(RuntimeProbeProjectionKey, out FacetRuntimeProbeProjection? storedProbeProjection);
+                bool metricsProjectionExists = Context.ProjectionStore.TryGet(RuntimeMetricsProjectionKey, out FacetRuntimeMetricListProjection? storedMetricsProjection);
+
+                Logger.Info(
+                    "Projection",
+                    "Facet 阶段 3 Projection 骨架验证成功。",
+                    new Dictionary<string, object?>
+                    {
+                        ["registeredUpdaters"] = Context.ProjectionRefreshCoordinator.Count,
+                        ["refreshedCount"] = refreshedCount,
+                        ["projectionKey"] = RuntimeProbeProjectionKey.ToString(),
+                        ["subscriberTriggered"] = probeSubscriberTriggered,
+                        ["observedChangeKind"] = probeObservedChange?.Kind.ToString(),
+                        ["projectionExists"] = probeProjectionExists,
+                        ["projectionCount"] = Context.ProjectionStore.Count,
+                        ["recordedCount"] = storedProbeProjection?.RecordedCount,
+                        ["hasSnapshot"] = storedProbeProjection?.HasSnapshot,
+                        ["metricsProjectionKey"] = RuntimeMetricsProjectionKey.ToString(),
+                        ["metricsSubscriberTriggered"] = metricsSubscriberTriggered,
+                        ["metricsObservedChangeKind"] = metricsObservedChange?.Kind.ToString(),
+                        ["metricsProjectionExists"] = metricsProjectionExists,
+                        ["metricsItemCount"] = storedMetricsProjection?.Items.Count,
+                    });
+            }
+            catch (Exception exception)
+            {
+                Logger.Error(
+                    "Projection",
+                    "Facet 阶段 3 Projection 骨架验证抛出异常。",
+                    new Dictionary<string, object?>
+                    {
+                        ["exceptionType"] = exception.GetType().FullName,
+                        ["message"] = exception.Message,
+                    });
+            }
         }
 
         private static FacetLogger CreateLogger(FacetConfig config)
@@ -196,7 +414,10 @@ namespace Sideline.Facet.Runtime
                 config.EnableStructuredLogging,
                 config.StructuredLogPath,
                 config.StructuredLogBufferCapacity,
-                config.StructuredLogHistoryLimit);
+                config.StructuredLogHistoryLimit,
+                config.EnableConsoleMirrorLogging,
+                config.ConsoleMirrorLogPath,
+                config.ConsoleMirrorLogHistoryLimit);
         }
     }
 }

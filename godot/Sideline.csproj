@@ -15,6 +15,7 @@
     <Compile Include="scripts/window/**/*.cs" />
     <Compile Include="scripts/facet/Runtime/FacetHost.cs" />
     <Compile Include="scripts/facet/Runtime/FacetLogger.cs" />
+    <Compile Include="scripts/facet/Runtime/FacetPlainTextLogEncoding.cs" />
   </ItemGroup>
 
   <ItemGroup>
