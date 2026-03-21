@@ -50,7 +50,7 @@ namespace Sideline.Facet.Runtime
 
             if (!string.IsNullOrWhiteSpace(definition.ControllerScript) &&
                 _luaRuntimeHost != null &&
-                _luaRuntimeHost.TryCreateController(Context, out LuaControllerHandle? luaController) &&
+                _luaRuntimeHost.TryCreateController(Context, existingApi: null, out LuaControllerHandle? luaController) &&
                 luaController != null)
             {
                 _luaController = luaController;
@@ -221,7 +221,7 @@ namespace Sideline.Facet.Runtime
                 return false;
             }
 
-            if (!_luaRuntimeHost.TryCreateController(Context, out LuaControllerHandle? nextController) || nextController == null)
+            if (!_luaRuntimeHost.TryCreateController(Context, currentController.Api, out LuaControllerHandle? nextController) || nextController == null)
             {
                 result = CreateReloadResult(false, currentController.VersionToken, null, reason, "新 Lua 控制器创建失败。");
                 _logger?.Error(
@@ -240,11 +240,14 @@ namespace Sideline.Facet.Runtime
 
             try
             {
+                currentController.Api.PrepareForControllerReload();
                 RecoverLuaController(nextController);
             }
             catch (Exception exception)
             {
                 Context.AttachLua(currentController.Api);
+                currentController.Api.PrepareForControllerReload();
+                TryRecoverPreviousController(currentController, reason);
                 result = CreateReloadResult(false, currentController.VersionToken, nextController.VersionToken, reason, exception.Message);
 
                 _logger?.Error(
@@ -288,6 +291,7 @@ namespace Sideline.Facet.Runtime
                     ["pageState"] = State.ToString(),
                     ["controllerStateCount"] = Context.ControllerState.Count,
                     ["argumentCount"] = Context.Arguments.Count,
+                    ["bindingCount"] = BindingScope?.Count,
                 });
             return true;
         }
@@ -358,6 +362,41 @@ namespace Sideline.Facet.Runtime
             {
                 controller.OnShow();
                 controller.OnRefresh();
+            }
+        }
+
+        private void TryRecoverPreviousController(LuaControllerHandle controller, string reason)
+        {
+            try
+            {
+                RecoverLuaController(controller);
+                _logger?.Warning(
+                    "Lua.HotReload",
+                    "Lua 热重载失败，已回退到旧控制器。",
+                    new Dictionary<string, object?>
+                    {
+                        ["pageId"] = Definition.PageId,
+                        ["scriptId"] = controller.ScriptId,
+                        ["versionToken"] = controller.VersionToken,
+                        ["reason"] = reason,
+                        ["pageState"] = State.ToString(),
+                    });
+            }
+            catch (Exception rollbackException)
+            {
+                _logger?.Error(
+                    "Lua.HotReload",
+                    "Lua 热重载失败，旧控制器回退链路也执行异常。",
+                    new Dictionary<string, object?>
+                    {
+                        ["pageId"] = Definition.PageId,
+                        ["scriptId"] = controller.ScriptId,
+                        ["versionToken"] = controller.VersionToken,
+                        ["reason"] = reason,
+                        ["pageState"] = State.ToString(),
+                        ["exceptionType"] = rollbackException.GetType().FullName,
+                        ["message"] = rollbackException.Message,
+                    });
             }
         }
 

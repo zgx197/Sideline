@@ -19,6 +19,7 @@ namespace Sideline.Facet.Runtime
         private static readonly UTF8Encoding Utf8WithoutBom = new(false);
         private static readonly UTF8Encoding Utf8WithBom = new(true);
         private static readonly byte[] Utf8Bom = Encoding.UTF8.GetPreamble();
+        private const int MaxFileWriteAttempts = 3;
 
         private readonly bool _enableStructuredLogging;
         private readonly string _structuredLogPath;
@@ -28,6 +29,7 @@ namespace Sideline.Facet.Runtime
         private readonly int _consoleMirrorLogHistoryLimit;
         private readonly int _bufferCapacity;
         private readonly Queue<FacetLogEntry> _buffer;
+        private readonly object _fileWriteLock = new();
         private readonly JsonSerializerOptions _jsonOptions = new()
         {
             WriteIndented = false,
@@ -184,13 +186,8 @@ namespace Sideline.Facet.Runtime
                     Directory.CreateDirectory(directory);
                 }
 
-                if (!File.Exists(globalizedPath))
-                {
-                    File.WriteAllText(globalizedPath, string.Empty, Utf8WithBom);
-                }
-
                 string line = FormatConsoleMirrorEntry(entry);
-                File.AppendAllText(globalizedPath, line + System.Environment.NewLine, Utf8WithoutBom);
+                AppendLineWithSharing(globalizedPath, line, writeBomWhenFileEmpty: true);
             }
             catch (Exception exception)
             {
@@ -288,7 +285,7 @@ namespace Sideline.Facet.Runtime
                 }
 
                 string serialized = JsonSerializer.Serialize(entry, _jsonOptions);
-                File.AppendAllText(globalizedPath, serialized + System.Environment.NewLine, Utf8WithoutBom);
+                AppendLineWithSharing(globalizedPath, serialized, writeBomWhenFileEmpty: false);
             }
             catch (Exception exception)
             {
@@ -340,6 +337,45 @@ namespace Sideline.Facet.Runtime
             stream.Write(Utf8Bom, 0, Utf8Bom.Length);
             stream.Write(existingBytes, 0, existingBytes.Length);
             stream.Flush();
+        }
+
+        private void AppendLineWithSharing(string path, string line, bool writeBomWhenFileEmpty)
+        {
+            byte[] lineBytes = Utf8WithoutBom.GetBytes(line + System.Environment.NewLine);
+            IOException? lastException = null;
+
+            lock (_fileWriteLock)
+            {
+                for (int attempt = 1; attempt <= MaxFileWriteAttempts; attempt++)
+                {
+                    try
+                    {
+                        using FileStream stream = new(path, FileMode.OpenOrCreate, System.IO.FileAccess.ReadWrite, FileShare.ReadWrite | FileShare.Delete);
+
+                        if (writeBomWhenFileEmpty && stream.Length == 0)
+                        {
+                            stream.Write(Utf8Bom, 0, Utf8Bom.Length);
+                        }
+
+                        stream.Seek(0, SeekOrigin.End);
+                        stream.Write(lineBytes, 0, lineBytes.Length);
+                        stream.Flush();
+                        return;
+                    }
+                    catch (IOException exception) when (attempt < MaxFileWriteAttempts)
+                    {
+                        lastException = exception;
+                        Thread.Sleep(5 * attempt);
+                    }
+                    catch (IOException exception)
+                    {
+                        lastException = exception;
+                        break;
+                    }
+                }
+            }
+
+            throw lastException ?? new IOException($"AppendLineWithSharing failed: {path}");
         }
 
         private void ArchiveExistingLogIfNeeded(string activePath, string logsDirectory, string prefix, string extension)

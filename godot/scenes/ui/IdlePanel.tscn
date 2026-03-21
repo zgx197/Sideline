@@ -81,11 +81,64 @@ theme_override_constants/margin_top = 8
 theme_override_constants/margin_right = 10
 theme_override_constants/margin_bottom = 8
 
-[node name="FacetProjectionLabel" type="Label" parent="ScrollContainer/MarginContainer/VBox/FacetProjectionPanel/FacetProjectionMargin"]
+[node name="FacetProjectionVBox" type="VBoxContainer" parent="ScrollContainer/MarginContainer/VBox/FacetProjectionPanel/FacetProjectionMargin"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 8
+
+[node name="FacetProjectionLabel" type="Label" parent="ScrollContainer/MarginContainer/VBox/FacetProjectionPanel/FacetProjectionMargin/FacetProjectionVBox"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 text = "Facet Runtime / 等待数据"
+autowrap_mode = 2
+
+[node name="HotReloadTestPanel" type="PanelContainer" parent="ScrollContainer/MarginContainer/VBox/FacetProjectionPanel/FacetProjectionMargin/FacetProjectionVBox"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="HotReloadTestMargin" type="MarginContainer" parent="ScrollContainer/MarginContainer/VBox/FacetProjectionPanel/FacetProjectionMargin/FacetProjectionVBox/HotReloadTestPanel"]
+layout_mode = 2
+theme_override_constants/margin_left = 8
+theme_override_constants/margin_top = 6
+theme_override_constants/margin_right = 8
+theme_override_constants/margin_bottom = 6
+
+[node name="HotReloadTestVBox" type="VBoxContainer" parent="ScrollContainer/MarginContainer/VBox/FacetProjectionPanel/FacetProjectionMargin/FacetProjectionVBox/HotReloadTestPanel/HotReloadTestMargin"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 6
+
+[node name="HotReloadTestTitleLabel" type="Label" parent="ScrollContainer/MarginContainer/VBox/FacetProjectionPanel/FacetProjectionMargin/FacetProjectionVBox/HotReloadTestPanel/HotReloadTestMargin/HotReloadTestVBox"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Facet 热重载测试"
+
+[node name="HotReloadTestButtons" type="HBoxContainer" parent="ScrollContainer/MarginContainer/VBox/FacetProjectionPanel/FacetProjectionMargin/FacetProjectionVBox/HotReloadTestPanel/HotReloadTestMargin/HotReloadTestVBox"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 6
+
+[node name="CurrentPageReloadTestButton" type="Button" parent="ScrollContainer/MarginContainer/VBox/FacetProjectionPanel/FacetProjectionMargin/FacetProjectionVBox/HotReloadTestPanel/HotReloadTestMargin/HotReloadTestVBox/HotReloadTestButtons"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+custom_minimum_size = Vector2(0, 30)
+text = "测试当前页"
+
+[node name="DungeonReloadTestButton" type="Button" parent="ScrollContainer/MarginContainer/VBox/FacetProjectionPanel/FacetProjectionMargin/FacetProjectionVBox/HotReloadTestPanel/HotReloadTestMargin/HotReloadTestVBox/HotReloadTestButtons"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+custom_minimum_size = Vector2(0, 30)
+text = "测试地下城页"
+
+[node name="HotReloadTestStatusLabel" type="Label" parent="ScrollContainer/MarginContainer/VBox/FacetProjectionPanel/FacetProjectionMargin/FacetProjectionVBox/HotReloadTestPanel/HotReloadTestMargin/HotReloadTestVBox"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+text = "等待测试触发"
 autowrap_mode = 2
 
 [node name="SwitchButton" type="Button" parent="ScrollContainer/MarginContainer/VBox"]

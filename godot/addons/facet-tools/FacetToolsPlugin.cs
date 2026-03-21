@@ -21,6 +21,12 @@ public partial class FacetToolsPlugin : EditorPlugin
     private const string ToolMenuTitle = "Open Facet Workspace";
 
     /// <summary>
+    /// Facet 主工作区场景路径。
+    /// 使用场景驱动的容器布局，避免继续在代码中手拼复杂界面。
+    /// </summary>
+    private const string MainScreenScenePath = "res://addons/facet-tools/FacetMainScreen.tscn";
+
+    /// <summary>
     /// Facet 主工作区控件实例。
     /// 插件进入编辑器树时创建，退出时销毁。
     /// </summary>
@@ -35,11 +41,14 @@ public partial class FacetToolsPlugin : EditorPlugin
 
         try
         {
-            _mainScreen = new FacetMainScreen();
+            PackedScene mainScreenScene = GD.Load<PackedScene>(MainScreenScenePath)
+                ?? throw new InvalidOperationException($"Facet main screen scene load failed: {MainScreenScenePath}");
+
+            _mainScreen = mainScreenScene.Instantiate<FacetMainScreen>();
             _mainScreen.Name = "FacetMainScreen";
             _mainScreen.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
             _mainScreen.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
-            _mainScreen.CustomMinimumSize = new Vector2(960.0f, 640.0f);
+            _mainScreen.CustomMinimumSize = Vector2.Zero;
             _mainScreen.Hide();
             EditorInterface.Singleton.GetEditorMainScreen().AddChild(_mainScreen);
 

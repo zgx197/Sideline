@@ -392,22 +392,27 @@ Lua 控制器生命周期与页面生命周期严格对齐：
 
 ## 12. 阶段 8 当前落地
 
-当前代码库已经完成了阶段 8 的最小闭环，而不是只停留在设计层：
+当前代码库已经完成阶段 8 的正式收口，而不是只停留在“最小闭环”：
 
 - `LuaRuntimeHost`
   负责按页面定义中的 `controllerScript` 创建控制器实例
-- `InMemoryLuaScriptSource`
-  用内存注册表模拟 Lua 脚本来源，先把宿主边界和生命周期时序稳定下来
+- `MoonSharpLuaPageController`
+  已基于 MoonSharp `Preset_SoftSandbox` 执行真实 Lua 脚本，并按统一生命周期调用全局函数入口
+- `FileSystemLuaScriptSource`
+  已从项目文件系统读取 `res://scripts/facet/LuaScripts/*.lua`，并为热重载生成稳定版本标记
 - `LuaApiBridge`
-  当前只暴露节点解析、Binding 刷新、命令/查询、页面路由和红点占位接口
+  当前暴露受限的节点解析、参数读取、Binding 刷新、受限诊断查询、页面路由和红点占位接口
+- `LuaBindingScopeBridge`
+  已把页面级、组件级与结构化列表级 Binding 以白名单桥接方式暴露给 Lua
 - `UIPageRuntime`
   已统一转发 `OnInit / OnShow / OnRefresh / OnHide / OnDispose` 到 Lua 控制器
 - `FacetBuiltInPageDefinitions`
-  已给 `client.idle` 与 `client.dungeon` 配置内置 `controllerScript`
-- `FacetBuiltInLuaControllers`
-  已提供两个内置控制器样例，用于验证节点访问、查询调用、路由状态和生命周期日志
+  已给 `client.idle` 与 `client.dungeon` 配置真实 `controllerScript`
+- `idle_runtime.lua` / `dungeon_runtime.lua`
+  已实际声明文本、显隐、交互与结构化列表 Binding，而不是只输出生命周期日志
 
-这意味着 Facet 现在已经具备“Lua 页面控制器宿主入口”，后续阶段 9 主要是在这条链路上补真实 Lua VM、热重载协调和恢复策略。
+这意味着 Facet 现在已经具备“真实 Lua 页面控制器宿主 + 受限 Binding 桥接”的正式能力。
+后续阶段 9 主要是在这条链路上继续补热重载恢复策略、稳定性验证和诊断工具。
 
 ## 13. 混合布局策略
 
@@ -479,13 +484,16 @@ Lua 只应看到受限桥接对象，而不应直接获取整个宿主世界。
 当前桥接能力包含：
 
 - 节点解析
+- 页面参数读取
 - Binding 刷新
-- Command / Query
+- 页面级、组件级与结构化列表级 Binding 桥接
+- 受限 Query 能力与运行时诊断查询
 - 页面路由
 - 红点占位接口
 - 统一日志入口
 
-后续即便接入真实 Lua VM，也必须沿着这条受限边界继续演进。
+当前不会把原始 `Resolver`、`Bindings` 或泛型总线对象直接作为 Lua 的主要使用入口暴露出去。
+后续即便继续扩展 Lua 宿主，也必须沿着这条受限白名单边界继续演进。
 
 ## 17. 日志与诊断
 

@@ -10,7 +10,7 @@ namespace Sideline.Facet.Lua
     /// </summary>
     public interface ILuaRuntimeHost
     {
-        bool TryCreateController(UIContext context, out LuaControllerHandle? controllerHandle);
+        bool TryCreateController(UIContext context, LuaApiBridge? existingApi, out LuaControllerHandle? controllerHandle);
 
         bool NeedsReload(LuaControllerHandle controllerHandle);
     }

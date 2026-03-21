@@ -24,5 +24,10 @@ namespace Sideline.Facet.Runtime
         /// 按键获取必须存在的对象。
         /// </summary>
         object GetRequired(string key);
+
+        /// <summary>
+        /// 基于指定子树根键创建局部解析器。
+        /// </summary>
+        IUIObjectResolver CreateSubtreeResolver(string rootKey);
     }
 }

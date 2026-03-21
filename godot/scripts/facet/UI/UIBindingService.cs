@@ -51,7 +51,7 @@ namespace Sideline.Facet.UI
             ArgumentException.ThrowIfNullOrWhiteSpace(componentId);
             ArgumentNullException.ThrowIfNull(resolver);
 
-            UIComponentBindingScope scope = new(parentScopeId, componentId, resolver, _logger);
+            UIComponentBindingScope scope = new(parentScope: null, parentScopeId, componentId, resolver, _logger);
             _logger?.Info(
                 "UI.Binding",
                 "组件 BindingScope 已创建。",
@@ -159,7 +159,7 @@ namespace Sideline.Facet.UI
             ArgumentException.ThrowIfNullOrWhiteSpace(componentId);
             ArgumentNullException.ThrowIfNull(resolver);
 
-            UIComponentBindingScope scope = new(ScopeId, componentId, resolver, _logger);
+            UIComponentBindingScope scope = new(this, ScopeId, componentId, resolver, _logger);
             _componentScopes.Add(scope);
 
             _logger?.Debug(
@@ -286,7 +286,7 @@ namespace Sideline.Facet.UI
             _bindings.Clear();
             _descriptors.Clear();
 
-            foreach (IUIComponentBindingScope componentScope in _componentScopes)
+            foreach (IUIComponentBindingScope componentScope in _componentScopes.ToArray())
             {
                 componentScope.Dispose();
             }
@@ -294,8 +294,13 @@ namespace Sideline.Facet.UI
             _componentScopes.Clear();
         }
 
+        internal void RemoveComponentScope(IUIComponentBindingScope componentScope)
+        {
+            _componentScopes.Remove(componentScope);
+        }
+
         /// <inheritdoc />
-        public void Dispose()
+        public virtual void Dispose()
         {
             if (_disposed)
             {
@@ -387,9 +392,12 @@ namespace Sideline.Facet.UI
     /// </summary>
     public sealed class UIComponentBindingScope : UINodeBindingScope, IUIComponentBindingScope
     {
-        public UIComponentBindingScope(string parentScopeId, string componentId, IUIObjectResolver resolver, IFacetLogger? logger)
+        private readonly UINodeBindingScope? _parentScope;
+
+        public UIComponentBindingScope(UINodeBindingScope? parentScope, string parentScopeId, string componentId, IUIObjectResolver resolver, IFacetLogger? logger)
             : base($"{parentScopeId}/{componentId}", resolver, logger)
         {
+            _parentScope = parentScope;
             ParentScopeId = parentScopeId;
             ComponentId = componentId;
         }
@@ -399,6 +407,13 @@ namespace Sideline.Facet.UI
 
         /// <inheritdoc />
         public string ParentScopeId { get; }
+
+        /// <inheritdoc />
+        public override void Dispose()
+        {
+            base.Dispose();
+            _parentScope?.RemoveComponentScope(this);
+        }
     }
 
     /// <summary>
@@ -708,7 +723,7 @@ namespace Sideline.Facet.UI
 
             Control itemRoot = DuplicateTemplate(itemKey, index);
             UINodeResolver itemResolver = new(UINodeRegistry.CreateFromSubtree(itemRoot));
-            UIComponentBindingScope itemScope = new(_scopeId, $"{_containerKey}[{itemKey}]", itemResolver, _logger);
+            UIComponentBindingScope itemScope = new(parentScope: null, _scopeId, $"{_containerKey}[{itemKey}]", itemResolver, _logger);
 
             ComplexListItemRuntime runtime = new(itemKey, itemRoot, itemScope);
             _itemRuntimes[itemKey] = runtime;

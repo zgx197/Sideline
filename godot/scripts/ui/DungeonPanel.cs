@@ -3,6 +3,7 @@
 using System;
 using System.Collections.Generic;
 using Godot;
+using Sideline.Facet.Lua;
 using Sideline.Facet.Projection;
 using Sideline.Facet.Projection.Client;
 using Sideline.Facet.Projection.Diagnostics;
@@ -15,14 +16,25 @@ using Sideline.Facet.UI;
 /// </summary>
 public partial class DungeonPanel : PanelContainer, IUIPageLifecycle
 {
+    private const string LuaTitleStateKey = "facet.dungeon.title";
+    private const string LuaStatusStateKey = "facet.dungeon.status";
+    private const string LuaPrimaryActionLabelStateKey = "facet.dungeon.primary_action_label";
+    private const string LuaPrimaryActionEnabledStateKey = "facet.dungeon.primary_action_enabled";
+    private const string LuaShowMetricsPanelStateKey = "facet.dungeon.show_metrics_panel";
+    private const string LuaMetricsTitleStateKey = "facet.dungeon.metrics_title";
+    private const string LuaMetricsItemsStateKey = "facet.dungeon.metrics_items";
+
     private PanelContainer _metricsPanel = null!;
     private Label _titleLabel = null!;
     private Label _statusLabel = null!;
     private Label _metricsTitleLabel = null!;
     private Label _metricsEmptyLabel = null!;
+    private Label _hotReloadTestStatusLabel = null!;
     private VBoxContainer _metricsListContainer = null!;
     private Control _metricsItemTemplate = null!;
     private Button _switchButton = null!;
+    private Button _currentPageReloadTestButton = null!;
+    private Button _dungeonReloadTestButton = null!;
 
     private IDisposable? _clientShellSubscription;
     private IDisposable? _metricsSubscription;
@@ -180,16 +192,21 @@ public partial class DungeonPanel : PanelContainer, IUIPageLifecycle
         _statusLabel = ResolveRequiredNode<Label>(resolver, "StatusLabel", "%StatusLabel");
         _metricsTitleLabel = ResolveRequiredNode<Label>(resolver, "MetricsTitleLabel", "%MetricsTitleLabel");
         _metricsEmptyLabel = ResolveRequiredNode<Label>(resolver, "MetricsEmptyLabel", "%MetricsEmptyLabel");
+        _hotReloadTestStatusLabel = ResolveRequiredNode<Label>(resolver, "HotReloadTestStatusLabel", "%HotReloadTestStatusLabel");
         _metricsListContainer = ResolveRequiredNode<VBoxContainer>(resolver, "MetricsListContainer", "%MetricsListContainer");
         _metricsItemTemplate = ResolveRequiredNode<Control>(resolver, "MetricsItemTemplate", "%MetricsItemTemplate");
         _switchButton = ResolveRequiredNode<Button>(resolver, "SwitchButton", "%SwitchButton");
+        _currentPageReloadTestButton = ResolveRequiredNode<Button>(resolver, "CurrentPageReloadTestButton", "%CurrentPageReloadTestButton");
+        _dungeonReloadTestButton = ResolveRequiredNode<Button>(resolver, "DungeonReloadTestButton", "%DungeonReloadTestButton");
 
         _statusLabel.AutowrapMode = TextServer.AutowrapMode.WordSmart;
         _metricsTitleLabel.AutowrapMode = TextServer.AutowrapMode.WordSmart;
         _metricsEmptyLabel.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+        _hotReloadTestStatusLabel.AutowrapMode = TextServer.AutowrapMode.WordSmart;
         _metricsItemTemplate.Visible = false;
 
         _nodesBound = true;
+        UpdateHotReloadTestStatus("等待测试触发。");
         ApplyShellFallback("nodes.resolved.shell_fallback");
         ApplyMetricsPlaceholder("nodes.resolved.metrics_placeholder");
     }
@@ -202,21 +219,27 @@ public partial class DungeonPanel : PanelContainer, IUIPageLifecycle
         }
 
         IUIBindingScope? bindings = context?.Bindings;
+        bool useLuaBindings = context?.Lua != null;
         if (bindings == null)
         {
             ConnectButtonPressed(_switchButton, OnSwitchPressed);
+            ConnectButtonPressed(_currentPageReloadTestButton, OnCurrentPageReloadTestPressed);
+            ConnectButtonPressed(_dungeonReloadTestButton, OnDungeonReloadTestPressed);
             _bindingsRegistered = true;
             return;
         }
 
-        bindings.BindText("TitleLabel", GetTitleText);
-        bindings.BindText("StatusLabel", GetStatusText);
-        bindings.BindText("SwitchButton", GetPrimaryActionText);
-        bindings.BindInteractable("SwitchButton", IsPrimaryActionEnabled);
         bindings.BindCommand("SwitchButton", OnSwitchPressed);
+        bindings.BindCommand("CurrentPageReloadTestButton", OnCurrentPageReloadTestPressed);
+        bindings.BindCommand("DungeonReloadTestButton", OnDungeonReloadTestPressed);
 
-        if (context?.Resolver is UINodeResolver resolver)
+        if (!useLuaBindings && context?.Resolver is UINodeResolver resolver)
         {
+            bindings.BindText("TitleLabel", GetTitleText);
+            bindings.BindText("StatusLabel", GetStatusText);
+            bindings.BindText("SwitchButton", GetPrimaryActionText);
+            bindings.BindInteractable("SwitchButton", IsPrimaryActionEnabled);
+
             UINodeResolver metricsResolver = resolver.CreateSubtreeResolver("MetricsPanel");
             _metricsPanelBindings = bindings.CreateComponentScope("metrics-panel", metricsResolver);
             _metricsPanelBindings.BindVisibility("MetricsPanel", ShouldShowMetricsPanel);
@@ -230,21 +253,13 @@ public partial class DungeonPanel : PanelContainer, IUIPageLifecycle
         }
 
         _bindingsRegistered = true;
+        SyncLuaState();
         bindings.RefreshAll("binding.registered");
 
         ClientLog.Info(
             "DungeonPanel",
             "DungeonPanel Binding 已注册。",
-            new Dictionary<string, object?>
-            {
-                ["pageId"] = context?.PageId,
-                ["bindingCount"] = bindings.Count,
-                ["bindingRefreshCount"] = bindings.RefreshCount,
-                ["bindingScopeId"] = bindings.ScopeId,
-                ["metricsPanelScopeId"] = _metricsPanelBindings?.ScopeId,
-                ["metricsListItemCount"] = _metricsListBinding?.ItemCount ?? 0,
-                ["hasResolver"] = context?.Resolver != null,
-            });
+            CreateBindingRegistrationPayload(context, _metricsPanelBindings, _metricsListBinding, useLuaBindings));
     }
 
     private TNode ResolveRequiredNode<TNode>(UINodeResolver? resolver, string key, string fallbackPath) where TNode : Node
@@ -263,6 +278,7 @@ public partial class DungeonPanel : PanelContainer, IUIPageLifecycle
 
     private void RefreshView(string? reason = null)
     {
+        SyncLuaState();
         if (_pageContext?.Bindings != null)
         {
             _pageContext.Bindings.RefreshAll(reason);
@@ -328,6 +344,40 @@ public partial class DungeonPanel : PanelContainer, IUIPageLifecycle
     {
         _currentMetricsProjection = null;
         RefreshView(reason);
+    }
+
+    private void SyncLuaState()
+    {
+        if (_pageContext?.Lua == null)
+        {
+            return;
+        }
+
+        _pageContext.Lua.SetStateString(LuaTitleStateKey, GetTitleText());
+        _pageContext.Lua.SetStateString(LuaStatusStateKey, GetStatusText());
+        _pageContext.Lua.SetStateString(LuaPrimaryActionLabelStateKey, GetPrimaryActionText());
+        _pageContext.Lua.SetStateBoolean(LuaPrimaryActionEnabledStateKey, IsPrimaryActionEnabled());
+        _pageContext.Lua.SetStateBoolean(LuaShowMetricsPanelStateKey, ShouldShowMetricsPanel());
+        _pageContext.Lua.SetStateString(LuaMetricsTitleStateKey, GetMetricsTitle());
+        _pageContext.Lua.SetStructuredListState(LuaMetricsItemsStateKey, CreateLuaMetricItems());
+    }
+
+    private IReadOnlyList<LuaBindingScopeBridge.LuaStructuredListItem> CreateLuaMetricItems()
+    {
+        IReadOnlyList<FacetRuntimeMetricItem> items = GetMetricItems();
+        LuaBindingScopeBridge.LuaStructuredListItem[] snapshot = new LuaBindingScopeBridge.LuaStructuredListItem[items.Count];
+
+        for (int index = 0; index < items.Count; index++)
+        {
+            FacetRuntimeMetricItem item = items[index];
+            snapshot[index] = new LuaBindingScopeBridge.LuaStructuredListItem(
+                item.Key,
+                item.Label,
+                item.Value,
+                $"Key: {item.Key} / #{index + 1}");
+        }
+
+        return snapshot;
     }
 
     private void OnClientShellChanged(ProjectionChange change)
@@ -447,6 +497,29 @@ public partial class DungeonPanel : PanelContainer, IUIPageLifecycle
         }
     }
 
+    private static Dictionary<string, object?> CreateBindingRegistrationPayload(
+        UIContext? context,
+        IUIComponentBindingScope? metricsPanelBindings,
+        IUIComplexListBinding<FacetRuntimeMetricItem>? metricsListBinding,
+        bool useLuaBindings)
+    {
+        if (context == null)
+        {
+            return new Dictionary<string, object?>
+            {
+                ["pageId"] = null,
+                ["hasResolver"] = false,
+                ["useLuaBindings"] = useLuaBindings,
+            };
+        }
+
+        Dictionary<string, object?> payload = CreateLifecyclePayload(context, metricsPanelBindings, metricsListBinding);
+        payload["bindingScopeId"] = context.Bindings?.ScopeId;
+        payload["hasResolver"] = context.Resolver != null;
+        payload["useLuaBindings"] = useLuaBindings;
+        return payload;
+    }
+
     private static Dictionary<string, object?> CreateLifecyclePayload(
         UIContext context,
         IUIComponentBindingScope? metricsPanelBindings,
@@ -454,7 +527,10 @@ public partial class DungeonPanel : PanelContainer, IUIPageLifecycle
     {
         UIBindingDiagnosticsSnapshot? bindingDiagnostics = context.Bindings?.GetDiagnosticsSnapshot();
         UIBindingDiagnosticsSnapshot? metricsPanelDiagnostics = metricsPanelBindings?.GetDiagnosticsSnapshot();
-        return new Dictionary<string, object?>
+        UIBindingDiagnosticsSnapshot? luaRootDiagnostics = context.Lua?.GetLuaRootBindingDiagnostics();
+        UIBindingDiagnosticsSnapshot? luaMetricsPanelDiagnostics = context.Lua?.GetLuaComponentBindingDiagnostics("metrics-panel", "MetricsPanel");
+
+        Dictionary<string, object?> payload = new()
         {
             ["pageId"] = context.PageId,
             ["layer"] = context.Layer,
@@ -462,10 +538,28 @@ public partial class DungeonPanel : PanelContainer, IUIPageLifecycle
             ["bindingCount"] = bindingDiagnostics?.BindingCount ?? 0,
             ["bindingRefreshCount"] = bindingDiagnostics?.RefreshCount ?? 0,
             ["bindingLastReason"] = bindingDiagnostics?.LastRefreshReason,
-            ["metricsPanelScopeId"] = metricsPanelDiagnostics?.ScopeId,
-            ["metricsPanelBindingCount"] = metricsPanelDiagnostics?.BindingCount ?? 0,
-            ["metricsListItemCount"] = metricsListBinding?.ItemCount ?? 0,
+            ["csharpMetricsPanelScopeId"] = metricsPanelDiagnostics?.ScopeId,
+            ["csharpMetricsPanelBindingCount"] = metricsPanelDiagnostics?.BindingCount ?? 0,
+            ["csharpMetricsPanelRefreshCount"] = metricsPanelDiagnostics?.RefreshCount ?? 0,
+            ["csharpMetricsPanelLastReason"] = metricsPanelDiagnostics?.LastRefreshReason,
+            ["csharpMetricsListItemCount"] = metricsListBinding?.ItemCount ?? 0,
+            ["luaMetricsListStateCount"] = context.Lua?.GetStructuredListStateCount(LuaMetricsItemsStateKey) ?? 0,
         };
+
+        AppendScopeDiagnostics(payload, "luaRoot", luaRootDiagnostics);
+        AppendScopeDiagnostics(payload, "luaMetricsPanel", luaMetricsPanelDiagnostics);
+        return payload;
+    }
+
+    private static void AppendScopeDiagnostics(
+        IDictionary<string, object?> payload,
+        string prefix,
+        UIBindingDiagnosticsSnapshot? diagnostics)
+    {
+        payload[$"{prefix}ScopeId"] = diagnostics?.ScopeId;
+        payload[$"{prefix}BindingCount"] = diagnostics?.BindingCount ?? 0;
+        payload[$"{prefix}RefreshCount"] = diagnostics?.RefreshCount ?? 0;
+        payload[$"{prefix}LastReason"] = diagnostics?.LastRefreshReason;
     }
 
     private bool ShouldApplyInitialClientShellProjection(ClientShellProjection projection)
@@ -481,6 +575,51 @@ public partial class DungeonPanel : PanelContainer, IUIPageLifecycle
     private void OnSwitchPressed()
     {
         EmitSignal("SwitchToIdleRequested");
+    }
+
+    private void OnCurrentPageReloadTestPressed()
+    {
+        bool accepted = FacetHost.Instance?.TryRunLuaHotReloadRoundTripTest(reason: "dungeon.panel.button.current") == true;
+        HandleHotReloadTestRequest(accepted, "当前页");
+    }
+
+    private void OnDungeonReloadTestPressed()
+    {
+        bool accepted = FacetHost.Instance?.TryRunDungeonLuaHotReloadRoundTripTest(reason: "dungeon.panel.button.dungeon") == true;
+        HandleHotReloadTestRequest(accepted, "地下城页");
+    }
+
+    private void HandleHotReloadTestRequest(bool accepted, string targetName)
+    {
+        string status = accepted
+            ? $"{FormatStatusTimestamp()} 已触发 {targetName} Lua 热重载测试，请查看结构化日志。"
+            : $"{FormatStatusTimestamp()} {targetName} Lua 热重载测试未启动，请检查运行时日志。";
+        UpdateHotReloadTestStatus(status);
+
+        ClientLog.Info(
+            "DungeonPanel",
+            "DungeonPanel 请求 Lua 热重载测试。",
+            new Dictionary<string, object?>
+            {
+                ["target"] = targetName,
+                ["accepted"] = accepted,
+                ["currentPageId"] = _pageContext?.PageId,
+            });
+    }
+
+    private void UpdateHotReloadTestStatus(string text)
+    {
+        if (_hotReloadTestStatusLabel == null)
+        {
+            return;
+        }
+
+        _hotReloadTestStatusLabel.Text = text;
+    }
+
+    private static string FormatStatusTimestamp()
+    {
+        return DateTime.Now.ToString("HH:mm:ss");
     }
 
     /// <summary>

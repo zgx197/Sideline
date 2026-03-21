@@ -24,7 +24,7 @@ namespace Sideline.Facet.Lua
             _redDotBridge = redDotBridge;
         }
 
-        public bool TryCreateController(UIContext context, out LuaControllerHandle? controllerHandle)
+        public bool TryCreateController(UIContext context, LuaApiBridge? existingApi, out LuaControllerHandle? controllerHandle)
         {
             ArgumentNullException.ThrowIfNull(context);
 
@@ -51,7 +51,7 @@ namespace Sideline.Facet.Lua
             try
             {
                 ILuaPageController controller = new MoonSharpLuaPageController(scriptAsset);
-                LuaApiBridge api = new(context, _redDotBridge);
+                LuaApiBridge api = existingApi ?? new LuaApiBridge(context, _redDotBridge);
                 controllerHandle = new LuaControllerHandle(
                     scriptAsset.ScriptId,
                     scriptAsset.SourcePath,

@@ -15,13 +15,24 @@ using Sideline.Facet.UI;
 /// </summary>
 public partial class IdlePanel : PanelContainer, IUIPageLifecycle
 {
+    private const string LuaTitleStateKey = "facet.idle.title";
+    private const string LuaStatusStateKey = "facet.idle.status";
+    private const string LuaPrimaryActionLabelStateKey = "facet.idle.primary_action_label";
+    private const string LuaPrimaryActionEnabledStateKey = "facet.idle.primary_action_enabled";
+    private const string LuaResourceTextStateKey = "facet.idle.resource_text";
+    private const string LuaShowRuntimeSummaryStateKey = "facet.idle.show_runtime_summary";
+    private const string LuaRuntimeSummaryTextStateKey = "facet.idle.runtime_summary_text";
+
     private PanelContainer _facetProjectionPanel = null!;
     private Label _titleLabel = null!;
     private Label _statusLabel = null!;
     private Label _resourceLabel = null!;
     private Label _facetProjectionLabel = null!;
+    private Label _hotReloadTestStatusLabel = null!;
     private Button _switchButton = null!;
     private Button _closeButton = null!;
+    private Button _currentPageReloadTestButton = null!;
+    private Button _dungeonReloadTestButton = null!;
 
     private IDisposable? _runtimeProbeSubscription;
     private IDisposable? _clientShellSubscription;
@@ -208,13 +219,18 @@ public partial class IdlePanel : PanelContainer, IUIPageLifecycle
         _statusLabel = ResolveRequiredNode<Label>(resolver, "StatusLabel", "%StatusLabel");
         _resourceLabel = ResolveRequiredNode<Label>(resolver, "ResourceLabel", "%ResourceLabel");
         _facetProjectionLabel = ResolveRequiredNode<Label>(resolver, "FacetProjectionLabel", "%FacetProjectionLabel");
+        _hotReloadTestStatusLabel = ResolveRequiredNode<Label>(resolver, "HotReloadTestStatusLabel", "%HotReloadTestStatusLabel");
         _switchButton = ResolveRequiredNode<Button>(resolver, "SwitchButton", "%SwitchButton");
         _closeButton = ResolveRequiredNode<Button>(resolver, "CloseButton", "%CloseButton");
+        _currentPageReloadTestButton = ResolveRequiredNode<Button>(resolver, "CurrentPageReloadTestButton", "%CurrentPageReloadTestButton");
+        _dungeonReloadTestButton = ResolveRequiredNode<Button>(resolver, "DungeonReloadTestButton", "%DungeonReloadTestButton");
 
         _statusLabel.AutowrapMode = TextServer.AutowrapMode.WordSmart;
         _facetProjectionLabel.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+        _hotReloadTestStatusLabel.AutowrapMode = TextServer.AutowrapMode.WordSmart;
         _nodesBound = true;
         ApplyProjectionPlaceholder();
+        UpdateHotReloadTestStatus("等待测试触发。");
         RefreshView("nodes.resolved");
     }
 
@@ -226,45 +242,47 @@ public partial class IdlePanel : PanelContainer, IUIPageLifecycle
         }
 
         IUIBindingScope? bindings = context?.Bindings;
+        bool useLuaBindings = context?.Lua != null;
         if (bindings == null)
         {
             ConnectButtonPressed(_switchButton, OnSwitchPressed);
             ConnectButtonPressed(_closeButton, OnClosePressed);
+            ConnectButtonPressed(_currentPageReloadTestButton, OnCurrentPageReloadTestPressed);
+            ConnectButtonPressed(_dungeonReloadTestButton, OnDungeonReloadTestPressed);
             _bindingsRegistered = true;
             return;
         }
 
-        bindings.BindText("TitleLabel", GetTitleText);
-        bindings.BindText("StatusLabel", GetStatusText);
-        bindings.BindText("SwitchButton", GetPrimaryActionText);
-        bindings.BindInteractable("SwitchButton", IsPrimaryActionEnabled);
-        bindings.BindText("ResourceLabel", GetResourceText);
         bindings.BindCommand("SwitchButton", OnSwitchPressed);
         bindings.BindCommand("CloseButton", OnClosePressed);
+        bindings.BindCommand("CurrentPageReloadTestButton", OnCurrentPageReloadTestPressed);
+        bindings.BindCommand("DungeonReloadTestButton", OnDungeonReloadTestPressed);
 
-        if (context?.Resolver is UINodeResolver resolver)
+        if (!useLuaBindings)
         {
-            UINodeResolver runtimeSummaryResolver = resolver.CreateSubtreeResolver("FacetProjectionPanel");
-            _runtimeSummaryBindings = bindings.CreateComponentScope("runtime-summary", runtimeSummaryResolver);
-            _runtimeSummaryBindings.BindVisibility("FacetProjectionPanel", ShouldShowRuntimeSummary);
-            _runtimeSummaryBindings.BindText("FacetProjectionLabel", GetRuntimeProbeSummaryText);
+            bindings.BindText("TitleLabel", GetTitleText);
+            bindings.BindText("StatusLabel", GetStatusText);
+            bindings.BindText("SwitchButton", GetPrimaryActionText);
+            bindings.BindInteractable("SwitchButton", IsPrimaryActionEnabled);
+            bindings.BindText("ResourceLabel", GetResourceText);
+
+            if (context?.Resolver is UINodeResolver resolver)
+            {
+                UINodeResolver runtimeSummaryResolver = resolver.CreateSubtreeResolver("FacetProjectionPanel");
+                _runtimeSummaryBindings = bindings.CreateComponentScope("runtime-summary", runtimeSummaryResolver);
+                _runtimeSummaryBindings.BindVisibility("FacetProjectionPanel", ShouldShowRuntimeSummary);
+                _runtimeSummaryBindings.BindText("FacetProjectionLabel", GetRuntimeProbeSummaryText);
+            }
         }
 
         _bindingsRegistered = true;
+        SyncLuaState();
         bindings.RefreshAll("binding.registered");
 
         ClientLog.Info(
             "IdlePanel",
             "IdlePanel Binding 已注册。",
-            new Dictionary<string, object?>
-            {
-                ["pageId"] = context?.PageId,
-                ["bindingCount"] = bindings.Count,
-                ["bindingRefreshCount"] = bindings.RefreshCount,
-                ["bindingScopeId"] = bindings.ScopeId,
-                ["runtimeSummaryScopeId"] = _runtimeSummaryBindings?.ScopeId,
-                ["hasResolver"] = context?.Resolver != null,
-            });
+            CreateBindingRegistrationPayload(context, _runtimeSummaryBindings, useLuaBindings));
     }
 
     private TNode ResolveRequiredNode<TNode>(UINodeResolver? resolver, string key, string fallbackPath) where TNode : Node
@@ -283,6 +301,7 @@ public partial class IdlePanel : PanelContainer, IUIPageLifecycle
 
     private void RefreshView(string? reason = null)
     {
+        SyncLuaState();
         if (_pageContext?.Bindings != null)
         {
             _pageContext.Bindings.RefreshAll(reason);
@@ -336,6 +355,22 @@ public partial class IdlePanel : PanelContainer, IUIPageLifecycle
     private string GetRuntimeProbeSummaryText()
     {
         return _runtimeProbeSummaryText;
+    }
+
+    private void SyncLuaState()
+    {
+        if (_pageContext?.Lua == null)
+        {
+            return;
+        }
+
+        _pageContext.Lua.SetStateString(LuaTitleStateKey, GetTitleText());
+        _pageContext.Lua.SetStateString(LuaStatusStateKey, GetStatusText());
+        _pageContext.Lua.SetStateString(LuaPrimaryActionLabelStateKey, GetPrimaryActionText());
+        _pageContext.Lua.SetStateBoolean(LuaPrimaryActionEnabledStateKey, IsPrimaryActionEnabled());
+        _pageContext.Lua.SetStateString(LuaResourceTextStateKey, GetResourceText());
+        _pageContext.Lua.SetStateBoolean(LuaShowRuntimeSummaryStateKey, ShouldShowRuntimeSummary());
+        _pageContext.Lua.SetStateString(LuaRuntimeSummaryTextStateKey, GetRuntimeProbeSummaryText());
     }
 
     private void ApplyProjectionPlaceholder()
@@ -433,11 +468,36 @@ public partial class IdlePanel : PanelContainer, IUIPageLifecycle
         _clientShellSubscription = null;
     }
 
+    private static Dictionary<string, object?> CreateBindingRegistrationPayload(
+        UIContext? context,
+        IUIComponentBindingScope? runtimeSummaryBindings,
+        bool useLuaBindings)
+    {
+        if (context == null)
+        {
+            return new Dictionary<string, object?>
+            {
+                ["pageId"] = null,
+                ["hasResolver"] = false,
+                ["useLuaBindings"] = useLuaBindings,
+            };
+        }
+
+        Dictionary<string, object?> payload = CreateLifecyclePayload(context, runtimeSummaryBindings);
+        payload["bindingScopeId"] = context.Bindings?.ScopeId;
+        payload["hasResolver"] = context.Resolver != null;
+        payload["useLuaBindings"] = useLuaBindings;
+        return payload;
+    }
+
     private static Dictionary<string, object?> CreateLifecyclePayload(UIContext context, IUIComponentBindingScope? runtimeSummaryBindings)
     {
         UIBindingDiagnosticsSnapshot? bindingDiagnostics = context.Bindings?.GetDiagnosticsSnapshot();
         UIBindingDiagnosticsSnapshot? runtimeSummaryDiagnostics = runtimeSummaryBindings?.GetDiagnosticsSnapshot();
-        return new Dictionary<string, object?>
+        UIBindingDiagnosticsSnapshot? luaRootDiagnostics = context.Lua?.GetLuaRootBindingDiagnostics();
+        UIBindingDiagnosticsSnapshot? luaRuntimeSummaryDiagnostics = context.Lua?.GetLuaComponentBindingDiagnostics("runtime-summary", "FacetProjectionPanel");
+
+        Dictionary<string, object?> payload = new()
         {
             ["pageId"] = context.PageId,
             ["layer"] = context.Layer,
@@ -445,9 +505,26 @@ public partial class IdlePanel : PanelContainer, IUIPageLifecycle
             ["bindingCount"] = bindingDiagnostics?.BindingCount ?? 0,
             ["bindingRefreshCount"] = bindingDiagnostics?.RefreshCount ?? 0,
             ["bindingLastReason"] = bindingDiagnostics?.LastRefreshReason,
-            ["runtimeSummaryScopeId"] = runtimeSummaryDiagnostics?.ScopeId,
-            ["runtimeSummaryBindingCount"] = runtimeSummaryDiagnostics?.BindingCount ?? 0,
+            ["csharpRuntimeSummaryScopeId"] = runtimeSummaryDiagnostics?.ScopeId,
+            ["csharpRuntimeSummaryBindingCount"] = runtimeSummaryDiagnostics?.BindingCount ?? 0,
+            ["csharpRuntimeSummaryRefreshCount"] = runtimeSummaryDiagnostics?.RefreshCount ?? 0,
+            ["csharpRuntimeSummaryLastReason"] = runtimeSummaryDiagnostics?.LastRefreshReason,
         };
+
+        AppendScopeDiagnostics(payload, "luaRoot", luaRootDiagnostics);
+        AppendScopeDiagnostics(payload, "luaRuntimeSummary", luaRuntimeSummaryDiagnostics);
+        return payload;
+    }
+
+    private static void AppendScopeDiagnostics(
+        IDictionary<string, object?> payload,
+        string prefix,
+        UIBindingDiagnosticsSnapshot? diagnostics)
+    {
+        payload[$"{prefix}ScopeId"] = diagnostics?.ScopeId;
+        payload[$"{prefix}BindingCount"] = diagnostics?.BindingCount ?? 0;
+        payload[$"{prefix}RefreshCount"] = diagnostics?.RefreshCount ?? 0;
+        payload[$"{prefix}LastReason"] = diagnostics?.LastRefreshReason;
     }
 
     private bool ShouldApplyInitialClientShellProjection(ClientShellProjection projection)
@@ -478,5 +555,50 @@ public partial class IdlePanel : PanelContainer, IUIPageLifecycle
     private void OnClosePressed()
     {
         GetTree().Quit();
+    }
+
+    private void OnCurrentPageReloadTestPressed()
+    {
+        bool accepted = FacetHost.Instance?.TryRunLuaHotReloadRoundTripTest(reason: "idle.panel.button.current") == true;
+        HandleHotReloadTestRequest(accepted, "当前页");
+    }
+
+    private void OnDungeonReloadTestPressed()
+    {
+        bool accepted = FacetHost.Instance?.TryRunDungeonLuaHotReloadRoundTripTest(reason: "idle.panel.button.dungeon") == true;
+        HandleHotReloadTestRequest(accepted, "地下城页");
+    }
+
+    private void HandleHotReloadTestRequest(bool accepted, string targetName)
+    {
+        string status = accepted
+            ? $"{FormatStatusTimestamp()} 已触发 {targetName} Lua 热重载测试，请查看结构化日志。"
+            : $"{FormatStatusTimestamp()} {targetName} Lua 热重载测试未启动，请检查运行时日志。";
+        UpdateHotReloadTestStatus(status);
+
+        ClientLog.Info(
+            "IdlePanel",
+            "IdlePanel 请求 Lua 热重载测试。",
+            new Dictionary<string, object?>
+            {
+                ["target"] = targetName,
+                ["accepted"] = accepted,
+                ["currentPageId"] = _pageContext?.PageId,
+            });
+    }
+
+    private void UpdateHotReloadTestStatus(string text)
+    {
+        if (_hotReloadTestStatusLabel == null)
+        {
+            return;
+        }
+
+        _hotReloadTestStatusLabel.Text = text;
+    }
+
+    private static string FormatStatusTimestamp()
+    {
+        return DateTime.Now.ToString("HH:mm:ss");
     }
 }

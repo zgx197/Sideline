@@ -6,57 +6,55 @@ using System.IO;
 using System.Text;
 using System.Text.Json;
 using Godot;
+using Sideline.Facet.Runtime;
 
 /// <summary>
 /// Facet 编辑器主工作区页面。
-/// 负责在 Godot 编辑器中展示结构化日志、过滤控件、保留策略以及后续扩展入口。
+/// 使用紧凑工具栏加整页顶层页签，避免把多个工具硬塞进同一块内容区域。
 /// </summary>
 [Tool]
-public partial class FacetMainScreen : Control
+public partial class FacetMainScreen : PanelContainer
 {
-    /// <summary>
-    /// 日志页签中最多展示的最近日志条数。
-    /// </summary>
     private const int MaxVisibleEntries = 150;
-
-    /// <summary>
-    /// 工作台文案中显示的历史保留份数，需要与实际日志清理策略保持一致。
-    /// </summary>
     private const int HistoryLimit = 10;
 
-    /// <summary>
-    /// 页面上关键控件的缓存引用，避免重复查询节点并集中表达界面结构。
-    /// </summary>
-    private Label _pathLabel = null!;
-    private Label _summaryLabel = null!;
+    private GridContainer _logMetricsGrid = null!;
+    private HSplitContainer _logSplit = null!;
+    private PanelContainer _logSidebarCard = null!;
+    private PanelContainer _logContentCard = null!;
+    private PanelContainer _retentionCard = null!;
+    private PanelContainer _hotReloadIntroCard = null!;
+    private PanelContainer _hotReloadEvidenceCard = null!;
+    private PanelContainer _reservedCard = null!;
+    private PanelContainer _totalMetricCard = null!;
+    private PanelContainer _filteredMetricCard = null!;
+    private PanelContainer _sessionsMetricCard = null!;
+    private PanelContainer _categoriesMetricCard = null!;
+    private TabContainer _workspaceTabs = null!;
+
     private Label _totalValueLabel = null!;
     private Label _filteredValueLabel = null!;
     private Label _sessionsValueLabel = null!;
     private Label _categoriesValueLabel = null!;
+    private Label _logSummaryLabel = null!;
+    private Label _pathLabel = null!;
     private Label _retentionLabel = null!;
+    private Label _hotReloadBridgeStatusLabel = null!;
+    private Label _hotReloadBridgePathsLabel = null!;
+    private RichTextLabel _entriesLabel = null!;
+    private RichTextLabel _hotReloadEvidenceLabel = null!;
     private LineEdit _sessionFilter = null!;
     private LineEdit _categoryFilter = null!;
     private OptionButton _levelFilter = null!;
     private CheckButton _autoRefreshToggle = null!;
-    private RichTextLabel _entriesLabel = null!;
-    private Timer _refreshTimer = null!;
-    private TabContainer _workspaceTabs = null!;
     private Button _refreshButton = null!;
     private Button _openLogButton = null!;
-    private VBoxContainer _root = null!;
-    private GridContainer _metricsGrid = null!;
-    private HSplitContainer _contentSplit = null!;
-    private PanelContainer _sidebarCard = null!;
-    private ScrollContainer _sidebarScroll = null!;
-
-    /// <summary>
-    /// 标记 UI 是否已经完成构建，避免布局和刷新逻辑在控件未就绪时提前执行。
-    /// </summary>
+    private Button _currentPageReloadTestButton = null!;
+    private Button _dungeonReloadTestButton = null!;
+    private Button _refreshHotReloadStatusButton = null!;
     private bool _isUiReady;
+    private double _autoRefreshElapsedSeconds;
 
-    /// <summary>
-    /// 初始化主工作区界面，并在首次进入时立即执行布局校准和日志刷新。
-    /// </summary>
     public override void _Ready()
     {
         try
@@ -65,14 +63,15 @@ public partial class FacetMainScreen : Control
             Name = "FacetMainScreen";
             SizeFlagsHorizontal = SizeFlags.ExpandFill;
             SizeFlagsVertical = SizeFlags.ExpandFill;
-            CustomMinimumSize = new Vector2(960.0f, 640.0f);
-            SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
-            BuildUi();
+            CustomMinimumSize = Vector2.Zero;
+
+            ResolveUi();
+            ConfigureUi();
+
             _isUiReady = true;
-            EnsureViewportLayout();
+            SetProcess(true);
             RefreshNow();
             UpdateResponsiveLayout();
-            CallDeferred(nameof(EnsureViewportLayout));
             CallDeferred(nameof(UpdateResponsiveLayout));
         }
         catch (Exception exception)
@@ -82,45 +81,6 @@ public partial class FacetMainScreen : Control
         }
     }
 
-    /// <summary>
-    /// 立即刷新当前工作区日志视图。
-    /// 包括读取活动日志文件、应用过滤条件、刷新指标卡和正文区域。
-    /// </summary>
-    public void RefreshNow()
-    {
-        if (!_isUiReady)
-        {
-            return;
-        }
-
-        try
-        {
-            string logPath = ProjectSettings.GlobalizePath("user://logs/facet-structured.jsonl");
-            _pathLabel.Text = logPath;
-            _retentionLabel.Text = $"保留策略 / Retention: 当前活动日志 + 最近 {HistoryLimit} 次历史会话";
-
-            if (!File.Exists(logPath))
-            {
-                UpdateMetrics(0, 0, 0, 0);
-                _summaryLabel.Text = "结构化日志已启用 / Structured logging is ready, but no active log file exists yet.";
-                _entriesLabel.Text = "运行一次主场景后，这里会显示当前会话的 facet-structured.jsonl。\nRun the main scene once to populate the active structured log.";
-                return;
-            }
-
-            List<FacetEditorLogEntry> allEntries = LoadEntries(logPath);
-            List<FacetEditorLogEntry> filteredEntries = FilterEntries(allEntries);
-            RenderEntries(allEntries, filteredEntries);
-        }
-        catch (Exception exception)
-        {
-            FacetEditorDiagnostics.Error("MainScreen", "RefreshNow failed.", exception);
-            throw;
-        }
-    }
-
-    /// <summary>
-    /// 监听编辑器尺寸变化，并在面板被拉伸时重新计算响应式布局。
-    /// </summary>
     public override void _Notification(int what)
     {
         base._Notification(what);
@@ -132,50 +92,45 @@ public partial class FacetMainScreen : Control
 
         if (what == NotificationResized)
         {
-            EnsureViewportLayout();
             UpdateResponsiveLayout();
         }
     }
 
-    /// <summary>
-    /// 强制让主工作区铺满当前编辑器主面板，避免页签切换后尺寸丢失。
-    /// </summary>
+    public override void _Process(double delta)
+    {
+        base._Process(delta);
+
+        if (!_isUiReady || !_autoRefreshToggle.ButtonPressed || !IsVisibleInTree())
+        {
+            _autoRefreshElapsedSeconds = 0.0d;
+            return;
+        }
+
+        _autoRefreshElapsedSeconds += delta;
+        if (_autoRefreshElapsedSeconds < 1.0d)
+        {
+            return;
+        }
+
+        _autoRefreshElapsedSeconds = 0.0d;
+        RefreshNow();
+    }
+
     public void EnsureViewportLayout()
     {
-        try
+        if (_isUiReady)
         {
-            if (GetParent() is not Control parentControl)
-            {
-                return;
-            }
-
-            Vector2 parentSize = parentControl.Size;
-            if (parentSize.X <= 0.0f || parentSize.Y <= 0.0f)
-            {
-                return;
-            }
-
-            CustomMinimumSize = parentSize;
-            Position = Vector2.Zero;
-            Size = parentSize;
-            SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
-        }
-        catch (Exception exception)
-        {
-            FacetEditorDiagnostics.Error("MainScreen", "EnsureViewportLayout failed.", exception);
+            UpdateResponsiveLayout();
         }
     }
 
-    /// <summary>
-    /// 输出当前布局快照，便于排查工作区空白、错位或最小尺寸异常。
-    /// </summary>
     public void LogLayoutSnapshot()
     {
         try
         {
             FacetEditorDiagnostics.Info(
                 "MainScreen",
-                $"LayoutSnapshot visible={Visible} size={Size} min={CustomMinimumSize} parentSize={(GetParent() as Control)?.Size} children={GetChildCount()} rootMin={_root?.CustomMinimumSize} rootSize={_root?.Size}");
+                $"LayoutSnapshot visible={Visible} size={Size} min={CustomMinimumSize} parentSize={(GetParent() as Control)?.Size} tabsSize={_workspaceTabs?.Size} logSplitSize={_logSplit?.Size} sidebarSize={_logSidebarCard?.Size} logContentSize={_logContentCard?.Size}");
         }
         catch (Exception exception)
         {
@@ -183,404 +138,159 @@ public partial class FacetMainScreen : Control
         }
     }
 
-    /// <summary>
-    /// 构建整个 Facet 工作区页面的控件树。
-    /// 顶部是总览与指标，中部是侧栏控制区与主日志区域。
-    /// </summary>
-    private void BuildUi()
+    public void RefreshNow()
     {
-        AddThemeStyleboxOverride("panel", CreateScreenPanel());
-
-        MarginContainer chrome = new()
+        if (!_isUiReady)
         {
-            SizeFlagsHorizontal = SizeFlags.ExpandFill,
-            SizeFlagsVertical = SizeFlags.ExpandFill,
-        };
-        chrome.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
-        chrome.AddThemeConstantOverride("margin_left", 24);
-        chrome.AddThemeConstantOverride("margin_top", 24);
-        chrome.AddThemeConstantOverride("margin_right", 24);
-        chrome.AddThemeConstantOverride("margin_bottom", 24);
-        AddChild(chrome);
+            return;
+        }
 
-        _root = new VBoxContainer
+        try
         {
-            SizeFlagsHorizontal = SizeFlags.ExpandFill,
-            SizeFlagsVertical = SizeFlags.ExpandFill,
-            ThemeTypeVariation = "MarginContainer",
-        };
-        chrome.AddChild(_root);
+            string logPath = ProjectSettings.GlobalizePath("user://logs/facet-structured.jsonl");
+            _pathLabel.Text = logPath;
+            _retentionLabel.Text = $"当前活动日志 + 最近 {HistoryLimit} 次历史会话";
 
-        _root.AddChild(BuildHeaderCard());
-        _root.AddChild(BuildMetricsRow());
+            if (!File.Exists(logPath))
+            {
+                UpdateMetrics(0, 0, 0, 0);
+                _logSummaryLabel.Text = "结构化日志已启用，但当前还没有活动日志文件。先运行一次主场景，再回到这里查看。";
+                _entriesLabel.Text = "运行一次主场景后，这里会显示当前会话的 facet-structured.jsonl。";
+                RefreshHotReloadLabStatus(new List<FacetEditorLogEntry>());
+                return;
+            }
 
-        _contentSplit = new HSplitContainer
+            List<FacetEditorLogEntry> allEntries = LoadEntries(logPath);
+            List<FacetEditorLogEntry> filteredEntries = FilterEntries(allEntries);
+            RenderEntries(allEntries, filteredEntries);
+            RefreshHotReloadLabStatus(allEntries);
+        }
+        catch (Exception exception)
         {
-            SizeFlagsHorizontal = SizeFlags.ExpandFill,
-            SizeFlagsVertical = SizeFlags.ExpandFill,
-        };
-        _contentSplit.SplitOffsets = new[] { 360 };
-        _root.AddChild(_contentSplit);
-
-        _contentSplit.AddChild(BuildSidebar());
-        _contentSplit.AddChild(BuildLogSurface());
-
-        _refreshTimer = new Timer
-        {
-            WaitTime = 1.0,
-            OneShot = false,
-            Autostart = true,
-        };
-        _refreshTimer.Timeout += OnRefreshTimerTimeout;
-        AddChild(_refreshTimer);
+            FacetEditorDiagnostics.Error("MainScreen", "RefreshNow failed.", exception);
+            throw;
+        }
     }
 
-    /// <summary>
-    /// 构建顶部介绍卡片，用于明确工作区定位与后续扩展方向。
-    /// </summary>
-    private Control BuildHeaderCard()
+    private void ResolveUi()
     {
-        PanelContainer card = CreateCardPanel();
+        _logMetricsGrid = ResolveRequiredNode<GridContainer>("%LogMetricsGrid");
+        _logSplit = ResolveRequiredNode<HSplitContainer>("%LogSplit");
+        _logSidebarCard = ResolveRequiredNode<PanelContainer>("%LogSidebarCard");
+        _logContentCard = ResolveRequiredNode<PanelContainer>("%LogContentCard");
+        _retentionCard = ResolveRequiredNode<PanelContainer>("%RetentionCard");
+        _hotReloadIntroCard = ResolveRequiredNode<PanelContainer>("%HotReloadIntroCard");
+        _hotReloadEvidenceCard = ResolveRequiredNode<PanelContainer>("%HotReloadEvidenceCard");
+        _reservedCard = ResolveRequiredNode<PanelContainer>("%ReservedCard");
+        _totalMetricCard = ResolveRequiredNode<PanelContainer>("%TotalMetricCard");
+        _filteredMetricCard = ResolveRequiredNode<PanelContainer>("%FilteredMetricCard");
+        _sessionsMetricCard = ResolveRequiredNode<PanelContainer>("%SessionsMetricCard");
+        _categoriesMetricCard = ResolveRequiredNode<PanelContainer>("%CategoriesMetricCard");
+        _workspaceTabs = ResolveRequiredNode<TabContainer>("%WorkspaceTabs");
 
-        MarginContainer padding = CreateInnerMargin(20, 18, 20, 18);
-        card.AddChild(padding);
-
-        VBoxContainer content = CreateVBox(8);
-        padding.AddChild(content);
-
-        Label eyebrowLabel = new()
-        {
-            Text = "客户端工具 / Client Tooling",
-        };
-        eyebrowLabel.AddThemeColorOverride("font_color", new Color("6ea8ff"));
-        content.AddChild(eyebrowLabel);
-
-        Label titleLabel = new()
-        {
-            Text = "Facet 工作台 / Facet Workspace",
-        };
-        titleLabel.AddThemeFontSizeOverride("font_size", 28);
-        titleLabel.AddThemeColorOverride("font_color", new Color("f3f6fb"));
-        content.AddChild(titleLabel);
-
-        Label introLabel = new()
-        {
-            Text = "用于查看客户端结构化诊断信息，并为后续 UI 注册、红点树和页面调试提供统一入口。\nA unified workspace for structured diagnostics today and future UI tooling tomorrow.",
-            AutowrapMode = TextServer.AutowrapMode.WordSmart,
-        };
-        introLabel.AddThemeColorOverride("font_color", new Color("a8b3c7"));
-        introLabel.AddThemeFontSizeOverride("font_size", 15);
-        content.AddChild(introLabel);
-
-        return card;
+        _totalValueLabel = ResolveRequiredNode<Label>("%TotalValueLabel");
+        _filteredValueLabel = ResolveRequiredNode<Label>("%FilteredValueLabel");
+        _sessionsValueLabel = ResolveRequiredNode<Label>("%SessionsValueLabel");
+        _categoriesValueLabel = ResolveRequiredNode<Label>("%CategoriesValueLabel");
+        _logSummaryLabel = ResolveRequiredNode<Label>("%LogSummaryLabel");
+        _pathLabel = ResolveRequiredNode<Label>("%PathLabel");
+        _retentionLabel = ResolveRequiredNode<Label>("%RetentionLabel");
+        _hotReloadBridgeStatusLabel = ResolveRequiredNode<Label>("%HotReloadBridgeStatusLabel");
+        _hotReloadBridgePathsLabel = ResolveRequiredNode<Label>("%HotReloadBridgePathsLabel");
+        _entriesLabel = ResolveRequiredNode<RichTextLabel>("%EntriesLabel");
+        _hotReloadEvidenceLabel = ResolveRequiredNode<RichTextLabel>("%HotReloadEvidenceLabel");
+        _sessionFilter = ResolveRequiredNode<LineEdit>("%SessionFilter");
+        _categoryFilter = ResolveRequiredNode<LineEdit>("%CategoryFilter");
+        _levelFilter = ResolveRequiredNode<OptionButton>("%LevelFilter");
+        _autoRefreshToggle = ResolveRequiredNode<CheckButton>("%AutoRefreshToggle");
+        _refreshButton = ResolveRequiredNode<Button>("%RefreshButton");
+        _openLogButton = ResolveRequiredNode<Button>("%OpenLogButton");
+        _currentPageReloadTestButton = ResolveRequiredNode<Button>("%CurrentPageReloadTestButton");
+        _dungeonReloadTestButton = ResolveRequiredNode<Button>("%DungeonReloadTestButton");
+        _refreshHotReloadStatusButton = ResolveRequiredNode<Button>("%RefreshHotReloadStatusButton");
     }
 
-    /// <summary>
-    /// 构建顶部指标卡区域，用于快速感知日志规模、过滤效果和观测覆盖面。
-    /// </summary>
-    private Control BuildMetricsRow()
+    private void ConfigureUi()
     {
-        _metricsGrid = new GridContainer
-        {
-            SizeFlagsHorizontal = SizeFlags.ExpandFill,
-            Columns = 4,
-        };
-        _metricsGrid.AddThemeConstantOverride("h_separation", 12);
-        _metricsGrid.AddThemeConstantOverride("v_separation", 12);
+        ApplyTheme();
+        ConfigureFilters();
+        ConfigureTabTitles();
 
-        (_totalValueLabel, PanelContainer totalCard) = CreateMetricCard("总日志 / Total Entries", "0");
-        (_filteredValueLabel, PanelContainer filteredCard) = CreateMetricCard("过滤结果 / Filtered View", "0");
-        (_sessionsValueLabel, PanelContainer sessionsCard) = CreateMetricCard("会话数 / Sessions", "0");
-        (_categoriesValueLabel, PanelContainer categoriesCard) = CreateMetricCard("分类数 / Categories", "0");
-
-        _metricsGrid.AddChild(totalCard);
-        _metricsGrid.AddChild(filteredCard);
-        _metricsGrid.AddChild(sessionsCard);
-        _metricsGrid.AddChild(categoriesCard);
-
-        return _metricsGrid;
-    }
-
-    /// <summary>
-    /// 构建左侧控制栏，包括刷新、日志目录入口、保留策略卡片和筛选器。
-    /// </summary>
-    private Control BuildSidebar()
-    {
-        _sidebarCard = CreateCardPanel();
-        _sidebarCard.CustomMinimumSize = new Vector2(320.0f, 0.0f);
-
-        MarginContainer padding = CreateInnerMargin(18, 18, 18, 18);
-        _sidebarCard.AddChild(padding);
-
-        _sidebarScroll = new ScrollContainer
-        {
-            SizeFlagsHorizontal = SizeFlags.ExpandFill,
-            SizeFlagsVertical = SizeFlags.ExpandFill,
-        };
-        padding.AddChild(_sidebarScroll);
-
-        VBoxContainer content = CreateVBox(16);
-        content.SizeFlagsHorizontal = SizeFlags.ExpandFill;
-        _sidebarScroll.AddChild(content);
-
-        content.AddChild(CreateSectionTitle("控制台 / Control Surface", "刷新、文件访问与查询过滤。\nRefresh controls, file access, and query filters."));
-
-        HBoxContainer actionRow = new();
-        actionRow.AddThemeConstantOverride("separation", 10);
-        content.AddChild(actionRow);
-
-        _refreshButton = new Button
-        {
-            Text = "刷新 / Refresh",
-            FocusMode = FocusModeEnum.None,
-            SizeFlagsHorizontal = SizeFlags.ExpandFill,
-        };
         _refreshButton.Pressed += RefreshNow;
-        actionRow.AddChild(_refreshButton);
-
-        _openLogButton = new Button
-        {
-            Text = "打开日志目录 / Open Logs",
-            FocusMode = FocusModeEnum.None,
-            SizeFlagsHorizontal = SizeFlags.ExpandFill,
-        };
         _openLogButton.Pressed += OnOpenUserLogsPressed;
-        actionRow.AddChild(_openLogButton);
+        _currentPageReloadTestButton.Pressed += OnRunCurrentPageHotReloadTestPressed;
+        _dungeonReloadTestButton.Pressed += OnRunDungeonHotReloadTestPressed;
+        _refreshHotReloadStatusButton.Pressed += RefreshNow;
+    }
 
-        _autoRefreshToggle = new CheckButton
+    private void ConfigureTabTitles()
+    {
+        if (_workspaceTabs.GetChildCount() < 3)
         {
-            Text = "自动刷新 / Auto Refresh",
-            ButtonPressed = true,
-            FocusMode = FocusModeEnum.None,
-        };
-        content.AddChild(_autoRefreshToggle);
+            return;
+        }
 
-        content.AddChild(CreateDivider());
-        content.AddChild(CreateSectionTitle("日志源 / Log Source", "当前活动结构化日志文件路径。\nCurrent active structured log path."));
+        _workspaceTabs.GetChild(0).Name = "日志";
+        _workspaceTabs.GetChild(1).Name = "热重载";
+        _workspaceTabs.GetChild(2).Name = "预留";
+    }
 
-        _pathLabel = new Label
+    private void ApplyTheme()
+    {
+        AddThemeStyleboxOverride("panel", CreateScreenPanelStyle());
+
+        foreach (PanelContainer card in new[]
+                 {
+                     _logSidebarCard,
+                     _logContentCard,
+                     _retentionCard,
+                     _hotReloadIntroCard,
+                     _hotReloadEvidenceCard,
+                     _reservedCard,
+                     _totalMetricCard,
+                     _filteredMetricCard,
+                     _sessionsMetricCard,
+                     _categoriesMetricCard,
+                 })
         {
-            AutowrapMode = TextServer.AutowrapMode.WordSmart,
-        };
+            card.AddThemeStyleboxOverride("panel", CreateCardStyle());
+        }
+
+        _retentionCard.AddThemeStyleboxOverride("panel", CreateStatusCardStyle());
+        _entriesLabel.AddThemeStyleboxOverride("normal", CreateLogSurfaceStyle());
+        _hotReloadEvidenceLabel.AddThemeStyleboxOverride("normal", CreateLogSurfaceStyle());
+
+        foreach (Label valueLabel in new[] { _totalValueLabel, _filteredValueLabel, _sessionsValueLabel, _categoriesValueLabel })
+        {
+            valueLabel.AddThemeFontSizeOverride("font_size", 22);
+            valueLabel.AddThemeColorOverride("font_color", new Color("f3f6fb"));
+        }
+
+        _logSummaryLabel.AddThemeColorOverride("font_color", new Color("a8b3c7"));
         _pathLabel.AddThemeColorOverride("font_color", new Color("9aa7bc"));
-        content.AddChild(_pathLabel);
+        _retentionLabel.AddThemeColorOverride("font_color", new Color("8fd1ae"));
+        _hotReloadBridgeStatusLabel.AddThemeColorOverride("font_color", new Color("d7deea"));
+        _hotReloadBridgePathsLabel.AddThemeColorOverride("font_color", new Color("8f9db3"));
+        _entriesLabel.AddThemeColorOverride("default_color", new Color("d7deea"));
+        _hotReloadEvidenceLabel.AddThemeColorOverride("default_color", new Color("d7deea"));
+    }
 
-        _retentionLabel = new Label
-        {
-            AutowrapMode = TextServer.AutowrapMode.WordSmart,
-        };
-        _retentionLabel.AddThemeColorOverride("font_color", new Color("8dc9a8"));
-        content.AddChild(CreateRetentionStatusCard());
-
-        content.AddChild(CreateDivider());
-        content.AddChild(CreateSectionTitle("筛选器 / Filters", "按会话、分类和级别缩小范围。\nNarrow the stream by session, category, and level."));
-
-        content.AddChild(CreateLabeledField("会话前缀 / Session Prefix", out _sessionFilter, "例如 / e.g. abcd1234"));
+    private void ConfigureFilters()
+    {
         _sessionFilter.TextChanged += OnFilterChanged;
-
-        content.AddChild(CreateLabeledField("分类前缀 / Category Prefix", out _categoryFilter, "例如 / e.g. Client.WindowManager"));
         _categoryFilter.TextChanged += OnFilterChanged;
 
-        VBoxContainer levelField = CreateVBox(6);
-        Label levelLabel = new() { Text = "最小级别 / Minimum Level" };
-        levelLabel.AddThemeColorOverride("font_color", new Color("c9d2e3"));
-        levelField.AddChild(levelLabel);
-        _levelFilter = new OptionButton
-        {
-            SizeFlagsHorizontal = SizeFlags.ExpandFill,
-        };
+        _levelFilter.Clear();
         AddLevelItem("Trace / 跟踪", 0);
         AddLevelItem("Debug / 调试", 1);
         AddLevelItem("Info / 信息", 2);
         AddLevelItem("Warning / 警告", 3);
         AddLevelItem("Error / 错误", 4);
+        _levelFilter.Select(0);
         _levelFilter.ItemSelected += OnLevelSelected;
-        levelField.AddChild(_levelFilter);
-        content.AddChild(levelField);
-
-        content.AddChild(CreateDivider());
-        content.AddChild(CreateSectionTitle("说明 / Notes", "当前页面聚焦诊断能力，同时约束日志存储规模。\nThis workspace focuses on diagnostics while keeping storage bounded."));
-
-        Label notesLabel = new()
-        {
-            Text = "结构化日志与编辑器日志都会保留一个当前活动文件，并自动归档历史，仅保留最近 10 次。\nBoth runtime and editor logs keep one active file plus the latest 10 archived sessions.",
-            AutowrapMode = TextServer.AutowrapMode.WordSmart,
-        };
-        notesLabel.AddThemeColorOverride("font_color", new Color("9aa7bc"));
-        content.AddChild(notesLabel);
-
-        return _sidebarCard;
     }
 
-    /// <summary>
-    /// 构建右侧主内容区，通过页签隔离当前日志能力和未来扩展模块。
-    /// </summary>
-    private Control BuildLogSurface()
-    {
-        PanelContainer surface = CreateCardPanel();
-
-        MarginContainer padding = CreateInnerMargin(18, 18, 18, 18);
-        surface.AddChild(padding);
-
-        VBoxContainer content = CreateVBox(12);
-        padding.AddChild(content);
-
-        HBoxContainer headerRow = new();
-        headerRow.AddThemeConstantOverride("separation", 10);
-        content.AddChild(headerRow);
-
-        VBoxContainer titleColumn = CreateVBox(4);
-        titleColumn.SizeFlagsHorizontal = SizeFlags.ExpandFill;
-        headerRow.AddChild(titleColumn);
-
-        Label titleLabel = new()
-        {
-            Text = "结构化日志流 / Structured Log Stream",
-        };
-        titleLabel.AddThemeFontSizeOverride("font_size", 18);
-        titleLabel.AddThemeColorOverride("font_color", new Color("eef2fa"));
-        titleColumn.AddChild(titleLabel);
-
-        _summaryLabel = new Label();
-        _summaryLabel.AddThemeColorOverride("font_color", new Color("9aa7bc"));
-        titleColumn.AddChild(_summaryLabel);
-
-        Label liveBadge = new()
-        {
-            Text = "实时 / LIVE",
-        };
-        liveBadge.AddThemeColorOverride("font_color", new Color("7ce0b8"));
-        liveBadge.AddThemeFontSizeOverride("font_size", 13);
-        headerRow.AddChild(liveBadge);
-
-        _workspaceTabs = new TabContainer
-        {
-            SizeFlagsHorizontal = SizeFlags.ExpandFill,
-            SizeFlagsVertical = SizeFlags.ExpandFill,
-        };
-        content.AddChild(_workspaceTabs);
-
-        _workspaceTabs.AddChild(BuildLogTab());
-        _workspaceTabs.AddChild(BuildFutureTab());
-
-        return surface;
-    }
-
-    /// <summary>
-    /// 构建日志页签。
-    /// </summary>
-    private Control BuildLogTab()
-    {
-        VBoxContainer logTab = CreateVBox(0);
-        logTab.Name = "日志 Log";
-        logTab.SizeFlagsHorizontal = SizeFlags.ExpandFill;
-        logTab.SizeFlagsVertical = SizeFlags.ExpandFill;
-
-        _entriesLabel = new RichTextLabel
-        {
-            SizeFlagsHorizontal = SizeFlags.ExpandFill,
-            SizeFlagsVertical = SizeFlags.ExpandFill,
-            ScrollActive = true,
-            SelectionEnabled = true,
-            FitContent = false,
-            BbcodeEnabled = true,
-        };
-        _entriesLabel.AddThemeStyleboxOverride("normal", CreateLogSurfaceStyle());
-        _entriesLabel.AddThemeColorOverride("default_color", new Color("d7deea"));
-        logTab.AddChild(_entriesLabel);
-
-        return logTab;
-    }
-
-    /// <summary>
-    /// 构建未来扩展页签占位区，防止后续工具继续堆叠到日志面板中。
-    /// </summary>
-    private Control BuildFutureTab()
-    {
-        PanelContainer futureTab = CreateCardPanel();
-        futureTab.Name = "扩展 Reserved";
-
-        MarginContainer padding = CreateInnerMargin(20, 18, 20, 18);
-        futureTab.AddChild(padding);
-
-        VBoxContainer content = CreateVBox(10);
-        padding.AddChild(content);
-
-        content.AddChild(CreateSectionTitle("预留模块 / Reserved Modules", "Facet 后续会继续扩展更多客户端工具，不再与日志堆在同一面板。\nFuture client tools will land here without crowding the log view."));
-
-        Label placeholder = new()
-        {
-            Text = "计划中的子模块 / Planned modules:\n• 页面注册 / Page Registry\n• 红点树 / Red Dot Tree\n• 资源诊断 / Asset Diagnostics\n• 热更新状态 / Hot Reload Status",
-            AutowrapMode = TextServer.AutowrapMode.WordSmart,
-        };
-        placeholder.AddThemeColorOverride("font_color", new Color("a7b4c8"));
-        content.AddChild(placeholder);
-
-        return futureTab;
-    }
-
-    private static VBoxContainer CreateVBox(int separation)
-    {
-        VBoxContainer box = new();
-        box.AddThemeConstantOverride("separation", separation);
-        return box;
-    }
-
-    private static MarginContainer CreateInnerMargin(int left, int top, int right, int bottom)
-    {
-        MarginContainer margin = new();
-        margin.AddThemeConstantOverride("margin_left", left);
-        margin.AddThemeConstantOverride("margin_top", top);
-        margin.AddThemeConstantOverride("margin_right", right);
-        margin.AddThemeConstantOverride("margin_bottom", bottom);
-        return margin;
-    }
-
-    private static PanelContainer CreateCardPanel()
-    {
-        PanelContainer panel = new();
-        panel.AddThemeStyleboxOverride("panel", CreateCardStyle());
-        panel.SizeFlagsHorizontal = SizeFlags.ExpandFill;
-        panel.SizeFlagsVertical = SizeFlags.ExpandFill;
-        return panel;
-    }
-
-    /// <summary>
-    /// 创建保留策略状态卡，让“日志保留策略”以明确的状态模块呈现，而不是普通说明文本。
-    /// </summary>
-    private Control CreateRetentionStatusCard()
-    {
-        PanelContainer card = new();
-        card.AddThemeStyleboxOverride("panel", CreateStatusCardStyle());
-
-        MarginContainer padding = CreateInnerMargin(12, 12, 12, 12);
-        card.AddChild(padding);
-
-        VBoxContainer content = CreateVBox(4);
-        padding.AddChild(content);
-
-        Label titleLabel = new()
-        {
-            Text = "保留策略 / Retention Policy",
-        };
-        titleLabel.AddThemeColorOverride("font_color", new Color("dff6e8"));
-        titleLabel.AddThemeFontSizeOverride("font_size", 15);
-        content.AddChild(titleLabel);
-
-        content.AddChild(_retentionLabel);
-
-        Label detailLabel = new()
-        {
-            Text = "避免 C 盘日志无限增长。\nPrevent unbounded growth under C drive user logs.",
-            AutowrapMode = TextServer.AutowrapMode.WordSmart,
-        };
-        detailLabel.AddThemeColorOverride("font_color", new Color("b4d8c1"));
-        content.AddChild(detailLabel);
-
-        return card;
-    }
-
-    private static StyleBoxFlat CreateScreenPanel()
+    private static StyleBoxFlat CreateScreenPanelStyle()
     {
         return new StyleBoxFlat
         {
@@ -598,23 +308,19 @@ public partial class FacetMainScreen : Control
             BorderWidthTop = 1,
             BorderWidthRight = 1,
             BorderWidthBottom = 1,
-            CornerRadiusTopLeft = 12,
-            CornerRadiusTopRight = 12,
-            CornerRadiusBottomRight = 12,
-            CornerRadiusBottomLeft = 12,
-            ContentMarginLeft = 0,
-            ContentMarginTop = 0,
-            ContentMarginRight = 0,
-            ContentMarginBottom = 0,
+            CornerRadiusTopLeft = 10,
+            CornerRadiusTopRight = 10,
+            CornerRadiusBottomRight = 10,
+            CornerRadiusBottomLeft = 10,
         };
     }
 
-    private static StyleBoxFlat CreateMetricValueStyle()
+    private static StyleBoxFlat CreateStatusCardStyle()
     {
         return new StyleBoxFlat
         {
-            BgColor = new Color("202a38"),
-            BorderColor = new Color("324154"),
+            BgColor = new Color("1c2a27"),
+            BorderColor = new Color("35584d"),
             BorderWidthLeft = 1,
             BorderWidthTop = 1,
             BorderWidthRight = 1,
@@ -636,113 +342,15 @@ public partial class FacetMainScreen : Control
             BorderWidthTop = 1,
             BorderWidthRight = 1,
             BorderWidthBottom = 1,
-            CornerRadiusTopLeft = 10,
-            CornerRadiusTopRight = 10,
-            CornerRadiusBottomRight = 10,
-            CornerRadiusBottomLeft = 10,
-            ContentMarginLeft = 14,
-            ContentMarginTop = 14,
-            ContentMarginRight = 14,
-            ContentMarginBottom = 14,
+            CornerRadiusTopLeft = 8,
+            CornerRadiusTopRight = 8,
+            CornerRadiusBottomRight = 8,
+            CornerRadiusBottomLeft = 8,
+            ContentMarginLeft = 12,
+            ContentMarginTop = 12,
+            ContentMarginRight = 12,
+            ContentMarginBottom = 12,
         };
-    }
-
-    private static StyleBoxFlat CreateStatusCardStyle()
-    {
-        return new StyleBoxFlat
-        {
-            BgColor = new Color("1c2a27"),
-            BorderColor = new Color("35584d"),
-            BorderWidthLeft = 1,
-            BorderWidthTop = 1,
-            BorderWidthRight = 1,
-            BorderWidthBottom = 1,
-            CornerRadiusTopLeft = 10,
-            CornerRadiusTopRight = 10,
-            CornerRadiusBottomRight = 10,
-            CornerRadiusBottomLeft = 10,
-        };
-    }
-
-    private static Control CreateDivider()
-    {
-        HSeparator separator = new();
-        separator.AddThemeColorOverride("separator", new Color("2d3747"));
-        return separator;
-    }
-
-    private static Control CreateSectionTitle(string title, string description)
-    {
-        VBoxContainer section = CreateVBox(4);
-
-        Label titleLabel = new() { Text = title };
-        titleLabel.AddThemeFontSizeOverride("font_size", 17);
-        titleLabel.AddThemeColorOverride("font_color", new Color("eef2fa"));
-        section.AddChild(titleLabel);
-
-        Label descriptionLabel = new()
-        {
-            Text = description,
-            AutowrapMode = TextServer.AutowrapMode.WordSmart,
-        };
-        descriptionLabel.AddThemeColorOverride("font_color", new Color("8f9db3"));
-        section.AddChild(descriptionLabel);
-
-        return section;
-    }
-
-    private static Control CreateLabeledField(string title, out LineEdit field, string placeholder)
-    {
-        VBoxContainer wrapper = CreateVBox(6);
-
-        Label label = new() { Text = title };
-        label.AddThemeColorOverride("font_color", new Color("c9d2e3"));
-        wrapper.AddChild(label);
-
-        field = new LineEdit
-        {
-            PlaceholderText = placeholder,
-            ClearButtonEnabled = true,
-            SizeFlagsHorizontal = SizeFlags.ExpandFill,
-        };
-        wrapper.AddChild(field);
-
-        return wrapper;
-    }
-
-    private static (Label ValueLabel, PanelContainer Card) CreateMetricCard(string title, string initialValue)
-    {
-        PanelContainer card = CreateCardPanel();
-        card.SizeFlagsHorizontal = SizeFlags.ExpandFill;
-        card.SizeFlagsVertical = SizeFlags.ShrinkCenter;
-
-        MarginContainer padding = CreateInnerMargin(16, 14, 16, 14);
-        card.AddChild(padding);
-
-        VBoxContainer content = CreateVBox(6);
-        padding.AddChild(content);
-
-        Label titleLabel = new() { Text = title };
-        titleLabel.AddThemeColorOverride("font_color", new Color("95a3b8"));
-        content.AddChild(titleLabel);
-
-        PanelContainer valuePlate = new();
-        valuePlate.AddThemeStyleboxOverride("panel", CreateMetricValueStyle());
-        content.AddChild(valuePlate);
-
-        MarginContainer valuePadding = CreateInnerMargin(12, 10, 12, 10);
-        valuePlate.AddChild(valuePadding);
-
-        Label valueLabel = new()
-        {
-            Text = initialValue,
-            HorizontalAlignment = HorizontalAlignment.Left,
-        };
-        valueLabel.AddThemeFontSizeOverride("font_size", 24);
-        valueLabel.AddThemeColorOverride("font_color", new Color("f3f6fb"));
-        valuePadding.AddChild(valueLabel);
-
-        return (valueLabel, card);
     }
 
     private void AddLevelItem(string label, int id)
@@ -760,18 +368,6 @@ public partial class FacetMainScreen : Control
         RefreshNow();
     }
 
-    /// <summary>
-    /// 自动刷新计时器回调。
-    /// 仅在页面可见且自动刷新开启时触发，避免后台无意义读盘。
-    /// </summary>
-    private void OnRefreshTimerTimeout()
-    {
-        if (_autoRefreshToggle.ButtonPressed && IsVisibleInTree())
-        {
-            RefreshNow();
-        }
-    }
-
     private void OnOpenUserLogsPressed()
     {
         string userLogsDirectory = ProjectSettings.GlobalizePath("user://logs");
@@ -787,15 +383,15 @@ public partial class FacetMainScreen : Control
         _categoriesValueLabel.Text = categoryCount.ToString();
     }
 
-    /// <summary>
-    /// 从结构化日志文件中读取并解析所有有效日志条目。
-    /// 无法解析的行会被忽略，避免单条脏数据阻塞整个面板。
-    /// </summary>
     private static List<FacetEditorLogEntry> LoadEntries(string logPath)
     {
         List<FacetEditorLogEntry> entries = new();
-        foreach (string line in File.ReadLines(logPath, Encoding.UTF8))
+        using FileStream stream = new(logPath, FileMode.Open, System.IO.FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+        using StreamReader reader = new(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
+
+        while (!reader.EndOfStream)
         {
+            string? line = reader.ReadLine();
             if (string.IsNullOrWhiteSpace(line))
             {
                 continue;
@@ -810,9 +406,6 @@ public partial class FacetMainScreen : Control
         return entries;
     }
 
-    /// <summary>
-    /// 根据当前会话前缀、分类前缀和最低级别过滤日志。
-    /// </summary>
     private List<FacetEditorLogEntry> FilterEntries(List<FacetEditorLogEntry> allEntries)
     {
         string sessionPrefix = _sessionFilter.Text.Trim();
@@ -827,12 +420,14 @@ public partial class FacetMainScreen : Control
                 continue;
             }
 
-            if (!string.IsNullOrWhiteSpace(sessionPrefix) && !entry.SessionId.StartsWith(sessionPrefix, StringComparison.OrdinalIgnoreCase))
+            if (!string.IsNullOrWhiteSpace(sessionPrefix) &&
+                !entry.SessionId.StartsWith(sessionPrefix, StringComparison.OrdinalIgnoreCase))
             {
                 continue;
             }
 
-            if (!string.IsNullOrWhiteSpace(categoryPrefix) && !entry.Category.StartsWith(categoryPrefix, StringComparison.OrdinalIgnoreCase))
+            if (!string.IsNullOrWhiteSpace(categoryPrefix) &&
+                !entry.Category.StartsWith(categoryPrefix, StringComparison.OrdinalIgnoreCase))
             {
                 continue;
             }
@@ -843,9 +438,6 @@ public partial class FacetMainScreen : Control
         return filtered;
     }
 
-    /// <summary>
-    /// 把过滤后的日志渲染到主视图，并同步更新顶部指标卡与摘要文案。
-    /// </summary>
     private void RenderEntries(List<FacetEditorLogEntry> allEntries, List<FacetEditorLogEntry> filteredEntries)
     {
         HashSet<string> sessions = new(StringComparer.OrdinalIgnoreCase);
@@ -857,11 +449,12 @@ public partial class FacetMainScreen : Control
         }
 
         UpdateMetrics(allEntries.Count, filteredEntries.Count, sessions.Count, categories.Count);
-        _summaryLabel.Text = $"当前显示最近 {Math.Min(filteredEntries.Count, MaxVisibleEntries)} 条，过滤后共 {filteredEntries.Count} 条。 / Showing the latest {Math.Min(filteredEntries.Count, MaxVisibleEntries)} of {filteredEntries.Count} filtered entries.";
+        _logSummaryLabel.Text =
+            $"当前显示最近 {Math.Min(filteredEntries.Count, MaxVisibleEntries)} 条，过滤后共 {filteredEntries.Count} 条结构化日志。";
 
         if (filteredEntries.Count == 0)
         {
-            _entriesLabel.Text = "当前筛选条件下没有匹配日志。\nNo structured logs match the current filters.";
+            _entriesLabel.Text = "当前筛选条件下没有匹配日志。";
             return;
         }
 
@@ -909,6 +502,129 @@ public partial class FacetMainScreen : Control
         }
 
         _entriesLabel.Text = builder.ToString().TrimEnd();
+    }
+
+    private void OnRunCurrentPageHotReloadTestPressed()
+    {
+        QueueHotReloadLabRequest(FacetHotReloadLabBridge.CommandCurrentPageRoundTrip, "editor.workspace.current");
+    }
+
+    private void OnRunDungeonHotReloadTestPressed()
+    {
+        QueueHotReloadLabRequest(FacetHotReloadLabBridge.CommandDungeonRoundTrip, "editor.workspace.dungeon");
+    }
+
+    private void QueueHotReloadLabRequest(string command, string issuedBy)
+    {
+        try
+        {
+            FacetHotReloadLabRequest request = FacetHotReloadLabBridge.CreateRequest(command, issuedBy);
+            FacetHotReloadLabBridge.SaveRequest(request);
+            FacetHotReloadLabBridge.SaveStatus(
+                FacetHotReloadLabBridge.CreateRequestedStatus(
+                    request,
+                    "编辑器工作台已写入测试请求，等待运行中的客户端处理。"));
+
+            FacetEditorDiagnostics.Info(
+                "MainScreen",
+                $"HotReloadLabRequest command={command} requestId={request.RequestId} issuedBy={issuedBy}");
+
+            RefreshNow();
+        }
+        catch (Exception exception)
+        {
+            FacetEditorDiagnostics.Error("MainScreen", "QueueHotReloadLabRequest failed.", exception);
+            throw;
+        }
+    }
+
+    private void RefreshHotReloadLabStatus(List<FacetEditorLogEntry> allEntries)
+    {
+        string requestPath = FacetHotReloadLabBridge.GetRequestPath();
+        string statusPath = FacetHotReloadLabBridge.GetStatusPath();
+        FacetHotReloadLabBridge.TryLoadStatus(out FacetHotReloadLabStatus? status);
+
+        _hotReloadBridgeStatusLabel.Text = status == null
+            ? "尚未检测到 Hot Reload Lab 状态文件。请先运行主场景，或在本页签中发起一次测试请求。"
+            : BuildHotReloadStatusText(status);
+
+        _hotReloadBridgePathsLabel.Text =
+            $"Request: {requestPath}\n" +
+            $"Status: {statusPath}";
+
+        _hotReloadEvidenceLabel.Text = BuildHotReloadEvidenceText(allEntries);
+    }
+
+    private static string BuildHotReloadStatusText(FacetHotReloadLabStatus status)
+    {
+        string successText = status.Success switch
+        {
+            true => "成功",
+            false => "失败",
+            _ => "未定",
+        };
+
+        return
+            $"状态: {status.State}  结果: {successText}\n" +
+            $"命令: {status.Command}\n" +
+            $"请求: {status.RequestId}\n" +
+            $"来源: {status.IssuedBy}\n" +
+            $"发起时间: {status.IssuedAtUtc}\n" +
+            $"更新时间: {status.UpdatedAtUtc}\n" +
+            $"运行时会话: {status.RuntimeSessionId}\n" +
+            $"运行时页面: {status.RuntimePageId}\n" +
+            $"说明: {status.Message}";
+    }
+
+    private static string BuildHotReloadEvidenceText(List<FacetEditorLogEntry> allEntries)
+    {
+        List<FacetEditorLogEntry> matches = new();
+        for (int index = allEntries.Count - 1; index >= 0 && matches.Count < 4; index--)
+        {
+            FacetEditorLogEntry entry = allEntries[index];
+            if (!string.Equals(entry.Category, "Lua.HotReload.Test", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            matches.Add(entry);
+        }
+
+        if (matches.Count == 0)
+        {
+            return "尚未发现 Lua.HotReload.Test 结构化日志。";
+        }
+
+        matches.Reverse();
+
+        StringBuilder builder = new();
+        for (int index = 0; index < matches.Count; index++)
+        {
+            FacetEditorLogEntry entry = matches[index];
+            builder.Append('[');
+            builder.Append(entry.LevelName);
+            builder.Append("] ");
+            builder.Append(entry.TimestampUtc);
+            builder.AppendLine();
+            builder.Append(entry.Message);
+            builder.AppendLine();
+
+            if (!string.IsNullOrWhiteSpace(entry.PayloadJson))
+            {
+                builder.Append("payload: ");
+                builder.Append(entry.PayloadJson);
+                builder.AppendLine();
+            }
+
+            if (index < matches.Count - 1)
+            {
+                builder.AppendLine();
+                builder.AppendLine("----------------------------------------");
+                builder.AppendLine();
+            }
+        }
+
+        return builder.ToString().TrimEnd();
     }
 
     private static string GetLevelColorHex(int levelRank)
@@ -1008,49 +724,49 @@ public partial class FacetMainScreen : Control
     }
 
     /// <summary>
-    /// 根据当前编辑器窗口尺寸调整指标卡列数、侧栏宽度和日志区域最小高度。
-    /// 目标是优先保证内容可见，再考虑大屏下的排版舒展度。
+    /// 只保留宽度分配，不再使用依赖高度猜测的布局计算。
     /// </summary>
     private void UpdateResponsiveLayout()
     {
         float viewportWidth = Size.X;
-        float viewportHeight = Size.Y;
-        if (viewportWidth <= 0.0f || viewportHeight <= 0.0f)
+        if (viewportWidth <= 0.0f)
         {
             return;
         }
 
-        _metricsGrid.Columns = viewportWidth switch
+        _logMetricsGrid.Columns = viewportWidth switch
         {
-            >= 1400.0f => 4,
-            >= 900.0f => 2,
+            >= 1440.0f => 4,
+            >= 980.0f => 2,
             _ => 1,
         };
 
-        _sidebarCard.CustomMinimumSize = new Vector2(viewportWidth >= 1100.0f ? 320.0f : 280.0f, 0.0f);
-        _contentSplit.SplitOffsets = new[]
+        _logSidebarCard.CustomMinimumSize = new Vector2(
+            viewportWidth >= 1280.0f ? 300.0f : 260.0f,
+            0.0f);
+
+        _logSplit.SplitOffsets = new[]
         {
             viewportWidth switch
             {
-                >= 1500.0f => 380,
-                >= 1200.0f => 340,
-                _ => 300,
+                >= 1440.0f => 320,
+                >= 1120.0f => 290,
+                _ => 250,
             },
         };
-
-        _root.CustomMinimumSize = Vector2.Zero;
-
-        float sidebarMinHeight = (float)Math.Max(260.0, viewportHeight - 300.0f);
-        _sidebarScroll.CustomMinimumSize = new Vector2(0.0f, sidebarMinHeight);
-
-        float logSurfaceMinHeight = (float)Math.Max(320.0, viewportHeight - 320.0f);
-        _workspaceTabs.CustomMinimumSize = new Vector2(0.0f, logSurfaceMinHeight);
-        _entriesLabel.CustomMinimumSize = new Vector2(0.0f, (float)Math.Max(260.0, logSurfaceMinHeight - 24.0f));
     }
 
-    /// <summary>
-    /// 编辑器工作区日志条目结构。
-    /// </summary>
+    private TNode ResolveRequiredNode<TNode>(string path) where TNode : Node
+    {
+        TNode? node = GetNodeOrNull<TNode>(path);
+        if (node == null)
+        {
+            throw new InvalidOperationException($"FacetMainScreen required node missing: {path}");
+        }
+
+        return node;
+    }
+
     private sealed record FacetEditorLogEntry(
         string SessionId,
         long EventId,

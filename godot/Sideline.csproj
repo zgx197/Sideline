@@ -18,6 +18,8 @@
     <Compile Include="scripts/facet/Runtime/FacetHost.cs" />
     <Compile Include="scripts/facet/Runtime/FacetLogger.cs" />
     <Compile Include="scripts/facet/Runtime/FacetPlainTextLogEncoding.cs" />
+    <Compile Include="scripts/facet/Runtime/FacetHotReloadLabBridge.cs" />
+    <Compile Include="scripts/facet/Runtime/LuaHotReloadTestService.cs" />
     <Compile Include="scripts/facet/Runtime/LuaReloadCoordinator.cs" />
     <Compile Include="scripts/facet/Runtime/Pages/UIManager.cs" />
     <Compile Include="scripts/facet/Runtime/Pages/UIPageLoader.cs" />

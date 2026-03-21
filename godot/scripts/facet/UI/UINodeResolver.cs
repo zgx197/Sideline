@@ -77,5 +77,10 @@ namespace Sideline.Facet.UI
             UINodeRegistry subtreeRegistry = UINodeRegistry.CreateFromSubtree(rootNode);
             return new UINodeResolver(subtreeRegistry);
         }
+
+        IUIObjectResolver IUIObjectResolver.CreateSubtreeResolver(string rootKey)
+        {
+            return CreateSubtreeResolver(rootKey);
+        }
     }
 }

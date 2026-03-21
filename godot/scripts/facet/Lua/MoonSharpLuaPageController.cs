@@ -70,6 +70,8 @@ namespace Sideline.Facet.Lua
             }
 
             UserData.RegisterType<LuaApiBridge>();
+            UserData.RegisterType<LuaBindingScopeBridge>();
+            UserData.RegisterType<LuaBindingScopeBridge.LuaStructuredListItem>();
             _userDataRegistered = true;
         }
     }

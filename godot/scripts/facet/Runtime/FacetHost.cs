@@ -20,8 +20,13 @@ namespace Sideline.Facet.Runtime
     {
         private static readonly ProjectionKey RuntimeProbeProjectionKey = FacetProjectionKeys.RuntimeProbe;
         private static readonly ProjectionKey RuntimeMetricsProjectionKey = FacetProjectionKeys.RuntimeMetrics;
+        private const string LuaHotReloadCurrentPageTestShortcutDescription = "Ctrl+Shift+F10";
+        private const string LuaHotReloadDungeonTestShortcutDescription = "Ctrl+Shift+F11";
+        private const double EditorHotReloadLabPollIntervalSeconds = 0.25d;
 
         private double _hotReloadPollTimer;
+        private double _editorHotReloadLabPollTimer;
+        private string? _lastHandledHotReloadLabRequestId;
 
         /// <summary>
         /// 最小启动验证标记。
@@ -64,6 +69,9 @@ namespace Sideline.Facet.Runtime
 
         [Export(PropertyHint.Range, "0.1,5,0.1")]
         public double HotReloadPollIntervalSeconds { get; set; } = 0.5d;
+
+        [Export]
+        public bool EnableLuaHotReloadTestShortcut { get; set; } = false;
 
         [Export]
         public bool EnablePageCacheByDefault { get; set; } = true;
@@ -132,7 +140,19 @@ namespace Sideline.Facet.Runtime
 
         public override void _Process(double delta)
         {
-            if (!IsInitialized || !Config.EnableHotReload)
+            if (!IsInitialized)
+            {
+                return;
+            }
+
+            _editorHotReloadLabPollTimer += delta;
+            if (_editorHotReloadLabPollTimer >= EditorHotReloadLabPollIntervalSeconds)
+            {
+                _editorHotReloadLabPollTimer = 0.0d;
+                PollEditorHotReloadLabRequests();
+            }
+
+            if (!Config.EnableHotReload)
             {
                 return;
             }
@@ -145,6 +165,35 @@ namespace Sideline.Facet.Runtime
 
             _hotReloadPollTimer = 0;
             Services.GetRequired<LuaReloadCoordinator>().Poll("host.poll");
+        }
+
+        public override void _UnhandledInput(InputEvent @event)
+        {
+            if (!IsInitialized || !EnableLuaHotReloadTestShortcut)
+            {
+                return;
+            }
+
+            if (@event is not InputEventKey keyEvent ||
+                !keyEvent.Pressed ||
+                keyEvent.Echo ||
+                !keyEvent.CtrlPressed ||
+                !keyEvent.ShiftPressed)
+            {
+                return;
+            }
+
+            bool handled = keyEvent.Keycode switch
+            {
+                Key.F10 => TryRunLuaHotReloadRoundTripTest(reason: "host.shortcut"),
+                Key.F11 => TryRunDungeonLuaHotReloadRoundTripTest(reason: "host.shortcut.dungeon"),
+                _ => false,
+            };
+
+            if (handled)
+            {
+                GetViewport()?.SetInputAsHandled();
+            }
         }
 
         /// <summary>
@@ -163,12 +212,16 @@ namespace Sideline.Facet.Runtime
             Logger = CreateLogger(Config);
             Context = new FacetRuntimeContext(Config, Services, Logger);
             _hotReloadPollTimer = 0;
+            _editorHotReloadLabPollTimer = 0;
+            _lastHandledHotReloadLabRequestId = null;
 
             RegisterCoreServices();
 
             IsInitialized = true;
-            SetProcess(Config.EnableHotReload);
+            SetProcess(true);
+            SetProcessUnhandledInput(EnableLuaHotReloadTestShortcut);
             LogStartupSummary();
+            PublishHotReloadLabIdleStatus();
             EmitSignal("Initialized");
         }
 
@@ -183,7 +236,38 @@ namespace Sideline.Facet.Runtime
             Logger = CreateLogger(Config);
             Context = new FacetRuntimeContext(Config, Services, Logger);
             _hotReloadPollTimer = 0;
+            _editorHotReloadLabPollTimer = 0;
+            _lastHandledHotReloadLabRequestId = null;
             SetProcess(false);
+            SetProcessUnhandledInput(false);
+        }
+
+        /// <summary>
+        /// 主动执行一次 Lua 热重载往返测试。
+        /// 默认优先使用当前页面运行时所绑定的 Lua 控制器脚本。
+        /// </summary>
+        public bool TryRunLuaHotReloadRoundTripTest(string? scriptId = null, string reason = "manual")
+        {
+            if (!IsInitialized || !Services.TryGet(out LuaHotReloadTestService? testService) || testService == null)
+            {
+                Logger.Warning(
+                    "Lua.HotReload.Test",
+                    "Lua 热重载测试请求被忽略，测试服务尚未就绪。",
+                    new Dictionary<string, object?>
+                    {
+                        ["requestedScriptId"] = scriptId,
+                        ["reason"] = reason,
+                        ["isInitialized"] = IsInitialized,
+                    });
+                return false;
+            }
+
+            return testService.TryRunRoundTripTest(scriptId, reason);
+        }
+
+        public bool TryRunDungeonLuaHotReloadRoundTripTest(string reason = "manual")
+        {
+            return TryRunLuaHotReloadRoundTripTest(FacetLuaScriptIds.DungeonRuntimeController, reason);
         }
 
         /// <summary>
@@ -239,6 +323,7 @@ namespace Sideline.Facet.Runtime
             ILuaRedDotBridge luaRedDotBridge = new NullLuaRedDotBridge();
             ILuaRuntimeHost luaRuntimeHost = new LuaRuntimeHost(luaScriptSource, luaRedDotBridge);
             LuaReloadCoordinator luaReloadCoordinator = new(uiManager, Logger);
+            LuaHotReloadTestService luaHotReloadTestService = new(uiManager, luaReloadCoordinator, luaScriptSource, Logger);
 
             pageRegistry.RegisterRange(pageDefinitionSource);
 
@@ -268,6 +353,7 @@ namespace Sideline.Facet.Runtime
             Services.RegisterSingleton(luaRedDotBridge);
             Services.RegisterSingleton(luaRuntimeHost);
             Services.RegisterSingleton(luaReloadCoordinator);
+            Services.RegisterSingleton(luaHotReloadTestService);
 
             commandBus.RegisterHandler<RecordFacetRuntimeProbeCommand>(runtimeProbeService.RecordAsync);
             queryBus.RegisterHandler<FacetRuntimeProbeQuery, FacetRuntimeProbeSnapshot>(runtimeProbeService.QueryCurrentAsync);
@@ -316,6 +402,129 @@ namespace Sideline.Facet.Runtime
             VerifyProjectionLayer();
             VerifyPageDefinitions();
             VerifyLuaRuntime();
+        }
+
+        private void PublishHotReloadLabIdleStatus()
+        {
+            string message = Config.EnableHotReload
+                ? "运行时已就绪，等待 Hot Reload Lab 请求。"
+                : "运行时已启动，但当前未开启热重载。";
+
+            FacetHotReloadLabBridge.SaveStatus(new FacetHotReloadLabStatus
+            {
+                State = FacetHotReloadLabBridge.StateIdle,
+                Success = null,
+                Message = message,
+                UpdatedAtUtc = DateTimeOffset.UtcNow.ToString("O"),
+                RuntimeSessionId = CurrentSessionId,
+                RuntimePageId = Services.TryGet(out UIManager? uiManager) ? uiManager?.CurrentPageId ?? string.Empty : string.Empty,
+            });
+        }
+
+        private void PollEditorHotReloadLabRequests()
+        {
+            if (!FacetHotReloadLabBridge.TryLoadRequest(out FacetHotReloadLabRequest? request) ||
+                request == null ||
+                string.IsNullOrWhiteSpace(request.RequestId))
+            {
+                return;
+            }
+
+            FacetHotReloadLabBridge.TryLoadStatus(out FacetHotReloadLabStatus? status);
+            if (!FacetHotReloadLabBridge.IsPending(request, status))
+            {
+                return;
+            }
+
+            if (string.Equals(_lastHandledHotReloadLabRequestId, request.RequestId, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            _lastHandledHotReloadLabRequestId = request.RequestId;
+            HandleHotReloadLabRequest(request);
+        }
+
+        private void HandleHotReloadLabRequest(FacetHotReloadLabRequest request)
+        {
+            string currentPageId = Services.TryGet(out UIManager? uiManager)
+                ? uiManager?.CurrentPageId ?? string.Empty
+                : string.Empty;
+
+            FacetHotReloadLabBridge.SaveStatus(new FacetHotReloadLabStatus
+            {
+                RequestId = request.RequestId,
+                Command = request.Command,
+                State = FacetHotReloadLabBridge.StateRunning,
+                Success = null,
+                Message = "运行时已接收请求，正在执行 Lua 热重载往返测试。",
+                IssuedBy = request.IssuedBy,
+                IssuedAtUtc = request.IssuedAtUtc,
+                UpdatedAtUtc = DateTimeOffset.UtcNow.ToString("O"),
+                RuntimeSessionId = CurrentSessionId,
+                RuntimePageId = currentPageId,
+            });
+
+            if (!Config.EnableHotReload)
+            {
+                FacetHotReloadLabBridge.SaveStatus(new FacetHotReloadLabStatus
+                {
+                    RequestId = request.RequestId,
+                    Command = request.Command,
+                    State = FacetHotReloadLabBridge.StateIgnored,
+                    Success = false,
+                    Message = "运行时未开启热重载，无法执行阶段 9 测试。",
+                    IssuedBy = request.IssuedBy,
+                    IssuedAtUtc = request.IssuedAtUtc,
+                    UpdatedAtUtc = DateTimeOffset.UtcNow.ToString("O"),
+                    RuntimeSessionId = CurrentSessionId,
+                    RuntimePageId = currentPageId,
+                });
+                return;
+            }
+
+            bool success = request.Command switch
+            {
+                FacetHotReloadLabBridge.CommandCurrentPageRoundTrip => TryRunLuaHotReloadRoundTripTest(reason: "editor.lab.current"),
+                FacetHotReloadLabBridge.CommandDungeonRoundTrip => TryRunDungeonLuaHotReloadRoundTripTest(reason: "editor.lab.dungeon"),
+                _ => false,
+            };
+
+            string state = success
+                ? FacetHotReloadLabBridge.StateCompleted
+                : request.Command switch
+                {
+                    FacetHotReloadLabBridge.CommandCurrentPageRoundTrip => FacetHotReloadLabBridge.StateFailed,
+                    FacetHotReloadLabBridge.CommandDungeonRoundTrip => FacetHotReloadLabBridge.StateFailed,
+                    _ => FacetHotReloadLabBridge.StateIgnored,
+                };
+
+            string message = request.Command switch
+            {
+                FacetHotReloadLabBridge.CommandCurrentPageRoundTrip when success => "当前页 Lua 热重载往返测试已通过。",
+                FacetHotReloadLabBridge.CommandDungeonRoundTrip when success => "地下城页 Lua 热重载往返测试已通过。",
+                FacetHotReloadLabBridge.CommandCurrentPageRoundTrip => "当前页 Lua 热重载往返测试未通过，请查看 Lua.HotReload.Test 日志。",
+                FacetHotReloadLabBridge.CommandDungeonRoundTrip => "地下城页 Lua 热重载往返测试未通过，请查看 Lua.HotReload.Test 日志。",
+                _ => "收到未知的 Hot Reload Lab 命令，已忽略。",
+            };
+
+            currentPageId = Services.TryGet(out uiManager)
+                ? uiManager?.CurrentPageId ?? string.Empty
+                : currentPageId;
+
+            FacetHotReloadLabBridge.SaveStatus(new FacetHotReloadLabStatus
+            {
+                RequestId = request.RequestId,
+                Command = request.Command,
+                State = state,
+                Success = success,
+                Message = message,
+                IssuedBy = request.IssuedBy,
+                IssuedAtUtc = request.IssuedAtUtc,
+                UpdatedAtUtc = DateTimeOffset.UtcNow.ToString("O"),
+                RuntimeSessionId = CurrentSessionId,
+                RuntimePageId = currentPageId,
+            });
         }
 
         private void VerifyApplicationBoundary()
@@ -526,6 +735,10 @@ namespace Sideline.Facet.Runtime
                         ["routeBridgeReady"] = Services.Contains<IUIPageNavigator>(),
                         ["bindingBridgeReady"] = Services.Contains<UIBindingService>(),
                         ["redDotBridgeReady"] = Services.Contains<ILuaRedDotBridge>(),
+                        ["hotReloadTestServiceReady"] = Services.Contains<LuaHotReloadTestService>(),
+                        ["hotReloadTestShortcutEnabled"] = EnableLuaHotReloadTestShortcut,
+                        ["hotReloadCurrentPageTestShortcut"] = EnableLuaHotReloadTestShortcut ? LuaHotReloadCurrentPageTestShortcutDescription : string.Empty,
+                        ["hotReloadDungeonTestShortcut"] = EnableLuaHotReloadTestShortcut ? LuaHotReloadDungeonTestShortcutDescription : string.Empty,
                     });
             }
             catch (Exception exception)
@@ -544,7 +757,7 @@ namespace Sideline.Facet.Runtime
         private static FacetLogger CreateLogger(FacetConfig config)
         {
             return new FacetLogger(
-                config.MinimumLevel,
+                config.MinimumLogLevel,
                 config.EnableStructuredLogging,
                 config.StructuredLogPath,
                 config.StructuredLogBufferCapacity,
