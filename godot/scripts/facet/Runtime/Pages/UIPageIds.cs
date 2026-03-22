@@ -9,5 +9,7 @@ namespace Sideline.Facet.Runtime
     {
         public const string Idle = "client.idle";
         public const string Dungeon = "client.dungeon";
+        public const string GeneratedLayoutLab = "client.layout.generated_lab";
+        public const string TemplateLayoutLab = "client.layout.template_lab";
     }
 }

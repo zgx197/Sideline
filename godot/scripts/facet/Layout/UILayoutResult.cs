@@ -11,7 +11,7 @@ namespace Sideline.Facet.Layout
     /// </summary>
     public sealed class UILayoutResult
     {
-        public UILayoutResult(Control rootNode, UINodeRegistry nodeRegistry, UINodeResolver nodeResolver)
+        public UILayoutResult(Control rootNode, UINodeRegistry nodeRegistry, UINodeResolver nodeResolver, bool ownsRootNode)
         {
             ArgumentNullException.ThrowIfNull(rootNode);
             ArgumentNullException.ThrowIfNull(nodeRegistry);
@@ -20,6 +20,7 @@ namespace Sideline.Facet.Layout
             RootNode = rootNode;
             NodeRegistry = nodeRegistry;
             NodeResolver = nodeResolver;
+            OwnsRootNode = ownsRootNode;
         }
 
         /// <summary>
@@ -36,5 +37,11 @@ namespace Sideline.Facet.Layout
         /// 当前页面的节点解析器。
         /// </summary>
         public UINodeResolver NodeResolver { get; }
+
+        /// <summary>
+        /// 当前布局结果是否拥有根节点生命周期。
+        /// ExistingNode 这类外部现有节点不应由运行时释放；运行时创建的新根节点则应在销毁时释放。
+        /// </summary>
+        public bool OwnsRootNode { get; }
     }
 }

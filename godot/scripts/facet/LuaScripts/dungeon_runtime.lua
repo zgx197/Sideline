@@ -6,6 +6,7 @@ local primary_action_enabled_key = "facet.dungeon.primary_action_enabled"
 local show_metrics_panel_key = "facet.dungeon.show_metrics_panel"
 local metrics_title_key = "facet.dungeon.metrics_title"
 local metrics_items_key = "facet.dungeon.metrics_items"
+local page_red_dot_path = "client.dungeon"
 
 local function register_bindings(api)
     local page = api:GetPageBindings()
@@ -14,6 +15,7 @@ local function register_bindings(api)
     end
 
     page:BindStateText("TitleLabel", title_key, "Sideline / 地下城")
+    page:BindRedDotVisibility("TitleRedDotBadgeLabel", page_red_dot_path, false)
     page:BindStateText("StatusLabel", status_key, "Projection 驱动战斗窗口 / Projection-driven battle panel")
     page:BindStateText("SwitchButton", primary_action_label_key, "返回挂机 / Idle")
     page:BindStateInteractable("SwitchButton", primary_action_enabled_key, true)
@@ -61,7 +63,9 @@ function OnRefresh(api)
         " probeRecords=" ..
         tostring(recorded) ..
         " hotReload=" ..
-        tostring(hot_reload))
+        tostring(hot_reload) ..
+        " pageRedDot=" ..
+        tostring(api:GetRedDot(page_red_dot_path, false)))
 end
 
 function OnHide(api)

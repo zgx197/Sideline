@@ -1,6 +1,7 @@
 #nullable enable
 
 using System.Collections.Generic;
+using Sideline.Facet.Layout;
 using Sideline.Facet.Lua;
 
 namespace Sideline.Facet.Runtime
@@ -29,6 +30,20 @@ namespace Sideline.Facet.Runtime
                     layer: "main",
                     cachePolicy: UIPageCachePolicy.Reuse,
                     controllerScript: FacetLuaScriptIds.DungeonRuntimeController),
+                new UIPageDefinition(
+                    UIPageIds.GeneratedLayoutLab,
+                    UIPageLayoutType.Generated,
+                    FacetBuiltInLayoutDefinitions.GeneratedLayoutLabId,
+                    layer: "main",
+                    cachePolicy: UIPageCachePolicy.NoCache,
+                    controllerScript: null),
+                new UIPageDefinition(
+                    UIPageIds.TemplateLayoutLab,
+                    UIPageLayoutType.Template,
+                    FacetBuiltInLayoutDefinitions.TemplateLayoutLabId,
+                    layer: "main",
+                    cachePolicy: UIPageCachePolicy.NoCache,
+                    controllerScript: null),
             };
         }
     }

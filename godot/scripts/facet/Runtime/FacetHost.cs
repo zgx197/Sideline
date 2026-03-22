@@ -2,9 +2,11 @@
 
 using System;
 using System.Collections.Generic;
+using System.Text;
 using Godot;
 using Sideline.Facet.Application;
 using Sideline.Facet.Application.Diagnostics;
+using Sideline.Facet.Extensions.RedDot;
 using Sideline.Facet.Layout;
 using Sideline.Facet.Lua;
 using Sideline.Facet.Projection;
@@ -27,6 +29,8 @@ namespace Sideline.Facet.Runtime
         private double _hotReloadPollTimer;
         private double _editorHotReloadLabPollTimer;
         private string? _lastHandledHotReloadLabRequestId;
+        private string? _lastHandledLayoutLabRequestId;
+        private string? _lastRuntimeDiagnosticsFingerprint;
 
         /// <summary>
         /// 最小启动验证标记。
@@ -150,6 +154,8 @@ namespace Sideline.Facet.Runtime
             {
                 _editorHotReloadLabPollTimer = 0.0d;
                 PollEditorHotReloadLabRequests();
+                PollEditorLayoutLabRequests();
+                PublishRuntimeDiagnosticsSnapshot();
             }
 
             if (!Config.EnableHotReload)
@@ -214,6 +220,8 @@ namespace Sideline.Facet.Runtime
             _hotReloadPollTimer = 0;
             _editorHotReloadLabPollTimer = 0;
             _lastHandledHotReloadLabRequestId = null;
+            _lastHandledLayoutLabRequestId = null;
+            _lastRuntimeDiagnosticsFingerprint = null;
 
             RegisterCoreServices();
 
@@ -221,7 +229,10 @@ namespace Sideline.Facet.Runtime
             SetProcess(true);
             SetProcessUnhandledInput(EnableLuaHotReloadTestShortcut);
             LogStartupSummary();
+            CleanupConsumedLabRequests();
             PublishHotReloadLabIdleStatus();
+            PublishLayoutLabIdleStatus();
+            PublishRuntimeDiagnosticsSnapshot(force: true);
             EmitSignal("Initialized");
         }
 
@@ -238,6 +249,8 @@ namespace Sideline.Facet.Runtime
             _hotReloadPollTimer = 0;
             _editorHotReloadLabPollTimer = 0;
             _lastHandledHotReloadLabRequestId = null;
+            _lastHandledLayoutLabRequestId = null;
+            _lastRuntimeDiagnosticsFingerprint = null;
             SetProcess(false);
             SetProcessUnhandledInput(false);
         }
@@ -309,10 +322,17 @@ namespace Sideline.Facet.Runtime
             RuntimeMetricsProjectionUpdater runtimeMetricsProjectionUpdater = new(Context);
             IPageDefinitionSource pageDefinitionSource = new InMemoryPageDefinitionSource(FacetBuiltInPageDefinitions.CreateMainSceneDefinitions());
             UIPageRegistry pageRegistry = new();
+            FacetDynamicNodeFactory dynamicNodeFactory = new();
+            IFacetGeneratedLayoutStore generatedLayoutStore = new InMemoryFacetGeneratedLayoutStore(FacetBuiltInLayoutDefinitions.CreateGeneratedLayouts());
+            IFacetTemplateLayoutStore templateLayoutStore = new InMemoryFacetTemplateLayoutStore(FacetBuiltInLayoutDefinitions.CreateTemplateLayouts());
             SceneLayoutProvider sceneLayoutProvider = new(Logger);
+            GeneratedLayoutProvider generatedLayoutProvider = new(generatedLayoutStore, dynamicNodeFactory, Logger);
+            TemplateLayoutProvider templateLayoutProvider = new(templateLayoutStore, dynamicNodeFactory, Logger);
             IUILayoutProvider[] layoutProviders =
             {
                 sceneLayoutProvider,
+                templateLayoutProvider,
+                generatedLayoutProvider,
             };
             UIPageLoader pageLoader = new(layoutProviders, Logger);
             UIBindingService bindingService = new(Logger);
@@ -320,7 +340,12 @@ namespace Sideline.Facet.Runtime
             UIManager uiManager = new(pageRegistry, pageLoader, routeService, Context, Logger);
             string projectRootPath = ProjectSettings.GlobalizePath("res://");
             ILuaScriptSource luaScriptSource = new FileSystemLuaScriptSource(projectRootPath, FacetLuaScriptIds.All);
-            ILuaRedDotBridge luaRedDotBridge = new NullLuaRedDotBridge();
+            RedDotService redDotService = new(Logger);
+            FacetRuntimeRedDotProvider runtimeRedDotProvider = new(projectionStore, Logger);
+            ManualRedDotProvider manualRedDotProvider = new();
+            redDotService.RegisterProvider(runtimeRedDotProvider);
+            redDotService.RegisterProvider(manualRedDotProvider);
+            ILuaRedDotBridge luaRedDotBridge = new FacetLuaRedDotBridge(redDotService);
             ILuaRuntimeHost luaRuntimeHost = new LuaRuntimeHost(luaScriptSource, luaRedDotBridge);
             LuaReloadCoordinator luaReloadCoordinator = new(uiManager, Logger);
             LuaHotReloadTestService luaHotReloadTestService = new(uiManager, luaReloadCoordinator, luaScriptSource, Logger);
@@ -343,12 +368,21 @@ namespace Sideline.Facet.Runtime
             Services.RegisterSingleton(runtimeMetricsProjectionUpdater);
             Services.RegisterSingleton(pageDefinitionSource);
             Services.RegisterSingleton(pageRegistry);
+            Services.RegisterSingleton(dynamicNodeFactory);
+            Services.RegisterSingleton(generatedLayoutStore);
+            Services.RegisterSingleton(templateLayoutStore);
             Services.RegisterSingleton(sceneLayoutProvider);
+            Services.RegisterSingleton(generatedLayoutProvider);
+            Services.RegisterSingleton(templateLayoutProvider);
             Services.RegisterSingleton(pageLoader);
             Services.RegisterSingleton(bindingService);
             Services.RegisterSingleton(routeService);
             Services.RegisterSingleton<IUIPageNavigator>(uiManager);
             Services.RegisterSingleton(uiManager);
+            Services.RegisterSingleton<IRedDotService>(redDotService);
+            Services.RegisterSingleton(redDotService);
+            Services.RegisterSingleton(runtimeRedDotProvider);
+            Services.RegisterSingleton(manualRedDotProvider);
             Services.RegisterSingleton(luaScriptSource);
             Services.RegisterSingleton(luaRedDotBridge);
             Services.RegisterSingleton(luaRuntimeHost);
@@ -392,7 +426,7 @@ namespace Sideline.Facet.Runtime
                     ["runtimeProbeGateway"] = nameof(InMemoryFacetRuntimeProbeGateway),
                     ["registeredPages"] = Services.GetRequired<UIPageRegistry>().Count,
                     ["pageDefinitionSource"] = nameof(InMemoryPageDefinitionSource),
-                    ["layoutProvider"] = nameof(SceneLayoutProvider),
+                    ["layoutProviders"] = string.Join(",", nameof(SceneLayoutProvider), nameof(TemplateLayoutProvider), nameof(GeneratedLayoutProvider)),
                     ["bindingService"] = nameof(UIBindingService),
                     ["routeService"] = nameof(UIRouteService),
                     ["backStackDepth"] = Services.GetRequired<UIRouteService>().Count,
@@ -402,6 +436,9 @@ namespace Sideline.Facet.Runtime
             VerifyProjectionLayer();
             VerifyPageDefinitions();
             VerifyLuaRuntime();
+            VerifyRedDotRuntime();
+            VerifyAdvancedLayouts();
+            VerifyRuntimeDiagnostics();
         }
 
         private void PublishHotReloadLabIdleStatus()
@@ -419,6 +456,454 @@ namespace Sideline.Facet.Runtime
                 RuntimeSessionId = CurrentSessionId,
                 RuntimePageId = Services.TryGet(out UIManager? uiManager) ? uiManager?.CurrentPageId ?? string.Empty : string.Empty,
             });
+        }
+
+        private void PublishLayoutLabIdleStatus()
+        {
+            FacetLayoutLabBridge.SaveStatus(new FacetLayoutLabStatus
+            {
+                State = FacetLayoutLabBridge.StateIdle,
+                Success = null,
+                Message = "运行时已就绪，等待 Layout Lab 请求。",
+                UpdatedAtUtc = DateTimeOffset.UtcNow.ToString("O"),
+                RuntimeSessionId = CurrentSessionId,
+                RuntimePageId = Services.TryGet(out UIManager? uiManager) ? uiManager?.CurrentPageId ?? string.Empty : string.Empty,
+            });
+        }
+
+        private void PublishRuntimeDiagnosticsSnapshot(bool force = false)
+        {
+            try
+            {
+                FacetRuntimeDiagnosticsSnapshot snapshot = CreateRuntimeDiagnosticsSnapshot();
+                string fingerprint = CreateRuntimeDiagnosticsFingerprint(snapshot);
+                if (!force && string.Equals(_lastRuntimeDiagnosticsFingerprint, fingerprint, StringComparison.Ordinal))
+                {
+                    return;
+                }
+
+                FacetRuntimeDiagnosticsBridge.SaveSnapshot(snapshot);
+                _lastRuntimeDiagnosticsFingerprint = fingerprint;
+            }
+            catch (Exception exception)
+            {
+                Logger.Error(
+                    "Tooling.Diagnostics",
+                    "运行时诊断快照写入失败。",
+                    new Dictionary<string, object?>
+                    {
+                        ["exceptionType"] = exception.GetType().FullName,
+                        ["message"] = exception.Message,
+                    });
+            }
+        }
+
+        private FacetRuntimeDiagnosticsSnapshot CreateRuntimeDiagnosticsSnapshot()
+        {
+            UIPageRegistry pageRegistry = Services.GetRequired<UIPageRegistry>();
+            UIManager uiManager = Services.GetRequired<UIManager>();
+            ProjectionStore projectionStore = Services.GetRequired<ProjectionStore>();
+            ILuaScriptSource luaScriptSource = Services.GetRequired<ILuaScriptSource>();
+            IRedDotService redDotService = Services.GetRequired<IRedDotService>();
+            IFacetGeneratedLayoutStore generatedLayoutStore = Services.GetRequired<IFacetGeneratedLayoutStore>();
+            IFacetTemplateLayoutStore templateLayoutStore = Services.GetRequired<IFacetTemplateLayoutStore>();
+
+            List<FacetRuntimeRegisteredPageSnapshot> registeredPages = new();
+            foreach (UIPageDefinition definition in pageRegistry.GetAll())
+            {
+                registeredPages.Add(new FacetRuntimeRegisteredPageSnapshot
+                {
+                    PageId = definition.PageId,
+                    LayoutType = definition.LayoutType.ToString(),
+                    LayoutPath = definition.LayoutPath,
+                    Layer = definition.Layer,
+                    CachePolicy = definition.CachePolicy.ToString(),
+                    ControllerScript = definition.ControllerScript ?? string.Empty,
+                });
+            }
+
+            registeredPages.Sort(static (left, right) => string.Compare(left.PageId, right.PageId, StringComparison.OrdinalIgnoreCase));
+
+            List<FacetRuntimePageRuntimeSnapshot> activeRuntimes = new();
+            foreach (UIPageRuntime runtime in uiManager.GetPageRuntimesSnapshot())
+            {
+                UIBindingDiagnosticsSnapshot? bindingDiagnostics = runtime.BindingScope?.GetDiagnosticsSnapshot();
+                activeRuntimes.Add(new FacetRuntimePageRuntimeSnapshot
+                {
+                    PageId = runtime.Definition.PageId,
+                    IsCurrentPage = string.Equals(runtime.Definition.PageId, uiManager.CurrentPageId, StringComparison.OrdinalIgnoreCase),
+                    State = runtime.State.ToString(),
+                    LayoutType = runtime.Definition.LayoutType.ToString(),
+                    ControllerScript = runtime.LuaControllerScript ?? runtime.Definition.ControllerScript ?? string.Empty,
+                    HasLuaController = runtime.HasLuaController,
+                    LuaControllerVersionToken = runtime.LuaControllerVersionToken ?? string.Empty,
+                    PageRootPath = runtime.PageRoot.GetPath().ToString(),
+                    BindingScope = bindingDiagnostics == null
+                        ? null
+                        : new FacetRuntimeBindingScopeSnapshot
+                        {
+                            ScopeId = bindingDiagnostics.ScopeId,
+                            BindingCount = bindingDiagnostics.BindingCount,
+                            RefreshCount = bindingDiagnostics.RefreshCount,
+                            LastRefreshReason = bindingDiagnostics.LastRefreshReason ?? string.Empty,
+                        },
+                });
+            }
+
+            activeRuntimes.Sort(static (left, right) =>
+            {
+                int currentComparison = right.IsCurrentPage.CompareTo(left.IsCurrentPage);
+                return currentComparison != 0
+                    ? currentComparison
+                    : string.Compare(left.PageId, right.PageId, StringComparison.OrdinalIgnoreCase);
+            });
+
+            List<string> projectionKeys = new();
+            foreach (ProjectionKey key in projectionStore.GetKeysSnapshot())
+            {
+                projectionKeys.Add(key.ToString());
+            }
+
+            List<string> luaRegisteredScripts = new(luaScriptSource.GetRegisteredScripts());
+            luaRegisteredScripts.Sort(StringComparer.OrdinalIgnoreCase);
+
+            List<string> redDotPaths = new(redDotService.GetRegisteredPaths());
+            redDotPaths.Sort(StringComparer.OrdinalIgnoreCase);
+
+            List<FacetRuntimeValidationResultSnapshot> validationResults = CreateRuntimeValidationResults(
+                pageRegistry,
+                uiManager,
+                projectionStore,
+                luaScriptSource,
+                redDotService,
+                generatedLayoutStore,
+                templateLayoutStore,
+                registeredPages,
+                activeRuntimes,
+                projectionKeys,
+                redDotPaths);
+
+            int validationPassedCount = CountValidationResults(validationResults, "Pass");
+            int validationWarningCount = CountValidationResults(validationResults, "Warning");
+            int validationFailedCount = CountValidationResults(validationResults, "Fail");
+
+            return new FacetRuntimeDiagnosticsSnapshot
+            {
+                RuntimeSessionId = CurrentSessionId,
+                UpdatedAtUtc = DateTimeOffset.UtcNow.ToString("O"),
+                CurrentPageId = uiManager.CurrentPageId ?? string.Empty,
+                BackStackDepth = uiManager.BackStackDepth,
+                RegisteredPageCount = registeredPages.Count,
+                RegisteredPages = registeredPages,
+                ActiveRuntimeCount = activeRuntimes.Count,
+                ActiveRuntimes = activeRuntimes,
+                ProjectionCount = projectionStore.Count,
+                ProjectionKeys = projectionKeys,
+                LuaRegisteredScriptCount = luaRegisteredScripts.Count,
+                LuaRegisteredScripts = luaRegisteredScripts,
+                RedDotRegisteredPathCount = redDotPaths.Count,
+                RedDotPaths = redDotPaths,
+                ValidationResultCount = validationResults.Count,
+                ValidationPassedCount = validationPassedCount,
+                ValidationWarningCount = validationWarningCount,
+                ValidationFailedCount = validationFailedCount,
+                ValidationResults = validationResults,
+            };
+        }
+
+        private static List<FacetRuntimeValidationResultSnapshot> CreateRuntimeValidationResults(
+            UIPageRegistry pageRegistry,
+            UIManager uiManager,
+            ProjectionStore projectionStore,
+            ILuaScriptSource luaScriptSource,
+            IRedDotService redDotService,
+            IFacetGeneratedLayoutStore generatedLayoutStore,
+            IFacetTemplateLayoutStore templateLayoutStore,
+            List<FacetRuntimeRegisteredPageSnapshot> registeredPages,
+            List<FacetRuntimePageRuntimeSnapshot> activeRuntimes,
+            List<string> projectionKeys,
+            List<string> redDotPaths)
+        {
+            List<FacetRuntimeValidationResultSnapshot> results = new();
+
+            results.Add(CreateValidationResult(
+                "page_registry.not_empty",
+                isSuccess: registeredPages.Count > 0,
+                subject: "UIPageRegistry",
+                successMessage: $"已注册 {registeredPages.Count} 个页面。",
+                failureMessage: "页面注册表为空。"));
+
+            results.Add(CreateValidationResult(
+                "projection.count_consistent",
+                isSuccess: projectionStore.Count == projectionKeys.Count,
+                subject: "ProjectionStore",
+                successMessage: $"Projection 数量与键快照一致：{projectionStore.Count}。",
+                failureMessage: $"Projection 数量与键快照不一致：count={projectionStore.Count}, keys={projectionKeys.Count}。"));
+
+            results.Add(CreateValidationResult(
+                "red_dot.count_consistent",
+                isSuccess: redDotService.RegisteredPathCount == redDotPaths.Count,
+                subject: "RedDotService",
+                successMessage: $"红点路径数量一致：{redDotPaths.Count}。",
+                failureMessage: $"红点路径数量不一致：registered={redDotService.RegisteredPathCount}, snapshot={redDotPaths.Count}。"));
+
+            foreach (FacetRuntimeRegisteredPageSnapshot page in registeredPages)
+            {
+                bool layoutResolved = page.LayoutType switch
+                {
+                    nameof(UIPageLayoutType.Generated) => generatedLayoutStore.TryGet(page.LayoutPath, out _),
+                    nameof(UIPageLayoutType.Template) => templateLayoutStore.TryGet(page.LayoutPath, out _),
+                    _ => true,
+                };
+
+                results.Add(CreateValidationResult(
+                    "page.layout_resolved",
+                    isSuccess: layoutResolved,
+                    subject: page.PageId,
+                    successMessage: $"布局已解析：{page.LayoutPath}。",
+                    failureMessage: $"布局未注册：{page.LayoutPath}。"));
+
+                if (!string.IsNullOrWhiteSpace(page.ControllerScript))
+                {
+                    bool scriptRegistered = luaScriptSource.TryGetVersionToken(page.ControllerScript, out _);
+                    results.Add(CreateValidationResult(
+                        "page.lua_script_registered",
+                        isSuccess: scriptRegistered,
+                        subject: page.PageId,
+                        successMessage: $"Lua 脚本已注册：{page.ControllerScript}。",
+                        failureMessage: $"Lua 脚本未注册：{page.ControllerScript}。"));
+                }
+                else
+                {
+                    results.Add(CreateValidationResult(
+                        "page.lua_script_optional",
+                        isSuccess: true,
+                        subject: page.PageId,
+                        successMessage: "页面未绑定 Lua 脚本。",
+                        failureMessage: string.Empty,
+                        severity: "Info"));
+                }
+            }
+
+            foreach (FacetRuntimePageRuntimeSnapshot runtime in activeRuntimes)
+            {
+                bool pageRegistered = pageRegistry.Contains(runtime.PageId);
+                results.Add(CreateValidationResult(
+                    "runtime.page_registered",
+                    isSuccess: pageRegistered,
+                    subject: runtime.PageId,
+                    successMessage: "活动运行时对应页面已注册。",
+                    failureMessage: "活动运行时对应页面未注册。"));
+
+                bool bindingScopePresent = runtime.BindingScope != null;
+                results.Add(CreateValidationResult(
+                    "runtime.binding_scope_present",
+                    status: bindingScopePresent ? "Pass" : "Warning",
+                    subject: runtime.PageId,
+                    successMessage: $"BindingScope 已就绪：{runtime.BindingScope?.ScopeId}。",
+                    failureMessage: "活动运行时缺少 BindingScope。",
+                    severity: "Warning"));
+            }
+
+            bool currentPageMatchesRuntime = string.IsNullOrWhiteSpace(uiManager.CurrentPageId) ||
+                activeRuntimes.Exists(runtime => string.Equals(runtime.PageId, uiManager.CurrentPageId, StringComparison.OrdinalIgnoreCase));
+            results.Add(CreateValidationResult(
+                "runtime.current_page_observed",
+                status: currentPageMatchesRuntime ? "Pass" : "Warning",
+                subject: uiManager.CurrentPageId ?? "<empty>",
+                successMessage: "当前页面已出现在活动运行时快照中。",
+                failureMessage: "当前页面未出现在活动运行时快照中。",
+                severity: "Warning"));
+
+            results.Sort(static (left, right) =>
+            {
+                int severityComparison = CompareValidationSeverity(left, right);
+                return severityComparison != 0
+                    ? severityComparison
+                    : string.Compare(left.Subject, right.Subject, StringComparison.OrdinalIgnoreCase);
+            });
+
+            return results;
+        }
+
+        private static FacetRuntimeValidationResultSnapshot CreateValidationResult(
+            string ruleId,
+            bool isSuccess,
+            string subject,
+            string successMessage,
+            string failureMessage,
+            string severity = "Error")
+        {
+            return CreateValidationResult(
+                ruleId,
+                isSuccess ? "Pass" : "Fail",
+                subject,
+                successMessage,
+                failureMessage,
+                severity);
+        }
+
+        private static FacetRuntimeValidationResultSnapshot CreateValidationResult(
+            string ruleId,
+            string status,
+            string subject,
+            string successMessage,
+            string failureMessage,
+            string severity = "Error")
+        {
+            bool isSuccess = string.Equals(status, "Pass", StringComparison.OrdinalIgnoreCase);
+            return new FacetRuntimeValidationResultSnapshot
+            {
+                RuleId = ruleId,
+                Severity = isSuccess ? "Info" : severity,
+                Status = status,
+                Subject = subject,
+                Message = isSuccess ? successMessage : failureMessage,
+            };
+        }
+
+        private static int CountValidationResults(List<FacetRuntimeValidationResultSnapshot> results, string status)
+        {
+            int count = 0;
+            foreach (FacetRuntimeValidationResultSnapshot result in results)
+            {
+                if (string.Equals(result.Status, status, StringComparison.OrdinalIgnoreCase))
+                {
+                    count++;
+                }
+            }
+
+            return count;
+        }
+
+        private static int CompareValidationSeverity(FacetRuntimeValidationResultSnapshot left, FacetRuntimeValidationResultSnapshot right)
+        {
+            return GetValidationSeverityRank(left).CompareTo(GetValidationSeverityRank(right));
+        }
+
+        private static int GetValidationSeverityRank(FacetRuntimeValidationResultSnapshot result)
+        {
+            if (string.Equals(result.Status, "Warning", StringComparison.OrdinalIgnoreCase))
+            {
+                return 1;
+            }
+
+            if (string.Equals(result.Status, "Fail", StringComparison.OrdinalIgnoreCase))
+            {
+                return 0;
+            }
+
+            return 2;
+        }
+
+        private static string CreateRuntimeDiagnosticsFingerprint(FacetRuntimeDiagnosticsSnapshot snapshot)
+        {
+            StringBuilder builder = new();
+            builder.Append(snapshot.RuntimeSessionId);
+            builder.Append('|');
+            builder.Append(snapshot.CurrentPageId);
+            builder.Append('|');
+            builder.Append(snapshot.BackStackDepth);
+            builder.Append('|');
+            builder.Append(snapshot.RegisteredPageCount);
+            builder.Append('|');
+            builder.Append(snapshot.ActiveRuntimeCount);
+            builder.Append('|');
+            builder.Append(snapshot.ProjectionCount);
+            builder.Append('|');
+            builder.Append(snapshot.LuaRegisteredScriptCount);
+            builder.Append('|');
+            builder.Append(snapshot.RedDotRegisteredPathCount);
+            builder.Append('|');
+            builder.Append(snapshot.ValidationResultCount);
+            builder.Append('|');
+            builder.Append(snapshot.ValidationPassedCount);
+            builder.Append('|');
+            builder.Append(snapshot.ValidationWarningCount);
+            builder.Append('|');
+            builder.Append(snapshot.ValidationFailedCount);
+
+            foreach (FacetRuntimeRegisteredPageSnapshot page in snapshot.RegisteredPages)
+            {
+                builder.Append("|page:");
+                builder.Append(page.PageId);
+                builder.Append(':');
+                builder.Append(page.LayoutType);
+                builder.Append(':');
+                builder.Append(page.LayoutPath);
+                builder.Append(':');
+                builder.Append(page.Layer);
+                builder.Append(':');
+                builder.Append(page.CachePolicy);
+                builder.Append(':');
+                builder.Append(page.ControllerScript);
+            }
+
+            foreach (FacetRuntimePageRuntimeSnapshot runtime in snapshot.ActiveRuntimes)
+            {
+                builder.Append("|runtime:");
+                builder.Append(runtime.PageId);
+                builder.Append(':');
+                builder.Append(runtime.IsCurrentPage);
+                builder.Append(':');
+                builder.Append(runtime.State);
+                builder.Append(':');
+                builder.Append(runtime.LayoutType);
+                builder.Append(':');
+                builder.Append(runtime.ControllerScript);
+                builder.Append(':');
+                builder.Append(runtime.HasLuaController);
+                builder.Append(':');
+                builder.Append(runtime.LuaControllerVersionToken);
+                builder.Append(':');
+                builder.Append(runtime.PageRootPath);
+
+                if (runtime.BindingScope != null)
+                {
+                    builder.Append(':');
+                    builder.Append(runtime.BindingScope.ScopeId);
+                    builder.Append(':');
+                    builder.Append(runtime.BindingScope.BindingCount);
+                    builder.Append(':');
+                    builder.Append(runtime.BindingScope.RefreshCount);
+                    builder.Append(':');
+                    builder.Append(runtime.BindingScope.LastRefreshReason);
+                }
+            }
+
+            foreach (string projectionKey in snapshot.ProjectionKeys)
+            {
+                builder.Append("|projection:");
+                builder.Append(projectionKey);
+            }
+
+            foreach (string script in snapshot.LuaRegisteredScripts)
+            {
+                builder.Append("|lua:");
+                builder.Append(script);
+            }
+
+            foreach (string path in snapshot.RedDotPaths)
+            {
+                builder.Append("|red_dot:");
+                builder.Append(path);
+            }
+
+            foreach (FacetRuntimeValidationResultSnapshot result in snapshot.ValidationResults)
+            {
+                builder.Append("|validation:");
+                builder.Append(result.Status);
+                builder.Append(':');
+                builder.Append(result.Severity);
+                builder.Append(':');
+                builder.Append(result.RuleId);
+                builder.Append(':');
+                builder.Append(result.Subject);
+                builder.Append(':');
+                builder.Append(result.Message);
+            }
+
+            return builder.ToString();
         }
 
         private void PollEditorHotReloadLabRequests()
@@ -445,6 +930,30 @@ namespace Sideline.Facet.Runtime
             HandleHotReloadLabRequest(request);
         }
 
+        private void PollEditorLayoutLabRequests()
+        {
+            if (!FacetLayoutLabBridge.TryLoadRequest(out FacetLayoutLabRequest? request) ||
+                request == null ||
+                string.IsNullOrWhiteSpace(request.RequestId))
+            {
+                return;
+            }
+
+            FacetLayoutLabBridge.TryLoadStatus(out FacetLayoutLabStatus? status);
+            if (!FacetLayoutLabBridge.IsPending(request, status))
+            {
+                return;
+            }
+
+            if (string.Equals(_lastHandledLayoutLabRequestId, request.RequestId, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            _lastHandledLayoutLabRequestId = request.RequestId;
+            HandleLayoutLabRequest(request);
+        }
+
         private void HandleHotReloadLabRequest(FacetHotReloadLabRequest request)
         {
             string currentPageId = Services.TryGet(out UIManager? uiManager)
@@ -465,66 +974,258 @@ namespace Sideline.Facet.Runtime
                 RuntimePageId = currentPageId,
             });
 
-            if (!Config.EnableHotReload)
+            try
             {
+                if (!Config.EnableHotReload)
+                {
+                    FacetHotReloadLabBridge.SaveStatus(new FacetHotReloadLabStatus
+                    {
+                        RequestId = request.RequestId,
+                        Command = request.Command,
+                        State = FacetHotReloadLabBridge.StateIgnored,
+                        Success = false,
+                        Message = "运行时未开启热重载，无法执行阶段 9 测试。",
+                        IssuedBy = request.IssuedBy,
+                        IssuedAtUtc = request.IssuedAtUtc,
+                        UpdatedAtUtc = DateTimeOffset.UtcNow.ToString("O"),
+                        RuntimeSessionId = CurrentSessionId,
+                        RuntimePageId = currentPageId,
+                    });
+                    return;
+                }
+
+                bool success = request.Command switch
+                {
+                    FacetHotReloadLabBridge.CommandCurrentPageRoundTrip => TryRunLuaHotReloadRoundTripTest(reason: "editor.lab.current"),
+                    FacetHotReloadLabBridge.CommandDungeonRoundTrip => TryRunDungeonLuaHotReloadRoundTripTest(reason: "editor.lab.dungeon"),
+                    _ => false,
+                };
+
+                string state = success
+                    ? FacetHotReloadLabBridge.StateCompleted
+                    : request.Command switch
+                    {
+                        FacetHotReloadLabBridge.CommandCurrentPageRoundTrip => FacetHotReloadLabBridge.StateFailed,
+                        FacetHotReloadLabBridge.CommandDungeonRoundTrip => FacetHotReloadLabBridge.StateFailed,
+                        _ => FacetHotReloadLabBridge.StateIgnored,
+                    };
+
+                string message = request.Command switch
+                {
+                    FacetHotReloadLabBridge.CommandCurrentPageRoundTrip when success => "当前页 Lua 热重载往返测试已通过。",
+                    FacetHotReloadLabBridge.CommandDungeonRoundTrip when success => "地下城页 Lua 热重载往返测试已通过。",
+                    FacetHotReloadLabBridge.CommandCurrentPageRoundTrip => "当前页 Lua 热重载往返测试未通过，请查看 Lua.HotReload.Test 日志。",
+                    FacetHotReloadLabBridge.CommandDungeonRoundTrip => "地下城页 Lua 热重载往返测试未通过，请查看 Lua.HotReload.Test 日志。",
+                    _ => "收到未知的 Hot Reload Lab 命令，已忽略。",
+                };
+
+                currentPageId = Services.TryGet(out uiManager)
+                    ? uiManager?.CurrentPageId ?? string.Empty
+                    : currentPageId;
+
                 FacetHotReloadLabBridge.SaveStatus(new FacetHotReloadLabStatus
                 {
                     RequestId = request.RequestId,
                     Command = request.Command,
-                    State = FacetHotReloadLabBridge.StateIgnored,
-                    Success = false,
-                    Message = "运行时未开启热重载，无法执行阶段 9 测试。",
+                    State = state,
+                    Success = success,
+                    Message = message,
                     IssuedBy = request.IssuedBy,
                     IssuedAtUtc = request.IssuedAtUtc,
                     UpdatedAtUtc = DateTimeOffset.UtcNow.ToString("O"),
                     RuntimeSessionId = CurrentSessionId,
                     RuntimePageId = currentPageId,
                 });
-                return;
             }
-
-            bool success = request.Command switch
+            finally
             {
-                FacetHotReloadLabBridge.CommandCurrentPageRoundTrip => TryRunLuaHotReloadRoundTripTest(reason: "editor.lab.current"),
-                FacetHotReloadLabBridge.CommandDungeonRoundTrip => TryRunDungeonLuaHotReloadRoundTripTest(reason: "editor.lab.dungeon"),
-                _ => false,
-            };
+                FacetHotReloadLabBridge.DeleteRequest();
+            }
+        }
 
-            string state = success
-                ? FacetHotReloadLabBridge.StateCompleted
-                : request.Command switch
-                {
-                    FacetHotReloadLabBridge.CommandCurrentPageRoundTrip => FacetHotReloadLabBridge.StateFailed,
-                    FacetHotReloadLabBridge.CommandDungeonRoundTrip => FacetHotReloadLabBridge.StateFailed,
-                    _ => FacetHotReloadLabBridge.StateIgnored,
-                };
-
-            string message = request.Command switch
-            {
-                FacetHotReloadLabBridge.CommandCurrentPageRoundTrip when success => "当前页 Lua 热重载往返测试已通过。",
-                FacetHotReloadLabBridge.CommandDungeonRoundTrip when success => "地下城页 Lua 热重载往返测试已通过。",
-                FacetHotReloadLabBridge.CommandCurrentPageRoundTrip => "当前页 Lua 热重载往返测试未通过，请查看 Lua.HotReload.Test 日志。",
-                FacetHotReloadLabBridge.CommandDungeonRoundTrip => "地下城页 Lua 热重载往返测试未通过，请查看 Lua.HotReload.Test 日志。",
-                _ => "收到未知的 Hot Reload Lab 命令，已忽略。",
-            };
-
-            currentPageId = Services.TryGet(out uiManager)
+        private void HandleLayoutLabRequest(FacetLayoutLabRequest request)
+        {
+            string currentPageId = Services.TryGet(out UIManager? uiManager)
                 ? uiManager?.CurrentPageId ?? string.Empty
-                : currentPageId;
+                : string.Empty;
 
-            FacetHotReloadLabBridge.SaveStatus(new FacetHotReloadLabStatus
+            FacetLayoutLabBridge.SaveStatus(new FacetLayoutLabStatus
             {
                 RequestId = request.RequestId,
                 Command = request.Command,
-                State = state,
-                Success = success,
-                Message = message,
+                State = FacetLayoutLabBridge.StateRunning,
+                Success = null,
+                Message = "运行时已接收请求，正在打开阶段 11 布局实验页面。",
                 IssuedBy = request.IssuedBy,
                 IssuedAtUtc = request.IssuedAtUtc,
                 UpdatedAtUtc = DateTimeOffset.UtcNow.ToString("O"),
                 RuntimeSessionId = CurrentSessionId,
                 RuntimePageId = currentPageId,
             });
+
+            try
+            {
+                string? targetPageId = request.Command switch
+                {
+                    FacetLayoutLabBridge.CommandOpenGeneratedLayoutLab => UIPageIds.GeneratedLayoutLab,
+                    FacetLayoutLabBridge.CommandOpenTemplateLayoutLab => UIPageIds.TemplateLayoutLab,
+                    _ => null,
+                };
+
+                if (string.IsNullOrWhiteSpace(targetPageId))
+                {
+                    FacetLayoutLabBridge.SaveStatus(new FacetLayoutLabStatus
+                    {
+                        RequestId = request.RequestId,
+                        Command = request.Command,
+                        State = FacetLayoutLabBridge.StateIgnored,
+                        Success = false,
+                        Message = "收到未知的 Layout Lab 命令，已忽略。",
+                        IssuedBy = request.IssuedBy,
+                        IssuedAtUtc = request.IssuedAtUtc,
+                        UpdatedAtUtc = DateTimeOffset.UtcNow.ToString("O"),
+                        RuntimeSessionId = CurrentSessionId,
+                        RuntimePageId = currentPageId,
+                    });
+                    return;
+                }
+
+                if (uiManager == null)
+                {
+                    FacetLayoutLabBridge.SaveStatus(new FacetLayoutLabStatus
+                    {
+                        RequestId = request.RequestId,
+                        Command = request.Command,
+                        State = FacetLayoutLabBridge.StateFailed,
+                        Success = false,
+                        Message = "运行时 UIManager 尚未就绪，无法打开布局实验页面。",
+                        IssuedBy = request.IssuedBy,
+                        IssuedAtUtc = request.IssuedAtUtc,
+                        UpdatedAtUtc = DateTimeOffset.UtcNow.ToString("O"),
+                        RuntimeSessionId = CurrentSessionId,
+                        RuntimePageId = currentPageId,
+                    });
+                    return;
+                }
+
+                UIPageRuntime runtime = uiManager.Open(targetPageId, arguments: null, pushHistory: false);
+                currentPageId = uiManager.CurrentPageId ?? currentPageId;
+
+                Logger.Info(
+                    "UI.Layout",
+                    "布局实验室页面打开完成。",
+                    new Dictionary<string, object?>
+                    {
+                        ["requestId"] = request.RequestId,
+                        ["command"] = request.Command,
+                        ["issuedBy"] = request.IssuedBy,
+                        ["pageId"] = runtime.Definition.PageId,
+                        ["layoutType"] = runtime.Definition.LayoutType.ToString(),
+                        ["registeredNodes"] = runtime.NodeRegistry.Count,
+                        ["currentPageId"] = currentPageId,
+                    });
+
+                FacetLayoutLabBridge.SaveStatus(new FacetLayoutLabStatus
+                {
+                    RequestId = request.RequestId,
+                    Command = request.Command,
+                    State = FacetLayoutLabBridge.StateCompleted,
+                    Success = true,
+                    Message = $"已打开布局实验页面：{runtime.Definition.PageId}",
+                    IssuedBy = request.IssuedBy,
+                    IssuedAtUtc = request.IssuedAtUtc,
+                    UpdatedAtUtc = DateTimeOffset.UtcNow.ToString("O"),
+                    RuntimeSessionId = CurrentSessionId,
+                    RuntimePageId = currentPageId,
+                });
+            }
+            catch (Exception exception)
+            {
+                Logger.Error(
+                    "UI.Layout",
+                    "布局实验室页面打开失败。",
+                    new Dictionary<string, object?>
+                    {
+                        ["requestId"] = request.RequestId,
+                        ["command"] = request.Command,
+                        ["issuedBy"] = request.IssuedBy,
+                        ["currentPageId"] = currentPageId,
+                        ["exceptionType"] = exception.GetType().FullName,
+                        ["message"] = exception.Message,
+                    });
+
+                FacetLayoutLabBridge.SaveStatus(new FacetLayoutLabStatus
+                {
+                    RequestId = request.RequestId,
+                    Command = request.Command,
+                    State = FacetLayoutLabBridge.StateFailed,
+                    Success = false,
+                    Message = $"打开布局实验页面失败：{exception.Message}",
+                    IssuedBy = request.IssuedBy,
+                    IssuedAtUtc = request.IssuedAtUtc,
+                    UpdatedAtUtc = DateTimeOffset.UtcNow.ToString("O"),
+                    RuntimeSessionId = CurrentSessionId,
+                    RuntimePageId = currentPageId,
+                });
+            }
+            finally
+            {
+                FacetLayoutLabBridge.DeleteRequest();
+            }
+        }
+
+        private void CleanupConsumedLabRequests()
+        {
+            CleanupConsumedHotReloadLabRequest();
+            CleanupConsumedLayoutLabRequest();
+        }
+
+        private void CleanupConsumedHotReloadLabRequest()
+        {
+            if (!FacetHotReloadLabBridge.TryLoadRequest(out FacetHotReloadLabRequest? request) ||
+                request == null ||
+                string.IsNullOrWhiteSpace(request.RequestId))
+            {
+                return;
+            }
+
+            if (!FacetHotReloadLabBridge.TryLoadStatus(out FacetHotReloadLabStatus? status) ||
+                status == null)
+            {
+                return;
+            }
+
+            if (!string.Equals(request.RequestId, status.RequestId, StringComparison.Ordinal) ||
+                !FacetHotReloadLabBridge.IsTerminalState(status.State))
+            {
+                return;
+            }
+
+            FacetHotReloadLabBridge.DeleteRequest();
+        }
+
+        private void CleanupConsumedLayoutLabRequest()
+        {
+            if (!FacetLayoutLabBridge.TryLoadRequest(out FacetLayoutLabRequest? request) ||
+                request == null ||
+                string.IsNullOrWhiteSpace(request.RequestId))
+            {
+                return;
+            }
+
+            if (!FacetLayoutLabBridge.TryLoadStatus(out FacetLayoutLabStatus? status) ||
+                status == null)
+            {
+                return;
+            }
+
+            if (!string.Equals(request.RequestId, status.RequestId, StringComparison.Ordinal) ||
+                !FacetLayoutLabBridge.IsTerminalState(status.State))
+            {
+                return;
+            }
+
+            FacetLayoutLabBridge.DeleteRequest();
         }
 
         private void VerifyApplicationBoundary()
@@ -699,6 +1400,8 @@ namespace Sideline.Facet.Runtime
                         ["registeredPages"] = pageRegistry.Count,
                         ["containsIdlePage"] = pageRegistry.Contains(UIPageIds.Idle),
                         ["containsDungeonPage"] = pageRegistry.Contains(UIPageIds.Dungeon),
+                        ["containsGeneratedLayoutLab"] = pageRegistry.Contains(UIPageIds.GeneratedLayoutLab),
+                        ["containsTemplateLayoutLab"] = pageRegistry.Contains(UIPageIds.TemplateLayoutLab),
                         ["routeServiceReady"] = Services.Contains<UIRouteService>(),
                     });
             }
@@ -751,6 +1454,158 @@ namespace Sideline.Facet.Runtime
                         ["exceptionType"] = exception.GetType().FullName,
                         ["message"] = exception.Message,
                     });
+            }
+        }
+
+        private void VerifyRedDotRuntime()
+        {
+            try
+            {
+                IRedDotService redDotService = Services.GetRequired<IRedDotService>();
+                Logger.Info(
+                    "RedDot.Runtime",
+                    "Facet 阶段 10 红点树运行时已接入。",
+                    new Dictionary<string, object?>
+                    {
+                        ["serviceType"] = redDotService.GetType().Name,
+                        ["providerCount"] =
+                            (Services.Contains<FacetRuntimeRedDotProvider>() ? 1 : 0) +
+                            (Services.Contains<ManualRedDotProvider>() ? 1 : 0),
+                        ["registeredPathCount"] = redDotService.RegisteredPathCount,
+                        ["registeredPathsPreview"] = string.Join(",", redDotService.GetRegisteredPaths()),
+                        ["luaBridgeAvailable"] = Services.GetRequired<ILuaRedDotBridge>().IsAvailable,
+                    });
+            }
+            catch (Exception exception)
+            {
+                Logger.Error(
+                    "RedDot.Runtime",
+                    "Facet 阶段 10 红点树运行时验证失败。",
+                    new Dictionary<string, object?>
+                    {
+                        ["exceptionType"] = exception.GetType().FullName,
+                        ["message"] = exception.Message,
+                    });
+            }
+        }
+
+        private void VerifyAdvancedLayouts()
+        {
+            Control verificationMountRoot = new()
+            {
+                Name = "FacetLayoutVerificationMount",
+                Visible = false,
+            };
+            AddChild(verificationMountRoot);
+
+            try
+            {
+                UIPageLoader pageLoader = Services.GetRequired<UIPageLoader>();
+                UIPageRegistry pageRegistry = Services.GetRequired<UIPageRegistry>();
+
+                UILayoutResult generatedLayout = LoadVerificationLayout(
+                    pageLoader,
+                    pageRegistry.GetRequired(UIPageIds.GeneratedLayoutLab),
+                    verificationMountRoot);
+                VerifyRequiredNode(generatedLayout, "GeneratedTitleLabel");
+                VerifyRequiredNode(generatedLayout, "GeneratedPrimaryButton");
+
+                UILayoutResult templateLayout = LoadVerificationLayout(
+                    pageLoader,
+                    pageRegistry.GetRequired(UIPageIds.TemplateLayoutLab),
+                    verificationMountRoot);
+                VerifyRequiredNode(templateLayout, "TemplateShellTitleLabel");
+                VerifyRequiredNode(templateLayout, "TemplateContentSlot");
+                VerifyRequiredNode(templateLayout, "TemplateContentTitleLabel");
+                VerifyRequiredNode(templateLayout, "TemplateActionPrimaryButton");
+
+                Logger.Info(
+                    "UI.Layout",
+                    "Facet 阶段 11 模板布局与自动布局验证成功。",
+                    new Dictionary<string, object?>
+                    {
+                        ["generatedPageId"] = UIPageIds.GeneratedLayoutLab,
+                        ["generatedRegisteredNodes"] = generatedLayout.NodeRegistry.Count,
+                        ["templatePageId"] = UIPageIds.TemplateLayoutLab,
+                        ["templateRegisteredNodes"] = templateLayout.NodeRegistry.Count,
+                        ["generatedOwnsRootNode"] = generatedLayout.OwnsRootNode,
+                        ["templateOwnsRootNode"] = templateLayout.OwnsRootNode,
+                    });
+
+                ReleaseVerificationLayout(generatedLayout);
+                ReleaseVerificationLayout(templateLayout);
+            }
+            catch (Exception exception)
+            {
+                Logger.Error(
+                    "UI.Layout",
+                    "Facet 阶段 11 模板布局与自动布局验证失败。",
+                    new Dictionary<string, object?>
+                    {
+                        ["exceptionType"] = exception.GetType().FullName,
+                        ["message"] = exception.Message,
+                    });
+            }
+            finally
+            {
+                if (GodotObject.IsInstanceValid(verificationMountRoot))
+                {
+                    verificationMountRoot.QueueFree();
+                }
+            }
+        }
+
+        private void VerifyRuntimeDiagnostics()
+        {
+            try
+            {
+                FacetRuntimeDiagnosticsSnapshot snapshot = CreateRuntimeDiagnosticsSnapshot();
+                PublishRuntimeDiagnosticsSnapshot(force: true);
+
+                Logger.Info(
+                    "Tooling.Diagnostics",
+                    "Facet 阶段 12 运行时诊断快照已接入。",
+                    new Dictionary<string, object?>
+                    {
+                        ["snapshotPath"] = FacetRuntimeDiagnosticsBridge.GetSnapshotPath(),
+                        ["registeredPageCount"] = snapshot.RegisteredPageCount,
+                        ["activeRuntimeCount"] = snapshot.ActiveRuntimeCount,
+                        ["projectionCount"] = snapshot.ProjectionCount,
+                        ["luaRegisteredScriptCount"] = snapshot.LuaRegisteredScriptCount,
+                        ["redDotRegisteredPathCount"] = snapshot.RedDotRegisteredPathCount,
+                    });
+            }
+            catch (Exception exception)
+            {
+                Logger.Error(
+                    "Tooling.Diagnostics",
+                    "Facet 阶段 12 运行时诊断快照验证失败。",
+                    new Dictionary<string, object?>
+                    {
+                        ["exceptionType"] = exception.GetType().FullName,
+                        ["message"] = exception.Message,
+                    });
+            }
+        }
+
+        private static UILayoutResult LoadVerificationLayout(
+            UIPageLoader pageLoader,
+            UIPageDefinition definition,
+            Node mountRoot)
+        {
+            return pageLoader.Load(definition, mountRoot);
+        }
+
+        private static void VerifyRequiredNode(UILayoutResult layoutResult, string nodeKey)
+        {
+            layoutResult.NodeResolver.GetRequired<Control>(nodeKey);
+        }
+
+        private static void ReleaseVerificationLayout(UILayoutResult layoutResult)
+        {
+            if (layoutResult.OwnsRootNode && GodotObject.IsInstanceValid(layoutResult.RootNode))
+            {
+                layoutResult.RootNode.QueueFree();
             }
         }
 

@@ -2,6 +2,7 @@
 
 using System;
 using System.Collections.Generic;
+using Sideline.Facet.Extensions.RedDot;
 
 namespace Sideline.Facet.Runtime
 {
@@ -35,6 +36,12 @@ namespace Sideline.Facet.Runtime
         /// 注册显隐绑定。
         /// </summary>
         void BindVisibility(string key, Func<bool> valueFactory);
+
+        /// <summary>
+        /// 注册红点显隐绑定。
+        /// 由统一红点树路径驱动节点可见性，便于在诊断中直接看到绑定与路径的对应关系。
+        /// </summary>
+        void BindRedDotVisibility(string key, IRedDotService redDotService, string path, bool fallback = false);
 
         /// <summary>
         /// 注册可交互状态绑定。

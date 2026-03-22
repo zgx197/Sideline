@@ -9,13 +9,13 @@ using Godot;
 namespace Sideline.Facet.Runtime
 {
     /// <summary>
-    /// Facet 编辑器工作台与运行时之间的轻量文件桥。
-    /// 用于在编辑器主面板中发起热重载测试请求，并由运行时回写最近一次处理状态。
+    /// Facet 编辑器工作台与运行时之间的布局实验室文件桥。
+    /// 用于从编辑器面板请求运行时直接打开阶段 11 样例页面，并回写最近一次处理状态。
     /// </summary>
-    public static class FacetHotReloadLabBridge
+    public static class FacetLayoutLabBridge
     {
-        public const string CommandCurrentPageRoundTrip = "current_page_round_trip";
-        public const string CommandDungeonRoundTrip = "dungeon_round_trip";
+        public const string CommandOpenGeneratedLayoutLab = "open_generated_layout_lab";
+        public const string CommandOpenTemplateLayoutLab = "open_template_layout_lab";
 
         public const string StateIdle = "idle";
         public const string StateRequested = "requested";
@@ -25,8 +25,8 @@ namespace Sideline.Facet.Runtime
         public const string StateIgnored = "ignored";
 
         private const string LabDirectoryName = "facet-lab";
-        private const string RequestFileName = "hot-reload-request.json";
-        private const string StatusFileName = "hot-reload-status.json";
+        private const string RequestFileName = "layout-lab-request.json";
+        private const string StatusFileName = "layout-lab-status.json";
 
         private static readonly UTF8Encoding Utf8WithoutBom = new(false);
         private static readonly JsonSerializerOptions JsonOptions = new()
@@ -50,9 +50,9 @@ namespace Sideline.Facet.Runtime
             return Path.Combine(GetLabDirectoryPath(), StatusFileName);
         }
 
-        public static FacetHotReloadLabRequest CreateRequest(string command, string issuedBy)
+        public static FacetLayoutLabRequest CreateRequest(string command, string issuedBy)
         {
-            return new FacetHotReloadLabRequest
+            return new FacetLayoutLabRequest
             {
                 RequestId = Guid.NewGuid().ToString("N"),
                 Command = command,
@@ -61,9 +61,9 @@ namespace Sideline.Facet.Runtime
             };
         }
 
-        public static FacetHotReloadLabStatus CreateRequestedStatus(FacetHotReloadLabRequest request, string message)
+        public static FacetLayoutLabStatus CreateRequestedStatus(FacetLayoutLabRequest request, string message)
         {
-            return new FacetHotReloadLabStatus
+            return new FacetLayoutLabStatus
             {
                 RequestId = request.RequestId,
                 Command = request.Command,
@@ -75,23 +75,23 @@ namespace Sideline.Facet.Runtime
             };
         }
 
-        public static bool TryLoadRequest(out FacetHotReloadLabRequest? request)
+        public static bool TryLoadRequest(out FacetLayoutLabRequest? request)
         {
             return TryLoad(GetRequestPath(), out request);
         }
 
-        public static bool TryLoadStatus(out FacetHotReloadLabStatus? status)
+        public static bool TryLoadStatus(out FacetLayoutLabStatus? status)
         {
             return TryLoad(GetStatusPath(), out status);
         }
 
-        public static void SaveRequest(FacetHotReloadLabRequest request)
+        public static void SaveRequest(FacetLayoutLabRequest request)
         {
             ArgumentNullException.ThrowIfNull(request);
             Save(GetRequestPath(), request);
         }
 
-        public static void SaveStatus(FacetHotReloadLabStatus status)
+        public static void SaveStatus(FacetLayoutLabStatus status)
         {
             ArgumentNullException.ThrowIfNull(status);
             Save(GetStatusPath(), status);
@@ -102,7 +102,7 @@ namespace Sideline.Facet.Runtime
             DeleteFileIfExists(GetRequestPath());
         }
 
-        public static bool IsPending(FacetHotReloadLabRequest request, FacetHotReloadLabStatus? status)
+        public static bool IsPending(FacetLayoutLabRequest request, FacetLayoutLabStatus? status)
         {
             ArgumentNullException.ThrowIfNull(request);
 
@@ -172,9 +172,9 @@ namespace Sideline.Facet.Runtime
     }
 
     /// <summary>
-    /// 编辑器工作台发往运行时的热重载测试请求。
+    /// 编辑器工作台发往运行时的布局实验室请求。
     /// </summary>
-    public sealed class FacetHotReloadLabRequest
+    public sealed class FacetLayoutLabRequest
     {
         public string RequestId { get; init; } = string.Empty;
 
@@ -186,9 +186,9 @@ namespace Sideline.Facet.Runtime
     }
 
     /// <summary>
-    /// 运行时回写给编辑器工作台的热重载测试状态。
+    /// 运行时回写给编辑器工作台的布局实验室状态。
     /// </summary>
-    public sealed class FacetHotReloadLabStatus
+    public sealed class FacetLayoutLabStatus
     {
         public string RequestId { get; init; } = string.Empty;
 

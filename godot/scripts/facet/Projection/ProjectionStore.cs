@@ -102,6 +102,17 @@ namespace Sideline.Facet.Projection
         }
 
         /// <summary>
+        /// 获取当前全部 Projection 主键快照。
+        /// 供运行时诊断与工具面板读取，不暴露内部字典引用。
+        /// </summary>
+        public IReadOnlyList<ProjectionKey> GetKeysSnapshot()
+        {
+            List<ProjectionKey> keys = new(_values.Keys);
+            keys.Sort(static (left, right) => string.Compare(left.Value, right.Value, StringComparison.OrdinalIgnoreCase));
+            return keys;
+        }
+
+        /// <summary>
         /// 订阅指定 ProjectionKey 的变更。
         /// </summary>
         public IDisposable Subscribe(ProjectionKey key, Action<ProjectionChange> listener)

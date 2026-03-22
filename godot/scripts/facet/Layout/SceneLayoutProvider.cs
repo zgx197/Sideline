@@ -37,10 +37,10 @@ namespace Sideline.Facet.Layout
             ArgumentNullException.ThrowIfNull(definition);
             ArgumentNullException.ThrowIfNull(mountRoot);
 
-            Control rootNode = definition.LayoutType switch
+            (Control rootNode, bool ownsRootNode) = definition.LayoutType switch
             {
-                UIPageLayoutType.ExistingNode => LoadExistingNode(definition, mountRoot),
-                UIPageLayoutType.PackedScene => LoadPackedScene(definition, mountRoot),
+                UIPageLayoutType.ExistingNode => (LoadExistingNode(definition, mountRoot), false),
+                UIPageLayoutType.PackedScene => (LoadPackedScene(definition, mountRoot), true),
                 _ => throw new InvalidOperationException($"Unsupported layout type for SceneLayoutProvider: {definition.LayoutType}"),
             };
 
@@ -58,7 +58,7 @@ namespace Sideline.Facet.Layout
                     ["registeredNodes"] = nodeRegistry.Count,
                 });
 
-            return new UILayoutResult(rootNode, nodeRegistry, nodeResolver);
+            return new UILayoutResult(rootNode, nodeRegistry, nodeResolver, ownsRootNode);
         }
 
         private static Control LoadExistingNode(UIPageDefinition definition, Node mountRoot)

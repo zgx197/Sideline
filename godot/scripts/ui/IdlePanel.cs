@@ -3,6 +3,7 @@
 using System;
 using System.Collections.Generic;
 using Godot;
+using Sideline.Facet.Extensions.RedDot;
 using Sideline.Facet.Projection;
 using Sideline.Facet.Projection.Client;
 using Sideline.Facet.Projection.Diagnostics;
@@ -22,27 +23,41 @@ public partial class IdlePanel : PanelContainer, IUIPageLifecycle
     private const string LuaResourceTextStateKey = "facet.idle.resource_text";
     private const string LuaShowRuntimeSummaryStateKey = "facet.idle.show_runtime_summary";
     private const string LuaRuntimeSummaryTextStateKey = "facet.idle.runtime_summary_text";
+    private const string IdlePageRedDotPath = "client.idle";
+    private const string IdleRuntimeRedDotPath = "client.idle.runtime";
+    private const string IdleManualRedDotPath = FacetRedDotLabPaths.IdleManual;
+    private const string DungeonManualRedDotPath = FacetRedDotLabPaths.DungeonManual;
 
     private PanelContainer _facetProjectionPanel = null!;
     private Label _titleLabel = null!;
+    private Label _titleRedDotBadgeLabel = null!;
     private Label _statusLabel = null!;
     private Label _resourceLabel = null!;
     private Label _facetProjectionLabel = null!;
+    private Label _redDotSummaryLabel = null!;
+    private Label _redDotLabCurrentBadgeLabel = null!;
+    private Label _redDotLabStatusLabel = null!;
     private Label _hotReloadTestStatusLabel = null!;
     private Button _switchButton = null!;
     private Button _closeButton = null!;
     private Button _currentPageReloadTestButton = null!;
     private Button _dungeonReloadTestButton = null!;
+    private Button _toggleCurrentRedDotButton = null!;
+    private Button _toggleDungeonRedDotButton = null!;
+    private Button _clearRedDotLabButton = null!;
 
     private IDisposable? _runtimeProbeSubscription;
     private IDisposable? _clientShellSubscription;
+    private IDisposable? _redDotSubscription;
     private ClientShellProjection? _currentShellProjection;
     private string _runtimeProbeSummaryText = "Facet Runtime / 等待数据";
+    private string _redDotSummaryText = "红点树 / 等待数据";
     private UIContext? _pageContext;
     private IUIComponentBindingScope? _runtimeSummaryBindings;
     private bool _isPageShown;
     private bool _nodesBound;
     private bool _bindingsRegistered;
+    private bool _hasIdlePageRedDot;
     private int _gold;
     private double _timer;
 
@@ -94,6 +109,7 @@ public partial class IdlePanel : PanelContainer, IUIPageLifecycle
         ProjectionStore projectionStore = FacetHost.Instance.Context.ProjectionStore;
         _runtimeProbeSubscription = projectionStore.Subscribe(FacetProjectionKeys.RuntimeProbe, OnRuntimeProbeChanged);
         _clientShellSubscription = projectionStore.Subscribe(FacetProjectionKeys.ClientShell, OnClientShellChanged);
+        BindRedDotProjection();
 
         bool initialRuntimeProbeApplied = false;
         if (projectionStore.TryGet(FacetProjectionKeys.RuntimeProbe, out FacetRuntimeProbeProjection? runtimeProjection) && runtimeProjection != null)
@@ -142,6 +158,7 @@ public partial class IdlePanel : PanelContainer, IUIPageLifecycle
             {
                 ["runtimeProbeKey"] = FacetProjectionKeys.RuntimeProbe.ToString(),
                 ["clientShellKey"] = FacetProjectionKeys.ClientShell.ToString(),
+                ["redDotPath"] = IdlePageRedDotPath,
                 ["initialRuntimeProbeApplied"] = initialRuntimeProbeApplied,
                 ["initialClientShellApplied"] = initialClientShellApplied,
             });
@@ -216,20 +233,30 @@ public partial class IdlePanel : PanelContainer, IUIPageLifecycle
         UINodeResolver? resolver = context?.Resolver as UINodeResolver;
         _facetProjectionPanel = ResolveRequiredNode<PanelContainer>(resolver, "FacetProjectionPanel", "%FacetProjectionPanel");
         _titleLabel = ResolveRequiredNode<Label>(resolver, "TitleLabel", "%TitleLabel");
+        _titleRedDotBadgeLabel = ResolveRequiredNode<Label>(resolver, "TitleRedDotBadgeLabel", "%TitleRedDotBadgeLabel");
         _statusLabel = ResolveRequiredNode<Label>(resolver, "StatusLabel", "%StatusLabel");
         _resourceLabel = ResolveRequiredNode<Label>(resolver, "ResourceLabel", "%ResourceLabel");
         _facetProjectionLabel = ResolveRequiredNode<Label>(resolver, "FacetProjectionLabel", "%FacetProjectionLabel");
+        _redDotSummaryLabel = ResolveRequiredNode<Label>(resolver, "RedDotSummaryLabel", "%RedDotSummaryLabel");
+        _redDotLabCurrentBadgeLabel = ResolveRequiredNode<Label>(resolver, "RedDotLabCurrentBadgeLabel", "%RedDotLabCurrentBadgeLabel");
+        _redDotLabStatusLabel = ResolveRequiredNode<Label>(resolver, "RedDotLabStatusLabel", "%RedDotLabStatusLabel");
         _hotReloadTestStatusLabel = ResolveRequiredNode<Label>(resolver, "HotReloadTestStatusLabel", "%HotReloadTestStatusLabel");
         _switchButton = ResolveRequiredNode<Button>(resolver, "SwitchButton", "%SwitchButton");
         _closeButton = ResolveRequiredNode<Button>(resolver, "CloseButton", "%CloseButton");
         _currentPageReloadTestButton = ResolveRequiredNode<Button>(resolver, "CurrentPageReloadTestButton", "%CurrentPageReloadTestButton");
         _dungeonReloadTestButton = ResolveRequiredNode<Button>(resolver, "DungeonReloadTestButton", "%DungeonReloadTestButton");
+        _toggleCurrentRedDotButton = ResolveRequiredNode<Button>(resolver, "ToggleCurrentRedDotButton", "%ToggleCurrentRedDotButton");
+        _toggleDungeonRedDotButton = ResolveRequiredNode<Button>(resolver, "ToggleDungeonRedDotButton", "%ToggleDungeonRedDotButton");
+        _clearRedDotLabButton = ResolveRequiredNode<Button>(resolver, "ClearRedDotLabButton", "%ClearRedDotLabButton");
 
         _statusLabel.AutowrapMode = TextServer.AutowrapMode.WordSmart;
         _facetProjectionLabel.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+        _redDotSummaryLabel.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+        _redDotLabStatusLabel.AutowrapMode = TextServer.AutowrapMode.WordSmart;
         _hotReloadTestStatusLabel.AutowrapMode = TextServer.AutowrapMode.WordSmart;
         _nodesBound = true;
         ApplyProjectionPlaceholder();
+        ApplyRedDotPlaceholder();
         UpdateHotReloadTestStatus("等待测试触发。");
         RefreshView("nodes.resolved");
     }
@@ -249,6 +276,9 @@ public partial class IdlePanel : PanelContainer, IUIPageLifecycle
             ConnectButtonPressed(_closeButton, OnClosePressed);
             ConnectButtonPressed(_currentPageReloadTestButton, OnCurrentPageReloadTestPressed);
             ConnectButtonPressed(_dungeonReloadTestButton, OnDungeonReloadTestPressed);
+            ConnectButtonPressed(_toggleCurrentRedDotButton, OnToggleCurrentRedDotPressed);
+            ConnectButtonPressed(_toggleDungeonRedDotButton, OnToggleDungeonRedDotPressed);
+            ConnectButtonPressed(_clearRedDotLabButton, OnClearRedDotLabPressed);
             _bindingsRegistered = true;
             return;
         }
@@ -257,10 +287,17 @@ public partial class IdlePanel : PanelContainer, IUIPageLifecycle
         bindings.BindCommand("CloseButton", OnClosePressed);
         bindings.BindCommand("CurrentPageReloadTestButton", OnCurrentPageReloadTestPressed);
         bindings.BindCommand("DungeonReloadTestButton", OnDungeonReloadTestPressed);
+        bindings.BindCommand("ToggleCurrentRedDotButton", OnToggleCurrentRedDotPressed);
+        bindings.BindCommand("ToggleDungeonRedDotButton", OnToggleDungeonRedDotPressed);
+        bindings.BindCommand("ClearRedDotLabButton", OnClearRedDotLabPressed);
+        bindings.BindText("RedDotSummaryLabel", GetRedDotSummaryText);
+        bindings.BindVisibility("RedDotLabCurrentBadgeLabel", HasIdleManualRedDot);
+        bindings.BindText("RedDotLabStatusLabel", GetRedDotLabStatusText);
 
         if (!useLuaBindings)
         {
             bindings.BindText("TitleLabel", GetTitleText);
+            bindings.BindVisibility("TitleRedDotBadgeLabel", HasIdlePageRedDot);
             bindings.BindText("StatusLabel", GetStatusText);
             bindings.BindText("SwitchButton", GetPrimaryActionText);
             bindings.BindInteractable("SwitchButton", IsPrimaryActionEnabled);
@@ -320,6 +357,10 @@ public partial class IdlePanel : PanelContainer, IUIPageLifecycle
         _resourceLabel.Text = GetResourceText();
         _facetProjectionPanel.Visible = ShouldShowRuntimeSummary();
         _facetProjectionLabel.Text = GetRuntimeProbeSummaryText();
+        _titleRedDotBadgeLabel.Visible = HasIdlePageRedDot();
+        _redDotSummaryLabel.Text = GetRedDotSummaryText();
+        _redDotLabCurrentBadgeLabel.Visible = HasIdleManualRedDot();
+        _redDotLabStatusLabel.Text = GetRedDotLabStatusText();
     }
 
     private string GetTitleText()
@@ -357,6 +398,29 @@ public partial class IdlePanel : PanelContainer, IUIPageLifecycle
         return _runtimeProbeSummaryText;
     }
 
+    private bool HasIdlePageRedDot()
+    {
+        return _hasIdlePageRedDot;
+    }
+
+    private string GetRedDotSummaryText()
+    {
+        return _redDotSummaryText;
+    }
+
+    private bool HasIdleManualRedDot()
+    {
+        return GetManualRedDotState(IdleManualRedDotPath);
+    }
+
+    private string GetRedDotLabStatusText()
+    {
+        return
+            $"测试红点 / Manual Lab\n" +
+            $"Idle Lab: {(GetManualRedDotState(IdleManualRedDotPath) ? "On" : "Off")}\n" +
+            $"Dungeon Lab: {(GetManualRedDotState(DungeonManualRedDotPath) ? "On" : "Off")}";
+    }
+
     private void SyncLuaState()
     {
         if (_pageContext?.Lua == null)
@@ -376,6 +440,12 @@ public partial class IdlePanel : PanelContainer, IUIPageLifecycle
     private void ApplyProjectionPlaceholder()
     {
         _runtimeProbeSummaryText = "Facet Runtime / 等待数据";
+    }
+
+    private void ApplyRedDotPlaceholder()
+    {
+        _hasIdlePageRedDot = false;
+        _redDotSummaryText = "红点树 / 等待数据";
     }
 
     private void OnClientShellChanged(ProjectionChange change)
@@ -447,6 +517,67 @@ public partial class IdlePanel : PanelContainer, IUIPageLifecycle
         RefreshView("projection.runtime_probe");
     }
 
+    private void BindRedDotProjection()
+    {
+        _redDotSubscription?.Dispose();
+        _redDotSubscription = null;
+
+        if (FacetHost.Instance?.IsInitialized != true ||
+            !FacetHost.Instance.Services.TryGet(out IRedDotService? redDotService) ||
+            redDotService == null)
+        {
+            ApplyRedDotPlaceholder();
+            RefreshView("red_dot.pending");
+            return;
+        }
+
+        _redDotSubscription = redDotService.Subscribe(IdlePageRedDotPath, OnRedDotChanged);
+        ApplyRedDotSnapshot(redDotService, "red_dot.initial");
+
+        ClientLog.Info(
+            "IdlePanel",
+            "IdlePanel 已挂载红点路径。",
+            new Dictionary<string, object?>
+            {
+                ["pagePath"] = IdlePageRedDotPath,
+                ["detailPath"] = IdleRuntimeRedDotPath,
+            });
+    }
+
+    private void OnRedDotChanged(RedDotChange change)
+    {
+        if (FacetHost.Instance?.Services.TryGet(out IRedDotService? redDotService) != true || redDotService == null)
+        {
+            return;
+        }
+
+        ApplyRedDotSnapshot(redDotService, $"red_dot.changed:{change.Source}");
+
+        ClientLog.Info(
+            "IdlePanel",
+            "IdlePanel 收到红点路径变更。",
+            new Dictionary<string, object?>
+            {
+                ["path"] = change.Path,
+                ["source"] = change.Source,
+                ["currentHasRedDot"] = change.Current?.HasRedDot ?? false,
+                ["currentActiveChildCount"] = change.Current?.ActiveChildCount ?? 0,
+            });
+    }
+
+    private void ApplyRedDotSnapshot(IRedDotService redDotService, string reason)
+    {
+        bool hasPageSnapshot = redDotService.TryGetSnapshot(IdlePageRedDotPath, out RedDotNodeSnapshot pageSnapshot);
+        bool hasRuntimeSnapshot = redDotService.TryGetSnapshot(IdleRuntimeRedDotPath, out RedDotNodeSnapshot runtimeSnapshot);
+
+        _hasIdlePageRedDot = hasPageSnapshot && pageSnapshot.HasRedDot;
+        _redDotSummaryText =
+            $"红点树 / Idle\n" +
+            $"Page: {FormatRedDotSnapshot(hasPageSnapshot ? pageSnapshot : null)}\n" +
+            $"Runtime: {FormatRedDotSnapshot(hasRuntimeSnapshot ? runtimeSnapshot : null)}";
+        RefreshView(reason);
+    }
+
     private void LogInitialRuntimeProbeProjection(FacetRuntimeProbeProjection projection)
     {
         ClientLog.Info(
@@ -466,6 +597,8 @@ public partial class IdlePanel : PanelContainer, IUIPageLifecycle
         _runtimeProbeSubscription = null;
         _clientShellSubscription?.Dispose();
         _clientShellSubscription = null;
+        _redDotSubscription?.Dispose();
+        _redDotSubscription = null;
     }
 
     private static Dictionary<string, object?> CreateBindingRegistrationPayload(
@@ -509,6 +642,9 @@ public partial class IdlePanel : PanelContainer, IUIPageLifecycle
             ["csharpRuntimeSummaryBindingCount"] = runtimeSummaryDiagnostics?.BindingCount ?? 0,
             ["csharpRuntimeSummaryRefreshCount"] = runtimeSummaryDiagnostics?.RefreshCount ?? 0,
             ["csharpRuntimeSummaryLastReason"] = runtimeSummaryDiagnostics?.LastRefreshReason,
+            ["redDotPagePath"] = IdlePageRedDotPath,
+            ["redDotRuntimePath"] = IdleRuntimeRedDotPath,
+            ["redDotActive"] = context.Lua?.GetRedDot(IdlePageRedDotPath, false) ?? false,
         };
 
         AppendScopeDiagnostics(payload, "luaRoot", luaRootDiagnostics);
@@ -545,6 +681,16 @@ public partial class IdlePanel : PanelContainer, IUIPageLifecycle
         }
 
         return sessionId[..8];
+    }
+
+    private static string FormatRedDotSnapshot(RedDotNodeSnapshot? snapshot)
+    {
+        if (snapshot == null)
+        {
+            return "未注册";
+        }
+
+        return $"{snapshot.Path} => {(snapshot.HasRedDot ? "On" : "Off")} (self={(snapshot.SelfHasRedDot ? "On" : "Off")}, children={snapshot.ActiveChildCount}/{snapshot.DirectChildCount}, sources={snapshot.SourceCount})";
     }
 
     private void OnSwitchPressed()
@@ -600,5 +746,67 @@ public partial class IdlePanel : PanelContainer, IUIPageLifecycle
     private static string FormatStatusTimestamp()
     {
         return DateTime.Now.ToString("HH:mm:ss");
+    }
+
+    private void OnToggleCurrentRedDotPressed()
+    {
+        ToggleManualRedDot(IdleManualRedDotPath, "当前页");
+    }
+
+    private void OnToggleDungeonRedDotPressed()
+    {
+        ToggleManualRedDot(DungeonManualRedDotPath, "地下城页");
+    }
+
+    private void OnClearRedDotLabPressed()
+    {
+        if (FacetHost.Instance?.Services.TryGet(out ManualRedDotProvider? manualProvider) != true || manualProvider == null)
+        {
+            UpdateHotReloadTestStatus($"{FormatStatusTimestamp()} 红点测试 Provider 未就绪。");
+            return;
+        }
+
+        manualProvider.ClearAll();
+        RefreshView("red_dot_lab.clear");
+
+        ClientLog.Info(
+            "IdlePanel",
+            "IdlePanel 已清空红点测试状态。",
+            new Dictionary<string, object?>
+            {
+                ["pageId"] = _pageContext?.PageId,
+                ["idlePath"] = IdleManualRedDotPath,
+                ["dungeonPath"] = DungeonManualRedDotPath,
+            });
+    }
+
+    private void ToggleManualRedDot(string path, string targetName)
+    {
+        if (FacetHost.Instance?.Services.TryGet(out ManualRedDotProvider? manualProvider) != true || manualProvider == null)
+        {
+            UpdateHotReloadTestStatus($"{FormatStatusTimestamp()} 红点测试 Provider 未就绪。");
+            return;
+        }
+
+        manualProvider.Toggle(path);
+        RefreshView($"red_dot_lab.toggle:{path}");
+
+        ClientLog.Info(
+            "IdlePanel",
+            "IdlePanel 已切换红点测试状态。",
+            new Dictionary<string, object?>
+            {
+                ["pageId"] = _pageContext?.PageId,
+                ["target"] = targetName,
+                ["path"] = path,
+                ["active"] = manualProvider.IsActive(path),
+            });
+    }
+
+    private bool GetManualRedDotState(string path)
+    {
+        return FacetHost.Instance?.Services.TryGet(out ManualRedDotProvider? manualProvider) == true &&
+               manualProvider != null &&
+               manualProvider.IsActive(path);
     }
 }

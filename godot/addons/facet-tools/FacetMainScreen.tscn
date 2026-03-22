@@ -508,6 +508,133 @@ scroll_active = true
 selection_enabled = true
 fit_content = false
 
+[node name="LayoutTab" type="ScrollContainer" parent="RootMargin/RootVBox/WorkspaceTabs"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+horizontal_scroll_mode = 0
+
+[node name="LayoutMargin" type="MarginContainer" parent="RootMargin/RootVBox/WorkspaceTabs/LayoutTab"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/margin_left = 4
+theme_override_constants/margin_top = 4
+theme_override_constants/margin_right = 4
+theme_override_constants/margin_bottom = 4
+
+[node name="LayoutVBox" type="VBoxContainer" parent="RootMargin/RootVBox/WorkspaceTabs/LayoutTab/LayoutMargin"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 12
+
+[node name="LayoutLabIntroCard" type="PanelContainer" parent="RootMargin/RootVBox/WorkspaceTabs/LayoutTab/LayoutMargin/LayoutVBox"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="LayoutLabIntroMargin" type="MarginContainer" parent="RootMargin/RootVBox/WorkspaceTabs/LayoutTab/LayoutMargin/LayoutVBox/LayoutLabIntroCard"]
+layout_mode = 2
+theme_override_constants/margin_left = 16
+theme_override_constants/margin_top = 16
+theme_override_constants/margin_right = 16
+theme_override_constants/margin_bottom = 16
+
+[node name="LayoutLabIntroVBox" type="VBoxContainer" parent="RootMargin/RootVBox/WorkspaceTabs/LayoutTab/LayoutMargin/LayoutVBox/LayoutLabIntroCard/LayoutLabIntroMargin"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 8
+
+[node name="LayoutLabTitleLabel" type="Label" parent="RootMargin/RootVBox/WorkspaceTabs/LayoutTab/LayoutMargin/LayoutVBox/LayoutLabIntroCard/LayoutLabIntroMargin/LayoutLabIntroVBox"]
+layout_mode = 2
+text = "阶段 11 布局实验室"
+
+[node name="LayoutLabDescriptionLabel" type="Label" parent="RootMargin/RootVBox/WorkspaceTabs/LayoutTab/LayoutMargin/LayoutVBox/LayoutLabIntroCard/LayoutLabIntroMargin/LayoutLabIntroVBox"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "这里直接向运行中的 Facet 客户端发送布局入口请求，用来打开 Generated / Template 两类阶段 11 页面，并查看最近一次桥接状态与结构化日志证据。"
+autowrap_mode = 2
+
+[node name="LayoutLabActionRow" type="HBoxContainer" parent="RootMargin/RootVBox/WorkspaceTabs/LayoutTab/LayoutMargin/LayoutVBox/LayoutLabIntroCard/LayoutLabIntroMargin/LayoutLabIntroVBox"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 8
+
+[node name="OpenGeneratedLayoutLabButton" type="Button" parent="RootMargin/RootVBox/WorkspaceTabs/LayoutTab/LayoutMargin/LayoutVBox/LayoutLabIntroCard/LayoutLabIntroMargin/LayoutLabIntroVBox/LayoutLabActionRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+text = "打开 Generated Lab"
+
+[node name="OpenTemplateLayoutLabButton" type="Button" parent="RootMargin/RootVBox/WorkspaceTabs/LayoutTab/LayoutMargin/LayoutVBox/LayoutLabIntroCard/LayoutLabIntroMargin/LayoutLabIntroVBox/LayoutLabActionRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+text = "打开 Template Lab"
+
+[node name="RefreshLayoutLabStatusButton" type="Button" parent="RootMargin/RootVBox/WorkspaceTabs/LayoutTab/LayoutMargin/LayoutVBox/LayoutLabIntroCard/LayoutLabIntroMargin/LayoutLabIntroVBox/LayoutLabActionRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+text = "刷新状态"
+
+[node name="LayoutLabDivider" type="HSeparator" parent="RootMargin/RootVBox/WorkspaceTabs/LayoutTab/LayoutMargin/LayoutVBox/LayoutLabIntroCard/LayoutLabIntroMargin/LayoutLabIntroVBox"]
+layout_mode = 2
+
+[node name="LayoutLabBridgeStatusTitleLabel" type="Label" parent="RootMargin/RootVBox/WorkspaceTabs/LayoutTab/LayoutMargin/LayoutVBox/LayoutLabIntroCard/LayoutLabIntroMargin/LayoutLabIntroVBox"]
+layout_mode = 2
+text = "运行时桥状态"
+
+[node name="LayoutLabBridgeStatusLabel" type="Label" parent="RootMargin/RootVBox/WorkspaceTabs/LayoutTab/LayoutMargin/LayoutVBox/LayoutLabIntroCard/LayoutLabIntroMargin/LayoutLabIntroVBox"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+text = "等待运行时状态..."
+autowrap_mode = 2
+
+[node name="LayoutLabBridgePathsLabel" type="Label" parent="RootMargin/RootVBox/WorkspaceTabs/LayoutTab/LayoutMargin/LayoutVBox/LayoutLabIntroCard/LayoutLabIntroMargin/LayoutLabIntroVBox"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Request / Status"
+autowrap_mode = 2
+
+[node name="LayoutLabEvidenceCard" type="PanelContainer" parent="RootMargin/RootVBox/WorkspaceTabs/LayoutTab/LayoutMargin/LayoutVBox"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="LayoutLabEvidenceMargin" type="MarginContainer" parent="RootMargin/RootVBox/WorkspaceTabs/LayoutTab/LayoutMargin/LayoutVBox/LayoutLabEvidenceCard"]
+layout_mode = 2
+theme_override_constants/margin_left = 16
+theme_override_constants/margin_top = 16
+theme_override_constants/margin_right = 16
+theme_override_constants/margin_bottom = 16
+
+[node name="LayoutLabEvidenceVBox" type="VBoxContainer" parent="RootMargin/RootVBox/WorkspaceTabs/LayoutTab/LayoutMargin/LayoutVBox/LayoutLabEvidenceCard/LayoutLabEvidenceMargin"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 8
+
+[node name="LayoutLabEvidenceTitleLabel" type="Label" parent="RootMargin/RootVBox/WorkspaceTabs/LayoutTab/LayoutMargin/LayoutVBox/LayoutLabEvidenceCard/LayoutLabEvidenceMargin/LayoutLabEvidenceVBox"]
+layout_mode = 2
+text = "最近证据"
+
+[node name="LayoutLabEvidenceDescriptionLabel" type="Label" parent="RootMargin/RootVBox/WorkspaceTabs/LayoutTab/LayoutMargin/LayoutVBox/LayoutLabEvidenceCard/LayoutLabEvidenceMargin/LayoutLabEvidenceVBox"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "这里提取最近与 `client.layout.generated_lab` / `client.layout.template_lab` 相关的 `UI.Layout` 与 `UI.Page` 结构化日志。"
+autowrap_mode = 2
+
+[node name="LayoutLabEvidenceLabel" type="RichTextLabel" parent="RootMargin/RootVBox/WorkspaceTabs/LayoutTab/LayoutMargin/LayoutVBox/LayoutLabEvidenceCard/LayoutLabEvidenceMargin/LayoutLabEvidenceVBox"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+custom_minimum_size = Vector2(0, 260)
+scroll_active = true
+selection_enabled = true
+fit_content = false
+autowrap_mode = 2
+
 [node name="DiagnosticsTab" type="ScrollContainer" parent="RootMargin/RootVBox/WorkspaceTabs"]
 layout_mode = 2
 size_flags_horizontal = 3
@@ -527,35 +654,195 @@ layout_mode = 2
 size_flags_horizontal = 3
 theme_override_constants/separation = 12
 
-[node name="ReservedCard" type="PanelContainer" parent="RootMargin/RootVBox/WorkspaceTabs/DiagnosticsTab/DiagnosticsMargin/DiagnosticsVBox"]
+[node name="RuntimeDiagnosticsIntroCard" type="PanelContainer" parent="RootMargin/RootVBox/WorkspaceTabs/DiagnosticsTab/DiagnosticsMargin/DiagnosticsVBox"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 
-[node name="ReservedMargin" type="MarginContainer" parent="RootMargin/RootVBox/WorkspaceTabs/DiagnosticsTab/DiagnosticsMargin/DiagnosticsVBox/ReservedCard"]
+[node name="RuntimeDiagnosticsIntroMargin" type="MarginContainer" parent="RootMargin/RootVBox/WorkspaceTabs/DiagnosticsTab/DiagnosticsMargin/DiagnosticsVBox/RuntimeDiagnosticsIntroCard"]
 layout_mode = 2
 theme_override_constants/margin_left = 16
 theme_override_constants/margin_top = 16
 theme_override_constants/margin_right = 16
 theme_override_constants/margin_bottom = 16
 
-[node name="ReservedVBox" type="VBoxContainer" parent="RootMargin/RootVBox/WorkspaceTabs/DiagnosticsTab/DiagnosticsMargin/DiagnosticsVBox/ReservedCard/ReservedMargin"]
+[node name="RuntimeDiagnosticsIntroVBox" type="VBoxContainer" parent="RootMargin/RootVBox/WorkspaceTabs/DiagnosticsTab/DiagnosticsMargin/DiagnosticsVBox/RuntimeDiagnosticsIntroCard/RuntimeDiagnosticsIntroMargin"]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_constants/separation = 8
 
-[node name="ReservedTitleLabel" type="Label" parent="RootMargin/RootVBox/WorkspaceTabs/DiagnosticsTab/DiagnosticsMargin/DiagnosticsVBox/ReservedCard/ReservedMargin/ReservedVBox"]
+[node name="RuntimeDiagnosticsTitleLabel" type="Label" parent="RootMargin/RootVBox/WorkspaceTabs/DiagnosticsTab/DiagnosticsMargin/DiagnosticsVBox/RuntimeDiagnosticsIntroCard/RuntimeDiagnosticsIntroMargin/RuntimeDiagnosticsIntroVBox"]
 layout_mode = 2
-text = "预留模块"
+text = "阶段 12 运行时诊断"
 
-[node name="ReservedDescriptionLabel" type="Label" parent="RootMargin/RootVBox/WorkspaceTabs/DiagnosticsTab/DiagnosticsMargin/DiagnosticsVBox/ReservedCard/ReservedMargin/ReservedVBox"]
+[node name="RuntimeDiagnosticsDescriptionLabel" type="Label" parent="RootMargin/RootVBox/WorkspaceTabs/DiagnosticsTab/DiagnosticsMargin/DiagnosticsVBox/RuntimeDiagnosticsIntroCard/RuntimeDiagnosticsIntroMargin/RuntimeDiagnosticsIntroVBox"]
 layout_mode = 2
 size_flags_horizontal = 3
-text = "这里保留给后续 Facet 工具，不再和日志页、热重载页混在一个视图里。"
+text = "这里直接读取 FacetHost 输出的统一诊断快照，用来查看页面注册表、活动运行时、Projection 键、Lua 脚本和红点树摘要。"
 autowrap_mode = 2
 
-[node name="ReservedPlaceholderLabel" type="Label" parent="RootMargin/RootVBox/WorkspaceTabs/DiagnosticsTab/DiagnosticsMargin/DiagnosticsVBox/ReservedCard/ReservedMargin/ReservedVBox"]
+[node name="RuntimeDiagnosticsDivider" type="HSeparator" parent="RootMargin/RootVBox/WorkspaceTabs/DiagnosticsTab/DiagnosticsMargin/DiagnosticsVBox/RuntimeDiagnosticsIntroCard/RuntimeDiagnosticsIntroMargin/RuntimeDiagnosticsIntroVBox"]
+layout_mode = 2
+
+[node name="RuntimeDiagnosticsStatusTitleLabel" type="Label" parent="RootMargin/RootVBox/WorkspaceTabs/DiagnosticsTab/DiagnosticsMargin/DiagnosticsVBox/RuntimeDiagnosticsIntroCard/RuntimeDiagnosticsIntroMargin/RuntimeDiagnosticsIntroVBox"]
+layout_mode = 2
+text = "快照状态"
+
+[node name="RuntimeDiagnosticsStatusLabel" type="Label" parent="RootMargin/RootVBox/WorkspaceTabs/DiagnosticsTab/DiagnosticsMargin/DiagnosticsVBox/RuntimeDiagnosticsIntroCard/RuntimeDiagnosticsIntroMargin/RuntimeDiagnosticsIntroVBox"]
+unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
-text = "计划中的模块：\n- 页面注册\n- 红点树\n- 资源诊断\n- 面板调试"
+text = "等待运行时诊断快照..."
+autowrap_mode = 2
+
+[node name="RuntimeDiagnosticsPathsLabel" type="Label" parent="RootMargin/RootVBox/WorkspaceTabs/DiagnosticsTab/DiagnosticsMargin/DiagnosticsVBox/RuntimeDiagnosticsIntroCard/RuntimeDiagnosticsIntroMargin/RuntimeDiagnosticsIntroVBox"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Snapshot"
+autowrap_mode = 2
+
+[node name="RuntimeDiagnosticsSnapshotCard" type="PanelContainer" parent="RootMargin/RootVBox/WorkspaceTabs/DiagnosticsTab/DiagnosticsMargin/DiagnosticsVBox"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="RuntimeDiagnosticsSnapshotMargin" type="MarginContainer" parent="RootMargin/RootVBox/WorkspaceTabs/DiagnosticsTab/DiagnosticsMargin/DiagnosticsVBox/RuntimeDiagnosticsSnapshotCard"]
+layout_mode = 2
+theme_override_constants/margin_left = 16
+theme_override_constants/margin_top = 16
+theme_override_constants/margin_right = 16
+theme_override_constants/margin_bottom = 16
+
+[node name="RuntimeDiagnosticsSnapshotVBox" type="VBoxContainer" parent="RootMargin/RootVBox/WorkspaceTabs/DiagnosticsTab/DiagnosticsMargin/DiagnosticsVBox/RuntimeDiagnosticsSnapshotCard/RuntimeDiagnosticsSnapshotMargin"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 8
+
+[node name="RuntimeDiagnosticsSnapshotTitleLabel" type="Label" parent="RootMargin/RootVBox/WorkspaceTabs/DiagnosticsTab/DiagnosticsMargin/DiagnosticsVBox/RuntimeDiagnosticsSnapshotCard/RuntimeDiagnosticsSnapshotMargin/RuntimeDiagnosticsSnapshotVBox"]
+layout_mode = 2
+text = "当前快照"
+
+[node name="RuntimeDiagnosticsSnapshotDescriptionLabel" type="Label" parent="RootMargin/RootVBox/WorkspaceTabs/DiagnosticsTab/DiagnosticsMargin/DiagnosticsVBox/RuntimeDiagnosticsSnapshotCard/RuntimeDiagnosticsSnapshotMargin/RuntimeDiagnosticsSnapshotVBox"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "该快照来自运行中的客户端，不依赖编辑器内置缓存；如果内容未变化，运行时不会重复写文件。"
+autowrap_mode = 2
+
+[node name="RuntimeDiagnosticsSnapshotLabel" type="RichTextLabel" parent="RootMargin/RootVBox/WorkspaceTabs/DiagnosticsTab/DiagnosticsMargin/DiagnosticsVBox/RuntimeDiagnosticsSnapshotCard/RuntimeDiagnosticsSnapshotMargin/RuntimeDiagnosticsSnapshotVBox"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+custom_minimum_size = Vector2(0, 320)
+scroll_active = true
+selection_enabled = true
+fit_content = false
+autowrap_mode = 2
+
+[node name="RuntimeDiagnosticsValidationCard" type="PanelContainer" parent="RootMargin/RootVBox/WorkspaceTabs/DiagnosticsTab/DiagnosticsMargin/DiagnosticsVBox"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="RuntimeDiagnosticsValidationMargin" type="MarginContainer" parent="RootMargin/RootVBox/WorkspaceTabs/DiagnosticsTab/DiagnosticsMargin/DiagnosticsVBox/RuntimeDiagnosticsValidationCard"]
+layout_mode = 2
+theme_override_constants/margin_left = 16
+theme_override_constants/margin_top = 16
+theme_override_constants/margin_right = 16
+theme_override_constants/margin_bottom = 16
+
+[node name="RuntimeDiagnosticsValidationVBox" type="VBoxContainer" parent="RootMargin/RootVBox/WorkspaceTabs/DiagnosticsTab/DiagnosticsMargin/DiagnosticsVBox/RuntimeDiagnosticsValidationCard/RuntimeDiagnosticsValidationMargin"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 8
+
+[node name="RuntimeDiagnosticsValidationTitleLabel" type="Label" parent="RootMargin/RootVBox/WorkspaceTabs/DiagnosticsTab/DiagnosticsMargin/DiagnosticsVBox/RuntimeDiagnosticsValidationCard/RuntimeDiagnosticsValidationMargin/RuntimeDiagnosticsValidationVBox"]
+layout_mode = 2
+text = "运行时校验器"
+
+[node name="RuntimeDiagnosticsValidationDescriptionLabel" type="Label" parent="RootMargin/RootVBox/WorkspaceTabs/DiagnosticsTab/DiagnosticsMargin/DiagnosticsVBox/RuntimeDiagnosticsValidationCard/RuntimeDiagnosticsValidationMargin/RuntimeDiagnosticsValidationVBox"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "校验器直接基于运行时页面注册表、布局仓库、Lua 脚本与活动运行时生成结果，优先暴露配置缺口和链路不一致。"
+autowrap_mode = 2
+
+[node name="RuntimeDiagnosticsValidationLabel" type="RichTextLabel" parent="RootMargin/RootVBox/WorkspaceTabs/DiagnosticsTab/DiagnosticsMargin/DiagnosticsVBox/RuntimeDiagnosticsValidationCard/RuntimeDiagnosticsValidationMargin/RuntimeDiagnosticsValidationVBox"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+custom_minimum_size = Vector2(0, 240)
+scroll_active = true
+selection_enabled = true
+fit_content = false
+autowrap_mode = 2
+
+[node name="RuntimeDiagnosticsObserverCard" type="PanelContainer" parent="RootMargin/RootVBox/WorkspaceTabs/DiagnosticsTab/DiagnosticsMargin/DiagnosticsVBox"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="RuntimeDiagnosticsObserverMargin" type="MarginContainer" parent="RootMargin/RootVBox/WorkspaceTabs/DiagnosticsTab/DiagnosticsMargin/DiagnosticsVBox/RuntimeDiagnosticsObserverCard"]
+layout_mode = 2
+theme_override_constants/margin_left = 16
+theme_override_constants/margin_top = 16
+theme_override_constants/margin_right = 16
+theme_override_constants/margin_bottom = 16
+
+[node name="RuntimeDiagnosticsObserverVBox" type="VBoxContainer" parent="RootMargin/RootVBox/WorkspaceTabs/DiagnosticsTab/DiagnosticsMargin/DiagnosticsVBox/RuntimeDiagnosticsObserverCard/RuntimeDiagnosticsObserverMargin"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 8
+
+[node name="RuntimeDiagnosticsObserverTitleLabel" type="Label" parent="RootMargin/RootVBox/WorkspaceTabs/DiagnosticsTab/DiagnosticsMargin/DiagnosticsVBox/RuntimeDiagnosticsObserverCard/RuntimeDiagnosticsObserverMargin/RuntimeDiagnosticsObserverVBox"]
+layout_mode = 2
+text = "深度观察器"
+
+[node name="RuntimeDiagnosticsObserverDescriptionLabel" type="Label" parent="RootMargin/RootVBox/WorkspaceTabs/DiagnosticsTab/DiagnosticsMargin/DiagnosticsVBox/RuntimeDiagnosticsObserverCard/RuntimeDiagnosticsObserverMargin/RuntimeDiagnosticsObserverVBox"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "这里按主题提取生命周期、Projection、红点、Binding 和工具日志，并支持焦点筛选，方便盯当前页面或指定路径。"
+autowrap_mode = 2
+
+[node name="RuntimeDiagnosticsObserverActionRow" type="HBoxContainer" parent="RootMargin/RootVBox/WorkspaceTabs/DiagnosticsTab/DiagnosticsMargin/DiagnosticsVBox/RuntimeDiagnosticsObserverCard/RuntimeDiagnosticsObserverMargin/RuntimeDiagnosticsObserverVBox"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 8
+
+[node name="RuntimeDiagnosticsFocusFilter" type="LineEdit" parent="RootMargin/RootVBox/WorkspaceTabs/DiagnosticsTab/DiagnosticsMargin/DiagnosticsVBox/RuntimeDiagnosticsObserverCard/RuntimeDiagnosticsObserverMargin/RuntimeDiagnosticsObserverVBox/RuntimeDiagnosticsObserverActionRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+placeholder_text = "焦点筛选，例如 client.idle / client.dungeon / diagnostics.runtime_metrics"
+clear_button_enabled = true
+
+[node name="RuntimeDiagnosticsObserverChannelFilter" type="OptionButton" parent="RootMargin/RootVBox/WorkspaceTabs/DiagnosticsTab/DiagnosticsMargin/DiagnosticsVBox/RuntimeDiagnosticsObserverCard/RuntimeDiagnosticsObserverMargin/RuntimeDiagnosticsObserverVBox/RuntimeDiagnosticsObserverActionRow"]
+unique_name_in_owner = true
+layout_mode = 2
+custom_minimum_size = Vector2(150, 0)
+
+[node name="RuntimeDiagnosticsUseCurrentPageButton" type="Button" parent="RootMargin/RootVBox/WorkspaceTabs/DiagnosticsTab/DiagnosticsMargin/DiagnosticsVBox/RuntimeDiagnosticsObserverCard/RuntimeDiagnosticsObserverMargin/RuntimeDiagnosticsObserverVBox/RuntimeDiagnosticsObserverActionRow"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "使用当前页"
+
+[node name="RuntimeDiagnosticsClearFocusButton" type="Button" parent="RootMargin/RootVBox/WorkspaceTabs/DiagnosticsTab/DiagnosticsMargin/DiagnosticsVBox/RuntimeDiagnosticsObserverCard/RuntimeDiagnosticsObserverMargin/RuntimeDiagnosticsObserverVBox/RuntimeDiagnosticsObserverActionRow"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "清空焦点"
+
+[node name="RuntimeDiagnosticsObserverSummaryLabel" type="Label" parent="RootMargin/RootVBox/WorkspaceTabs/DiagnosticsTab/DiagnosticsMargin/DiagnosticsVBox/RuntimeDiagnosticsObserverCard/RuntimeDiagnosticsObserverMargin/RuntimeDiagnosticsObserverVBox"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+text = "等待深度观察摘要..."
+autowrap_mode = 2
+
+[node name="RuntimeDiagnosticsObserverLabel" type="RichTextLabel" parent="RootMargin/RootVBox/WorkspaceTabs/DiagnosticsTab/DiagnosticsMargin/DiagnosticsVBox/RuntimeDiagnosticsObserverCard/RuntimeDiagnosticsObserverMargin/RuntimeDiagnosticsObserverVBox"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+custom_minimum_size = Vector2(0, 300)
+scroll_active = true
+selection_enabled = true
+fit_content = false
 autowrap_mode = 2

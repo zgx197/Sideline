@@ -3,6 +3,7 @@
 using System;
 using System.Collections.Generic;
 using Godot;
+using Sideline.Facet.Extensions.RedDot;
 using Sideline.Facet.Lua;
 using Sideline.Facet.Projection;
 using Sideline.Facet.Projection.Client;
@@ -23,11 +24,19 @@ public partial class DungeonPanel : PanelContainer, IUIPageLifecycle
     private const string LuaShowMetricsPanelStateKey = "facet.dungeon.show_metrics_panel";
     private const string LuaMetricsTitleStateKey = "facet.dungeon.metrics_title";
     private const string LuaMetricsItemsStateKey = "facet.dungeon.metrics_items";
+    private const string DungeonPageRedDotPath = "client.dungeon";
+    private const string DungeonMetricsRedDotPath = "client.dungeon.metrics";
+    private const string DungeonManualRedDotPath = FacetRedDotLabPaths.DungeonManual;
+    private const string IdleManualRedDotPath = FacetRedDotLabPaths.IdleManual;
 
     private PanelContainer _metricsPanel = null!;
     private Label _titleLabel = null!;
+    private Label _titleRedDotBadgeLabel = null!;
     private Label _statusLabel = null!;
     private Label _metricsTitleLabel = null!;
+    private Label _redDotSummaryLabel = null!;
+    private Label _redDotLabCurrentBadgeLabel = null!;
+    private Label _redDotLabStatusLabel = null!;
     private Label _metricsEmptyLabel = null!;
     private Label _hotReloadTestStatusLabel = null!;
     private VBoxContainer _metricsListContainer = null!;
@@ -35,9 +44,13 @@ public partial class DungeonPanel : PanelContainer, IUIPageLifecycle
     private Button _switchButton = null!;
     private Button _currentPageReloadTestButton = null!;
     private Button _dungeonReloadTestButton = null!;
+    private Button _toggleCurrentRedDotButton = null!;
+    private Button _toggleIdleRedDotButton = null!;
+    private Button _clearRedDotLabButton = null!;
 
     private IDisposable? _clientShellSubscription;
     private IDisposable? _metricsSubscription;
+    private IDisposable? _redDotSubscription;
     private UIContext? _pageContext;
     private ClientShellProjection? _currentShellProjection;
     private FacetRuntimeMetricListProjection? _currentMetricsProjection;
@@ -45,6 +58,8 @@ public partial class DungeonPanel : PanelContainer, IUIPageLifecycle
     private IUIComplexListBinding<FacetRuntimeMetricItem>? _metricsListBinding;
     private bool _nodesBound;
     private bool _bindingsRegistered;
+    private bool _hasDungeonPageRedDot;
+    private string _redDotSummaryText = "红点树 / 等待数据";
 
     [Signal]
     public delegate void SwitchToIdleRequestedEventHandler();
@@ -74,6 +89,7 @@ public partial class DungeonPanel : PanelContainer, IUIPageLifecycle
         ProjectionStore projectionStore = FacetHost.Instance.Context.ProjectionStore;
         _clientShellSubscription = projectionStore.Subscribe(FacetProjectionKeys.ClientShell, OnClientShellChanged);
         _metricsSubscription = projectionStore.Subscribe(FacetProjectionKeys.RuntimeMetrics, OnRuntimeMetricsChanged);
+        BindRedDotProjection();
 
         bool initialClientShellApplied = false;
         if (projectionStore.TryGet(FacetProjectionKeys.ClientShell, out ClientShellProjection? shellProjection) && shellProjection != null)
@@ -121,6 +137,7 @@ public partial class DungeonPanel : PanelContainer, IUIPageLifecycle
             {
                 ["clientShellKey"] = FacetProjectionKeys.ClientShell.ToString(),
                 ["runtimeMetricsKey"] = FacetProjectionKeys.RuntimeMetrics.ToString(),
+                ["redDotPath"] = DungeonPageRedDotPath,
                 ["initialClientShellApplied"] = initialClientShellApplied,
                 ["initialMetricsApplied"] = initialMetricsApplied,
             });
@@ -189,8 +206,12 @@ public partial class DungeonPanel : PanelContainer, IUIPageLifecycle
         UINodeResolver? resolver = context?.Resolver as UINodeResolver;
         _metricsPanel = ResolveRequiredNode<PanelContainer>(resolver, "MetricsPanel", "%MetricsPanel");
         _titleLabel = ResolveRequiredNode<Label>(resolver, "TitleLabel", "%TitleLabel");
+        _titleRedDotBadgeLabel = ResolveRequiredNode<Label>(resolver, "TitleRedDotBadgeLabel", "%TitleRedDotBadgeLabel");
         _statusLabel = ResolveRequiredNode<Label>(resolver, "StatusLabel", "%StatusLabel");
         _metricsTitleLabel = ResolveRequiredNode<Label>(resolver, "MetricsTitleLabel", "%MetricsTitleLabel");
+        _redDotSummaryLabel = ResolveRequiredNode<Label>(resolver, "RedDotSummaryLabel", "%RedDotSummaryLabel");
+        _redDotLabCurrentBadgeLabel = ResolveRequiredNode<Label>(resolver, "RedDotLabCurrentBadgeLabel", "%RedDotLabCurrentBadgeLabel");
+        _redDotLabStatusLabel = ResolveRequiredNode<Label>(resolver, "RedDotLabStatusLabel", "%RedDotLabStatusLabel");
         _metricsEmptyLabel = ResolveRequiredNode<Label>(resolver, "MetricsEmptyLabel", "%MetricsEmptyLabel");
         _hotReloadTestStatusLabel = ResolveRequiredNode<Label>(resolver, "HotReloadTestStatusLabel", "%HotReloadTestStatusLabel");
         _metricsListContainer = ResolveRequiredNode<VBoxContainer>(resolver, "MetricsListContainer", "%MetricsListContainer");
@@ -198,9 +219,14 @@ public partial class DungeonPanel : PanelContainer, IUIPageLifecycle
         _switchButton = ResolveRequiredNode<Button>(resolver, "SwitchButton", "%SwitchButton");
         _currentPageReloadTestButton = ResolveRequiredNode<Button>(resolver, "CurrentPageReloadTestButton", "%CurrentPageReloadTestButton");
         _dungeonReloadTestButton = ResolveRequiredNode<Button>(resolver, "DungeonReloadTestButton", "%DungeonReloadTestButton");
+        _toggleCurrentRedDotButton = ResolveRequiredNode<Button>(resolver, "ToggleCurrentRedDotButton", "%ToggleCurrentRedDotButton");
+        _toggleIdleRedDotButton = ResolveRequiredNode<Button>(resolver, "ToggleIdleRedDotButton", "%ToggleIdleRedDotButton");
+        _clearRedDotLabButton = ResolveRequiredNode<Button>(resolver, "ClearRedDotLabButton", "%ClearRedDotLabButton");
 
         _statusLabel.AutowrapMode = TextServer.AutowrapMode.WordSmart;
         _metricsTitleLabel.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+        _redDotSummaryLabel.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+        _redDotLabStatusLabel.AutowrapMode = TextServer.AutowrapMode.WordSmart;
         _metricsEmptyLabel.AutowrapMode = TextServer.AutowrapMode.WordSmart;
         _hotReloadTestStatusLabel.AutowrapMode = TextServer.AutowrapMode.WordSmart;
         _metricsItemTemplate.Visible = false;
@@ -209,6 +235,7 @@ public partial class DungeonPanel : PanelContainer, IUIPageLifecycle
         UpdateHotReloadTestStatus("等待测试触发。");
         ApplyShellFallback("nodes.resolved.shell_fallback");
         ApplyMetricsPlaceholder("nodes.resolved.metrics_placeholder");
+        ApplyRedDotPlaceholder();
     }
 
     private void EnsureBindingsRegistered(UIContext? context)
@@ -225,6 +252,9 @@ public partial class DungeonPanel : PanelContainer, IUIPageLifecycle
             ConnectButtonPressed(_switchButton, OnSwitchPressed);
             ConnectButtonPressed(_currentPageReloadTestButton, OnCurrentPageReloadTestPressed);
             ConnectButtonPressed(_dungeonReloadTestButton, OnDungeonReloadTestPressed);
+            ConnectButtonPressed(_toggleCurrentRedDotButton, OnToggleCurrentRedDotPressed);
+            ConnectButtonPressed(_toggleIdleRedDotButton, OnToggleIdleRedDotPressed);
+            ConnectButtonPressed(_clearRedDotLabButton, OnClearRedDotLabPressed);
             _bindingsRegistered = true;
             return;
         }
@@ -232,10 +262,17 @@ public partial class DungeonPanel : PanelContainer, IUIPageLifecycle
         bindings.BindCommand("SwitchButton", OnSwitchPressed);
         bindings.BindCommand("CurrentPageReloadTestButton", OnCurrentPageReloadTestPressed);
         bindings.BindCommand("DungeonReloadTestButton", OnDungeonReloadTestPressed);
+        bindings.BindCommand("ToggleCurrentRedDotButton", OnToggleCurrentRedDotPressed);
+        bindings.BindCommand("ToggleIdleRedDotButton", OnToggleIdleRedDotPressed);
+        bindings.BindCommand("ClearRedDotLabButton", OnClearRedDotLabPressed);
+        bindings.BindText("RedDotSummaryLabel", GetRedDotSummaryText);
+        bindings.BindVisibility("RedDotLabCurrentBadgeLabel", HasDungeonManualRedDot);
+        bindings.BindText("RedDotLabStatusLabel", GetRedDotLabStatusText);
 
         if (!useLuaBindings && context?.Resolver is UINodeResolver resolver)
         {
             bindings.BindText("TitleLabel", GetTitleText);
+            bindings.BindVisibility("TitleRedDotBadgeLabel", HasDungeonPageRedDot);
             bindings.BindText("StatusLabel", GetStatusText);
             bindings.BindText("SwitchButton", GetPrimaryActionText);
             bindings.BindInteractable("SwitchButton", IsPrimaryActionEnabled);
@@ -294,8 +331,12 @@ public partial class DungeonPanel : PanelContainer, IUIPageLifecycle
         _statusLabel.Text = GetStatusText();
         _switchButton.Text = GetPrimaryActionText();
         _switchButton.Disabled = !IsPrimaryActionEnabled();
+        _titleRedDotBadgeLabel.Visible = HasDungeonPageRedDot();
         _metricsPanel.Visible = ShouldShowMetricsPanel();
         _metricsTitleLabel.Text = GetMetricsTitle();
+        _redDotSummaryLabel.Text = GetRedDotSummaryText();
+        _redDotLabCurrentBadgeLabel.Visible = HasDungeonManualRedDot();
+        _redDotLabStatusLabel.Text = GetRedDotLabStatusText();
         RenderLegacyMetricItems();
     }
 
@@ -329,6 +370,29 @@ public partial class DungeonPanel : PanelContainer, IUIPageLifecycle
         return _currentMetricsProjection?.Title ?? "运行时指标 / Runtime Metrics";
     }
 
+    private bool HasDungeonPageRedDot()
+    {
+        return _hasDungeonPageRedDot;
+    }
+
+    private string GetRedDotSummaryText()
+    {
+        return _redDotSummaryText;
+    }
+
+    private bool HasDungeonManualRedDot()
+    {
+        return GetManualRedDotState(DungeonManualRedDotPath);
+    }
+
+    private string GetRedDotLabStatusText()
+    {
+        return
+            $"测试红点 / Manual Lab\n" +
+            $"Dungeon Lab: {(GetManualRedDotState(DungeonManualRedDotPath) ? "On" : "Off")}\n" +
+            $"Idle Lab: {(GetManualRedDotState(IdleManualRedDotPath) ? "On" : "Off")}";
+    }
+
     private IReadOnlyList<FacetRuntimeMetricItem> GetMetricItems()
     {
         return _currentMetricsProjection?.Items ?? Array.Empty<FacetRuntimeMetricItem>();
@@ -344,6 +408,12 @@ public partial class DungeonPanel : PanelContainer, IUIPageLifecycle
     {
         _currentMetricsProjection = null;
         RefreshView(reason);
+    }
+
+    private void ApplyRedDotPlaceholder()
+    {
+        _hasDungeonPageRedDot = false;
+        _redDotSummaryText = "红点树 / 等待数据";
     }
 
     private void SyncLuaState()
@@ -444,6 +514,67 @@ public partial class DungeonPanel : PanelContainer, IUIPageLifecycle
         RefreshView("projection.runtime_metrics");
     }
 
+    private void BindRedDotProjection()
+    {
+        _redDotSubscription?.Dispose();
+        _redDotSubscription = null;
+
+        if (FacetHost.Instance?.IsInitialized != true ||
+            !FacetHost.Instance.Services.TryGet(out IRedDotService? redDotService) ||
+            redDotService == null)
+        {
+            ApplyRedDotPlaceholder();
+            RefreshView("red_dot.pending");
+            return;
+        }
+
+        _redDotSubscription = redDotService.Subscribe(DungeonPageRedDotPath, OnRedDotChanged);
+        ApplyRedDotSnapshot(redDotService, "red_dot.initial");
+
+        ClientLog.Info(
+            "DungeonPanel",
+            "DungeonPanel 已挂载红点路径。",
+            new Dictionary<string, object?>
+            {
+                ["pagePath"] = DungeonPageRedDotPath,
+                ["detailPath"] = DungeonMetricsRedDotPath,
+            });
+    }
+
+    private void OnRedDotChanged(RedDotChange change)
+    {
+        if (FacetHost.Instance?.Services.TryGet(out IRedDotService? redDotService) != true || redDotService == null)
+        {
+            return;
+        }
+
+        ApplyRedDotSnapshot(redDotService, $"red_dot.changed:{change.Source}");
+
+        ClientLog.Info(
+            "DungeonPanel",
+            "DungeonPanel 收到红点路径变更。",
+            new Dictionary<string, object?>
+            {
+                ["path"] = change.Path,
+                ["source"] = change.Source,
+                ["currentHasRedDot"] = change.Current?.HasRedDot ?? false,
+                ["currentActiveChildCount"] = change.Current?.ActiveChildCount ?? 0,
+            });
+    }
+
+    private void ApplyRedDotSnapshot(IRedDotService redDotService, string reason)
+    {
+        bool hasPageSnapshot = redDotService.TryGetSnapshot(DungeonPageRedDotPath, out RedDotNodeSnapshot pageSnapshot);
+        bool hasMetricsSnapshot = redDotService.TryGetSnapshot(DungeonMetricsRedDotPath, out RedDotNodeSnapshot metricsSnapshot);
+
+        _hasDungeonPageRedDot = hasPageSnapshot && pageSnapshot.HasRedDot;
+        _redDotSummaryText =
+            $"红点树 / Dungeon\n" +
+            $"Page: {FormatRedDotSnapshot(hasPageSnapshot ? pageSnapshot : null)}\n" +
+            $"Metrics: {FormatRedDotSnapshot(hasMetricsSnapshot ? metricsSnapshot : null)}";
+        RefreshView(reason);
+    }
+
     private void LogInitialRuntimeMetricsProjection(FacetRuntimeMetricListProjection projection)
     {
         ClientLog.Info(
@@ -462,6 +593,8 @@ public partial class DungeonPanel : PanelContainer, IUIPageLifecycle
         _clientShellSubscription = null;
         _metricsSubscription?.Dispose();
         _metricsSubscription = null;
+        _redDotSubscription?.Dispose();
+        _redDotSubscription = null;
     }
 
     private void RenderLegacyMetricItems()
@@ -544,6 +677,9 @@ public partial class DungeonPanel : PanelContainer, IUIPageLifecycle
             ["csharpMetricsPanelLastReason"] = metricsPanelDiagnostics?.LastRefreshReason,
             ["csharpMetricsListItemCount"] = metricsListBinding?.ItemCount ?? 0,
             ["luaMetricsListStateCount"] = context.Lua?.GetStructuredListStateCount(LuaMetricsItemsStateKey) ?? 0,
+            ["redDotPagePath"] = DungeonPageRedDotPath,
+            ["redDotMetricsPath"] = DungeonMetricsRedDotPath,
+            ["redDotActive"] = context.Lua?.GetRedDot(DungeonPageRedDotPath, false) ?? false,
         };
 
         AppendScopeDiagnostics(payload, "luaRoot", luaRootDiagnostics);
@@ -620,6 +756,78 @@ public partial class DungeonPanel : PanelContainer, IUIPageLifecycle
     private static string FormatStatusTimestamp()
     {
         return DateTime.Now.ToString("HH:mm:ss");
+    }
+
+    private void OnToggleCurrentRedDotPressed()
+    {
+        ToggleManualRedDot(DungeonManualRedDotPath, "当前页");
+    }
+
+    private void OnToggleIdleRedDotPressed()
+    {
+        ToggleManualRedDot(IdleManualRedDotPath, "挂机页");
+    }
+
+    private void OnClearRedDotLabPressed()
+    {
+        if (FacetHost.Instance?.Services.TryGet(out ManualRedDotProvider? manualProvider) != true || manualProvider == null)
+        {
+            UpdateHotReloadTestStatus($"{FormatStatusTimestamp()} 红点测试 Provider 未就绪。");
+            return;
+        }
+
+        manualProvider.ClearAll();
+        RefreshView("red_dot_lab.clear");
+
+        ClientLog.Info(
+            "DungeonPanel",
+            "DungeonPanel 已清空红点测试状态。",
+            new Dictionary<string, object?>
+            {
+                ["pageId"] = _pageContext?.PageId,
+                ["dungeonPath"] = DungeonManualRedDotPath,
+                ["idlePath"] = IdleManualRedDotPath,
+            });
+    }
+
+    private void ToggleManualRedDot(string path, string targetName)
+    {
+        if (FacetHost.Instance?.Services.TryGet(out ManualRedDotProvider? manualProvider) != true || manualProvider == null)
+        {
+            UpdateHotReloadTestStatus($"{FormatStatusTimestamp()} 红点测试 Provider 未就绪。");
+            return;
+        }
+
+        manualProvider.Toggle(path);
+        RefreshView($"red_dot_lab.toggle:{path}");
+
+        ClientLog.Info(
+            "DungeonPanel",
+            "DungeonPanel 已切换红点测试状态。",
+            new Dictionary<string, object?>
+            {
+                ["pageId"] = _pageContext?.PageId,
+                ["target"] = targetName,
+                ["path"] = path,
+                ["active"] = manualProvider.IsActive(path),
+            });
+    }
+
+    private bool GetManualRedDotState(string path)
+    {
+        return FacetHost.Instance?.Services.TryGet(out ManualRedDotProvider? manualProvider) == true &&
+               manualProvider != null &&
+               manualProvider.IsActive(path);
+    }
+
+    private static string FormatRedDotSnapshot(RedDotNodeSnapshot? snapshot)
+    {
+        if (snapshot == null)
+        {
+            return "未注册";
+        }
+
+        return $"{snapshot.Path} => {(snapshot.HasRedDot ? "On" : "Off")} (self={(snapshot.SelfHasRedDot ? "On" : "Off")}, children={snapshot.ActiveChildCount}/{snapshot.DirectChildCount}, sources={snapshot.SourceCount})";
     }
 
     /// <summary>

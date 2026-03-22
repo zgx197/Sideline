@@ -6,6 +6,7 @@ local primary_action_enabled_key = "facet.idle.primary_action_enabled"
 local resource_text_key = "facet.idle.resource_text"
 local show_runtime_summary_key = "facet.idle.show_runtime_summary"
 local runtime_summary_text_key = "facet.idle.runtime_summary_text"
+local page_red_dot_path = "client.idle"
 
 local function register_bindings(api)
     local page = api:GetPageBindings()
@@ -14,6 +15,7 @@ local function register_bindings(api)
     end
 
     page:BindStateText("TitleLabel", title_key, "Sideline / 挂机")
+    page:BindRedDotVisibility("TitleRedDotBadgeLabel", page_red_dot_path, false)
     page:BindStateText("StatusLabel", status_key, "自动收集资源 / Auto collecting")
     page:BindStateText("SwitchButton", primary_action_label_key, "进入地下城 / Dungeon")
     page:BindStateInteractable("SwitchButton", primary_action_enabled_key, true)
@@ -47,7 +49,11 @@ function OnRefresh(api)
     if page ~= nil then
         page:Refresh("lua.idle.refresh")
     end
-    api:LogInfoText("Idle Lua OnRefresh count=" .. tostring(current))
+    api:LogInfoText(
+        "Idle Lua OnRefresh count=" ..
+        tostring(current) ..
+        " pageRedDot=" ..
+        tostring(api:GetRedDot(page_red_dot_path, false)))
 end
 
 function OnHide(api)

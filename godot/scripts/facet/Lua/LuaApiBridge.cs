@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using MoonSharp.Interpreter;
 using Sideline.Facet.Application;
 using Sideline.Facet.Application.Diagnostics;
+using Sideline.Facet.Extensions.RedDot;
 using Sideline.Facet.Runtime;
 
 namespace Sideline.Facet.Lua
@@ -288,6 +289,14 @@ namespace Sideline.Facet.Lua
             return _redDotBridge.TryGetState(path, out hasRedDot);
         }
 
+        public bool GetRedDot(string path, bool fallback = false)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(path);
+            return _redDotBridge.TryGetState(path, out bool hasRedDot)
+                ? hasRedDot
+                : fallback;
+        }
+
         public bool HasRuntimeProbeSnapshot()
         {
             AppResult<FacetRuntimeProbeStatusSnapshot> result = QueryStatusSnapshot();
@@ -529,6 +538,11 @@ namespace Sideline.Facet.Lua
         private bool TryGetNavigator(out IUIPageNavigator? navigator)
         {
             return _context.Services.TryGet(out navigator);
+        }
+
+        internal bool TryGetRedDotService(out IRedDotService? redDotService)
+        {
+            return _context.Services.TryGet(out redDotService);
         }
 
         private void EnsureLuaRootScope()

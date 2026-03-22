@@ -2,6 +2,7 @@
 
 using System;
 using System.Collections.Generic;
+using Sideline.Facet.Extensions.RedDot;
 using Sideline.Facet.Runtime;
 
 namespace Sideline.Facet.Lua
@@ -55,6 +56,22 @@ namespace Sideline.Facet.Lua
             RegisterOnce(
                 $"visibility|{key}|{stateKey}",
                 () => _scope.BindVisibility(key, () => _api.GetStateBoolean(stateKey, fallback)));
+        }
+
+        public void BindRedDotVisibility(string key, string path, bool fallback = false)
+        {
+            RegisterOnce(
+                $"red-dot-visibility|{key}|{path}|{fallback}",
+                () =>
+                {
+                    if (_api.TryGetRedDotService(out IRedDotService? redDotService) && redDotService != null)
+                    {
+                        _scope.BindRedDotVisibility(key, redDotService, path, fallback);
+                        return;
+                    }
+
+                    _scope.BindVisibility(key, () => _api.GetRedDot(path, fallback));
+                });
         }
 
         public void BindStateInteractable(string key, string stateKey, bool fallback = false)

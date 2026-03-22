@@ -10,6 +10,16 @@
 
   <ItemGroup>
     <Compile Include="Application\**\*.cs" />
+    <Compile Include="Extensions\**\*.cs" />
+    <Compile Include="Layout\FacetBuiltInLayoutDefinitions.cs" />
+    <Compile Include="Layout\FacetGeneratedLayoutDefinition.cs" />
+    <Compile Include="Layout\FacetGeneratedLayoutNodeDefinition.cs" />
+    <Compile Include="Layout\FacetLayoutNodeType.cs" />
+    <Compile Include="Layout\FacetTemplateLayoutDefinition.cs" />
+    <Compile Include="Layout\IFacetGeneratedLayoutStore.cs" />
+    <Compile Include="Layout\IFacetTemplateLayoutStore.cs" />
+    <Compile Include="Layout\InMemoryFacetGeneratedLayoutStore.cs" />
+    <Compile Include="Layout\InMemoryFacetTemplateLayoutStore.cs" />
     <Compile Include="Lua\**\*.cs" />
     <Compile Include="Projection\**\*.cs" />
     <Compile Include="Runtime\FacetConfig.cs" />

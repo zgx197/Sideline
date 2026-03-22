@@ -17,6 +17,7 @@ public partial class FacetMainScreen : PanelContainer
 {
     private const int MaxVisibleEntries = 150;
     private const int HistoryLimit = 10;
+    private const int MaxObserverEntries = 12;
 
     private GridContainer _logMetricsGrid = null!;
     private HSplitContainer _logSplit = null!;
@@ -25,7 +26,12 @@ public partial class FacetMainScreen : PanelContainer
     private PanelContainer _retentionCard = null!;
     private PanelContainer _hotReloadIntroCard = null!;
     private PanelContainer _hotReloadEvidenceCard = null!;
-    private PanelContainer _reservedCard = null!;
+    private PanelContainer _layoutLabIntroCard = null!;
+    private PanelContainer _layoutLabEvidenceCard = null!;
+    private PanelContainer _runtimeDiagnosticsIntroCard = null!;
+    private PanelContainer _runtimeDiagnosticsSnapshotCard = null!;
+    private PanelContainer _runtimeDiagnosticsValidationCard = null!;
+    private PanelContainer _runtimeDiagnosticsObserverCard = null!;
     private PanelContainer _totalMetricCard = null!;
     private PanelContainer _filteredMetricCard = null!;
     private PanelContainer _sessionsMetricCard = null!;
@@ -41,17 +47,33 @@ public partial class FacetMainScreen : PanelContainer
     private Label _retentionLabel = null!;
     private Label _hotReloadBridgeStatusLabel = null!;
     private Label _hotReloadBridgePathsLabel = null!;
+    private Label _layoutLabBridgeStatusLabel = null!;
+    private Label _layoutLabBridgePathsLabel = null!;
+    private Label _runtimeDiagnosticsStatusLabel = null!;
+    private Label _runtimeDiagnosticsPathsLabel = null!;
+    private Label _runtimeDiagnosticsObserverSummaryLabel = null!;
     private RichTextLabel _entriesLabel = null!;
     private RichTextLabel _hotReloadEvidenceLabel = null!;
+    private RichTextLabel _layoutLabEvidenceLabel = null!;
+    private RichTextLabel _runtimeDiagnosticsSnapshotLabel = null!;
+    private RichTextLabel _runtimeDiagnosticsValidationLabel = null!;
+    private RichTextLabel _runtimeDiagnosticsObserverLabel = null!;
     private LineEdit _sessionFilter = null!;
     private LineEdit _categoryFilter = null!;
+    private LineEdit _runtimeDiagnosticsFocusFilter = null!;
     private OptionButton _levelFilter = null!;
+    private OptionButton _runtimeDiagnosticsObserverChannelFilter = null!;
     private CheckButton _autoRefreshToggle = null!;
     private Button _refreshButton = null!;
     private Button _openLogButton = null!;
     private Button _currentPageReloadTestButton = null!;
     private Button _dungeonReloadTestButton = null!;
     private Button _refreshHotReloadStatusButton = null!;
+    private Button _openGeneratedLayoutLabButton = null!;
+    private Button _openTemplateLayoutLabButton = null!;
+    private Button _refreshLayoutLabStatusButton = null!;
+    private Button _runtimeDiagnosticsUseCurrentPageButton = null!;
+    private Button _runtimeDiagnosticsClearFocusButton = null!;
     private bool _isUiReady;
     private double _autoRefreshElapsedSeconds;
 
@@ -157,6 +179,8 @@ public partial class FacetMainScreen : PanelContainer
                 _logSummaryLabel.Text = "结构化日志已启用，但当前还没有活动日志文件。先运行一次主场景，再回到这里查看。";
                 _entriesLabel.Text = "运行一次主场景后，这里会显示当前会话的 facet-structured.jsonl。";
                 RefreshHotReloadLabStatus(new List<FacetEditorLogEntry>());
+                RefreshLayoutLabStatus(new List<FacetEditorLogEntry>());
+                RefreshRuntimeDiagnosticsStatus(new List<FacetEditorLogEntry>());
                 return;
             }
 
@@ -164,6 +188,8 @@ public partial class FacetMainScreen : PanelContainer
             List<FacetEditorLogEntry> filteredEntries = FilterEntries(allEntries);
             RenderEntries(allEntries, filteredEntries);
             RefreshHotReloadLabStatus(allEntries);
+            RefreshLayoutLabStatus(allEntries);
+            RefreshRuntimeDiagnosticsStatus(allEntries);
         }
         catch (Exception exception)
         {
@@ -181,7 +207,12 @@ public partial class FacetMainScreen : PanelContainer
         _retentionCard = ResolveRequiredNode<PanelContainer>("%RetentionCard");
         _hotReloadIntroCard = ResolveRequiredNode<PanelContainer>("%HotReloadIntroCard");
         _hotReloadEvidenceCard = ResolveRequiredNode<PanelContainer>("%HotReloadEvidenceCard");
-        _reservedCard = ResolveRequiredNode<PanelContainer>("%ReservedCard");
+        _layoutLabIntroCard = ResolveRequiredNode<PanelContainer>("%LayoutLabIntroCard");
+        _layoutLabEvidenceCard = ResolveRequiredNode<PanelContainer>("%LayoutLabEvidenceCard");
+        _runtimeDiagnosticsIntroCard = ResolveRequiredNode<PanelContainer>("%RuntimeDiagnosticsIntroCard");
+        _runtimeDiagnosticsSnapshotCard = ResolveRequiredNode<PanelContainer>("%RuntimeDiagnosticsSnapshotCard");
+        _runtimeDiagnosticsValidationCard = ResolveRequiredNode<PanelContainer>("%RuntimeDiagnosticsValidationCard");
+        _runtimeDiagnosticsObserverCard = ResolveRequiredNode<PanelContainer>("%RuntimeDiagnosticsObserverCard");
         _totalMetricCard = ResolveRequiredNode<PanelContainer>("%TotalMetricCard");
         _filteredMetricCard = ResolveRequiredNode<PanelContainer>("%FilteredMetricCard");
         _sessionsMetricCard = ResolveRequiredNode<PanelContainer>("%SessionsMetricCard");
@@ -197,17 +228,33 @@ public partial class FacetMainScreen : PanelContainer
         _retentionLabel = ResolveRequiredNode<Label>("%RetentionLabel");
         _hotReloadBridgeStatusLabel = ResolveRequiredNode<Label>("%HotReloadBridgeStatusLabel");
         _hotReloadBridgePathsLabel = ResolveRequiredNode<Label>("%HotReloadBridgePathsLabel");
+        _layoutLabBridgeStatusLabel = ResolveRequiredNode<Label>("%LayoutLabBridgeStatusLabel");
+        _layoutLabBridgePathsLabel = ResolveRequiredNode<Label>("%LayoutLabBridgePathsLabel");
+        _runtimeDiagnosticsStatusLabel = ResolveRequiredNode<Label>("%RuntimeDiagnosticsStatusLabel");
+        _runtimeDiagnosticsPathsLabel = ResolveRequiredNode<Label>("%RuntimeDiagnosticsPathsLabel");
+        _runtimeDiagnosticsObserverSummaryLabel = ResolveRequiredNode<Label>("%RuntimeDiagnosticsObserverSummaryLabel");
         _entriesLabel = ResolveRequiredNode<RichTextLabel>("%EntriesLabel");
         _hotReloadEvidenceLabel = ResolveRequiredNode<RichTextLabel>("%HotReloadEvidenceLabel");
+        _layoutLabEvidenceLabel = ResolveRequiredNode<RichTextLabel>("%LayoutLabEvidenceLabel");
+        _runtimeDiagnosticsSnapshotLabel = ResolveRequiredNode<RichTextLabel>("%RuntimeDiagnosticsSnapshotLabel");
+        _runtimeDiagnosticsValidationLabel = ResolveRequiredNode<RichTextLabel>("%RuntimeDiagnosticsValidationLabel");
+        _runtimeDiagnosticsObserverLabel = ResolveRequiredNode<RichTextLabel>("%RuntimeDiagnosticsObserverLabel");
         _sessionFilter = ResolveRequiredNode<LineEdit>("%SessionFilter");
         _categoryFilter = ResolveRequiredNode<LineEdit>("%CategoryFilter");
+        _runtimeDiagnosticsFocusFilter = ResolveRequiredNode<LineEdit>("%RuntimeDiagnosticsFocusFilter");
         _levelFilter = ResolveRequiredNode<OptionButton>("%LevelFilter");
+        _runtimeDiagnosticsObserverChannelFilter = ResolveRequiredNode<OptionButton>("%RuntimeDiagnosticsObserverChannelFilter");
         _autoRefreshToggle = ResolveRequiredNode<CheckButton>("%AutoRefreshToggle");
         _refreshButton = ResolveRequiredNode<Button>("%RefreshButton");
         _openLogButton = ResolveRequiredNode<Button>("%OpenLogButton");
         _currentPageReloadTestButton = ResolveRequiredNode<Button>("%CurrentPageReloadTestButton");
         _dungeonReloadTestButton = ResolveRequiredNode<Button>("%DungeonReloadTestButton");
         _refreshHotReloadStatusButton = ResolveRequiredNode<Button>("%RefreshHotReloadStatusButton");
+        _openGeneratedLayoutLabButton = ResolveRequiredNode<Button>("%OpenGeneratedLayoutLabButton");
+        _openTemplateLayoutLabButton = ResolveRequiredNode<Button>("%OpenTemplateLayoutLabButton");
+        _refreshLayoutLabStatusButton = ResolveRequiredNode<Button>("%RefreshLayoutLabStatusButton");
+        _runtimeDiagnosticsUseCurrentPageButton = ResolveRequiredNode<Button>("%RuntimeDiagnosticsUseCurrentPageButton");
+        _runtimeDiagnosticsClearFocusButton = ResolveRequiredNode<Button>("%RuntimeDiagnosticsClearFocusButton");
     }
 
     private void ConfigureUi()
@@ -221,18 +268,24 @@ public partial class FacetMainScreen : PanelContainer
         _currentPageReloadTestButton.Pressed += OnRunCurrentPageHotReloadTestPressed;
         _dungeonReloadTestButton.Pressed += OnRunDungeonHotReloadTestPressed;
         _refreshHotReloadStatusButton.Pressed += RefreshNow;
+        _openGeneratedLayoutLabButton.Pressed += OnOpenGeneratedLayoutLabPressed;
+        _openTemplateLayoutLabButton.Pressed += OnOpenTemplateLayoutLabPressed;
+        _refreshLayoutLabStatusButton.Pressed += RefreshNow;
+        _runtimeDiagnosticsUseCurrentPageButton.Pressed += OnUseCurrentPageDiagnosticsFocusPressed;
+        _runtimeDiagnosticsClearFocusButton.Pressed += OnClearDiagnosticsFocusPressed;
     }
 
     private void ConfigureTabTitles()
     {
-        if (_workspaceTabs.GetChildCount() < 3)
+        if (_workspaceTabs.GetChildCount() < 4)
         {
             return;
         }
 
         _workspaceTabs.GetChild(0).Name = "日志";
         _workspaceTabs.GetChild(1).Name = "热重载";
-        _workspaceTabs.GetChild(2).Name = "预留";
+        _workspaceTabs.GetChild(2).Name = "布局";
+        _workspaceTabs.GetChild(3).Name = "诊断";
     }
 
     private void ApplyTheme()
@@ -246,7 +299,12 @@ public partial class FacetMainScreen : PanelContainer
                      _retentionCard,
                      _hotReloadIntroCard,
                      _hotReloadEvidenceCard,
-                     _reservedCard,
+                     _layoutLabIntroCard,
+                     _layoutLabEvidenceCard,
+                     _runtimeDiagnosticsIntroCard,
+                     _runtimeDiagnosticsSnapshotCard,
+                     _runtimeDiagnosticsValidationCard,
+                     _runtimeDiagnosticsObserverCard,
                      _totalMetricCard,
                      _filteredMetricCard,
                      _sessionsMetricCard,
@@ -271,8 +329,22 @@ public partial class FacetMainScreen : PanelContainer
         _retentionLabel.AddThemeColorOverride("font_color", new Color("8fd1ae"));
         _hotReloadBridgeStatusLabel.AddThemeColorOverride("font_color", new Color("d7deea"));
         _hotReloadBridgePathsLabel.AddThemeColorOverride("font_color", new Color("8f9db3"));
+        _layoutLabBridgeStatusLabel.AddThemeColorOverride("font_color", new Color("d7deea"));
+        _layoutLabBridgePathsLabel.AddThemeColorOverride("font_color", new Color("8f9db3"));
+        _runtimeDiagnosticsStatusLabel.AddThemeColorOverride("font_color", new Color("d7deea"));
+        _runtimeDiagnosticsPathsLabel.AddThemeColorOverride("font_color", new Color("8f9db3"));
+        _runtimeDiagnosticsObserverSummaryLabel.AddThemeColorOverride("font_color", new Color("9aa7bc"));
         _entriesLabel.AddThemeColorOverride("default_color", new Color("d7deea"));
         _hotReloadEvidenceLabel.AddThemeColorOverride("default_color", new Color("d7deea"));
+        _layoutLabEvidenceLabel.AddThemeColorOverride("default_color", new Color("d7deea"));
+        _runtimeDiagnosticsSnapshotLabel.AddThemeColorOverride("default_color", new Color("d7deea"));
+        _runtimeDiagnosticsValidationLabel.AddThemeColorOverride("default_color", new Color("d7deea"));
+        _runtimeDiagnosticsObserverLabel.AddThemeColorOverride("default_color", new Color("d7deea"));
+
+        _layoutLabEvidenceLabel.AddThemeStyleboxOverride("normal", CreateLogSurfaceStyle());
+        _runtimeDiagnosticsSnapshotLabel.AddThemeStyleboxOverride("normal", CreateLogSurfaceStyle());
+        _runtimeDiagnosticsValidationLabel.AddThemeStyleboxOverride("normal", CreateLogSurfaceStyle());
+        _runtimeDiagnosticsObserverLabel.AddThemeStyleboxOverride("normal", CreateLogSurfaceStyle());
     }
 
     private void ConfigureFilters()
@@ -288,6 +360,17 @@ public partial class FacetMainScreen : PanelContainer
         AddLevelItem("Error / 错误", 4);
         _levelFilter.Select(0);
         _levelFilter.ItemSelected += OnLevelSelected;
+
+        _runtimeDiagnosticsFocusFilter.TextChanged += OnDiagnosticsObserverFilterChanged;
+        _runtimeDiagnosticsObserverChannelFilter.Clear();
+        _runtimeDiagnosticsObserverChannelFilter.AddItem("全部主题", 0);
+        _runtimeDiagnosticsObserverChannelFilter.AddItem("生命周期", 1);
+        _runtimeDiagnosticsObserverChannelFilter.AddItem("Projection", 2);
+        _runtimeDiagnosticsObserverChannelFilter.AddItem("红点", 3);
+        _runtimeDiagnosticsObserverChannelFilter.AddItem("Binding", 4);
+        _runtimeDiagnosticsObserverChannelFilter.AddItem("工具", 5);
+        _runtimeDiagnosticsObserverChannelFilter.Select(0);
+        _runtimeDiagnosticsObserverChannelFilter.ItemSelected += OnDiagnosticsObserverChannelSelected;
     }
 
     private static StyleBoxFlat CreateScreenPanelStyle()
@@ -365,6 +448,38 @@ public partial class FacetMainScreen : PanelContainer
 
     private void OnLevelSelected(long index)
     {
+        RefreshNow();
+    }
+
+    private void OnDiagnosticsObserverFilterChanged(string value)
+    {
+        RefreshNow();
+    }
+
+    private void OnDiagnosticsObserverChannelSelected(long index)
+    {
+        RefreshNow();
+    }
+
+    private void OnUseCurrentPageDiagnosticsFocusPressed()
+    {
+        if (FacetRuntimeDiagnosticsBridge.TryLoadSnapshot(out FacetRuntimeDiagnosticsSnapshot? snapshot) &&
+            snapshot != null &&
+            !string.IsNullOrWhiteSpace(snapshot.CurrentPageId))
+        {
+            _runtimeDiagnosticsFocusFilter.Text = snapshot.CurrentPageId;
+            RefreshNow();
+        }
+    }
+
+    private void OnClearDiagnosticsFocusPressed()
+    {
+        if (string.IsNullOrWhiteSpace(_runtimeDiagnosticsFocusFilter.Text))
+        {
+            return;
+        }
+
+        _runtimeDiagnosticsFocusFilter.Text = string.Empty;
         RefreshNow();
     }
 
@@ -514,6 +629,16 @@ public partial class FacetMainScreen : PanelContainer
         QueueHotReloadLabRequest(FacetHotReloadLabBridge.CommandDungeonRoundTrip, "editor.workspace.dungeon");
     }
 
+    private void OnOpenGeneratedLayoutLabPressed()
+    {
+        QueueLayoutLabRequest(FacetLayoutLabBridge.CommandOpenGeneratedLayoutLab, "editor.workspace.layout.generated");
+    }
+
+    private void OnOpenTemplateLayoutLabPressed()
+    {
+        QueueLayoutLabRequest(FacetLayoutLabBridge.CommandOpenTemplateLayoutLab, "editor.workspace.layout.template");
+    }
+
     private void QueueHotReloadLabRequest(string command, string issuedBy)
     {
         try
@@ -538,6 +663,30 @@ public partial class FacetMainScreen : PanelContainer
         }
     }
 
+    private void QueueLayoutLabRequest(string command, string issuedBy)
+    {
+        try
+        {
+            FacetLayoutLabRequest request = FacetLayoutLabBridge.CreateRequest(command, issuedBy);
+            FacetLayoutLabBridge.SaveRequest(request);
+            FacetLayoutLabBridge.SaveStatus(
+                FacetLayoutLabBridge.CreateRequestedStatus(
+                    request,
+                    "编辑器工作台已写入布局实验请求，等待运行中的客户端处理。"));
+
+            FacetEditorDiagnostics.Info(
+                "MainScreen",
+                $"LayoutLabRequest command={command} requestId={request.RequestId} issuedBy={issuedBy}");
+
+            RefreshNow();
+        }
+        catch (Exception exception)
+        {
+            FacetEditorDiagnostics.Error("MainScreen", "QueueLayoutLabRequest failed.", exception);
+            throw;
+        }
+    }
+
     private void RefreshHotReloadLabStatus(List<FacetEditorLogEntry> allEntries)
     {
         string requestPath = FacetHotReloadLabBridge.GetRequestPath();
@@ -553,6 +702,46 @@ public partial class FacetMainScreen : PanelContainer
             $"Status: {statusPath}";
 
         _hotReloadEvidenceLabel.Text = BuildHotReloadEvidenceText(allEntries);
+    }
+
+    private void RefreshLayoutLabStatus(List<FacetEditorLogEntry> allEntries)
+    {
+        string requestPath = FacetLayoutLabBridge.GetRequestPath();
+        string statusPath = FacetLayoutLabBridge.GetStatusPath();
+        FacetLayoutLabBridge.TryLoadStatus(out FacetLayoutLabStatus? status);
+
+        _layoutLabBridgeStatusLabel.Text = status == null
+            ? "尚未检测到 Layout Lab 状态文件。请先运行主场景，或在本页签中发起一次布局入口请求。"
+            : BuildLayoutStatusText(status);
+
+        _layoutLabBridgePathsLabel.Text =
+            $"Request: {requestPath}\n" +
+            $"Status: {statusPath}";
+
+        _layoutLabEvidenceLabel.Text = BuildLayoutEvidenceText(allEntries);
+    }
+
+    private void RefreshRuntimeDiagnosticsStatus(List<FacetEditorLogEntry> allEntries)
+    {
+        string snapshotPath = FacetRuntimeDiagnosticsBridge.GetSnapshotPath();
+        bool hasSnapshot = FacetRuntimeDiagnosticsBridge.TryLoadSnapshot(out FacetRuntimeDiagnosticsSnapshot? snapshot) &&
+            snapshot != null;
+
+        _runtimeDiagnosticsStatusLabel.Text = hasSnapshot
+            ? BuildRuntimeDiagnosticsStatusText(snapshot!)
+            : "尚未检测到运行时诊断快照。请先运行主场景，等待 FacetHost 输出阶段 12 快照。";
+
+        _runtimeDiagnosticsPathsLabel.Text = $"Snapshot: {snapshotPath}";
+        _runtimeDiagnosticsSnapshotLabel.Text = hasSnapshot
+            ? BuildRuntimeDiagnosticsSnapshotText(snapshot!)
+            : "运行时诊断页会在这里展示页面注册表、活动运行时、Projection 键、Lua 脚本和红点路径。";
+        _runtimeDiagnosticsValidationLabel.Text = hasSnapshot
+            ? BuildRuntimeDiagnosticsValidationText(snapshot!)
+            : "运行一次主场景后，这里会显示运行时校验结果。";
+        _runtimeDiagnosticsObserverSummaryLabel.Text = hasSnapshot
+            ? BuildRuntimeDiagnosticsObserverSummaryText(snapshot!, allEntries)
+            : "运行一次主场景后，这里会显示生命周期 / Projection / 红点 / Binding 的深度观察摘要。";
+        _runtimeDiagnosticsObserverLabel.Text = BuildRuntimeDiagnosticsObserverText(allEntries, snapshot);
     }
 
     private static string BuildHotReloadStatusText(FacetHotReloadLabStatus status)
@@ -625,6 +814,420 @@ public partial class FacetMainScreen : PanelContainer
         }
 
         return builder.ToString().TrimEnd();
+    }
+
+    private static string BuildLayoutStatusText(FacetLayoutLabStatus status)
+    {
+        string successText = status.Success switch
+        {
+            true => "成功",
+            false => "失败",
+            _ => "未定",
+        };
+
+        return
+            $"状态: {status.State}  结果: {successText}\n" +
+            $"命令: {status.Command}\n" +
+            $"请求: {status.RequestId}\n" +
+            $"来源: {status.IssuedBy}\n" +
+            $"发起时间: {status.IssuedAtUtc}\n" +
+            $"更新时间: {status.UpdatedAtUtc}\n" +
+            $"运行时会话: {status.RuntimeSessionId}\n" +
+            $"运行时页面: {status.RuntimePageId}\n" +
+            $"说明: {status.Message}";
+    }
+
+    private static string BuildRuntimeDiagnosticsStatusText(FacetRuntimeDiagnosticsSnapshot snapshot)
+    {
+        return
+            $"会话: {snapshot.RuntimeSessionId}\n" +
+            $"更新时间: {snapshot.UpdatedAtUtc}\n" +
+            $"当前页面: {snapshot.CurrentPageId}\n" +
+            $"返回栈深度: {snapshot.BackStackDepth}\n" +
+            $"已注册页面: {snapshot.RegisteredPageCount}\n" +
+            $"活动运行时: {snapshot.ActiveRuntimeCount}\n" +
+            $"Projection: {snapshot.ProjectionCount}\n" +
+            $"Lua 脚本: {snapshot.LuaRegisteredScriptCount}\n" +
+            $"红点路径: {snapshot.RedDotRegisteredPathCount}\n" +
+            $"校验结果: {snapshot.ValidationResultCount} 通过 {snapshot.ValidationPassedCount} / 警告 {snapshot.ValidationWarningCount} / 失败 {snapshot.ValidationFailedCount}";
+    }
+
+    private static string BuildRuntimeDiagnosticsSnapshotText(FacetRuntimeDiagnosticsSnapshot snapshot)
+    {
+        StringBuilder builder = new();
+
+        builder.AppendLine("页面注册表");
+        builder.AppendLine("----------------------------------------");
+        AppendRegisteredPages(builder, snapshot.RegisteredPages);
+        builder.AppendLine();
+
+        builder.AppendLine("活动运行时");
+        builder.AppendLine("----------------------------------------");
+        AppendActiveRuntimes(builder, snapshot.ActiveRuntimes);
+        builder.AppendLine();
+
+        builder.AppendLine($"Projection 键 ({snapshot.ProjectionCount})");
+        builder.AppendLine("----------------------------------------");
+        AppendStringList(builder, snapshot.ProjectionKeys);
+        builder.AppendLine();
+
+        builder.AppendLine($"Lua 脚本 ({snapshot.LuaRegisteredScriptCount})");
+        builder.AppendLine("----------------------------------------");
+        AppendStringList(builder, snapshot.LuaRegisteredScripts);
+        builder.AppendLine();
+
+        builder.AppendLine($"红点路径 ({snapshot.RedDotRegisteredPathCount})");
+        builder.AppendLine("----------------------------------------");
+        AppendStringList(builder, snapshot.RedDotPaths);
+
+        return builder.ToString().TrimEnd();
+    }
+
+    private static string BuildRuntimeDiagnosticsValidationText(FacetRuntimeDiagnosticsSnapshot snapshot)
+    {
+        if (snapshot.ValidationResults.Count == 0)
+        {
+            return "当前没有运行时校验结果。";
+        }
+
+        StringBuilder builder = new();
+        foreach (FacetRuntimeValidationResultSnapshot result in snapshot.ValidationResults)
+        {
+            builder.Append('[');
+            builder.Append(result.Status);
+            builder.Append("] ");
+            builder.Append(result.Subject);
+            builder.Append(" / ");
+            builder.Append(result.RuleId);
+            builder.AppendLine();
+            builder.Append("severity: ");
+            builder.Append(result.Severity);
+            builder.Append(" | ");
+            builder.Append(result.Message);
+            builder.AppendLine();
+            builder.AppendLine();
+        }
+
+        return builder.ToString().TrimEnd();
+    }
+
+    private string BuildRuntimeDiagnosticsObserverSummaryText(
+        FacetRuntimeDiagnosticsSnapshot snapshot,
+        List<FacetEditorLogEntry> allEntries)
+    {
+        string focus = _runtimeDiagnosticsFocusFilter.Text.Trim();
+        int channel = (int)_runtimeDiagnosticsObserverChannelFilter.GetSelectedId();
+        int matchCount = CountObserverEntries(allEntries, focus, channel);
+        string focusText = string.IsNullOrWhiteSpace(focus) ? "未设置" : focus;
+        string channelText = _runtimeDiagnosticsObserverChannelFilter.GetItemText(_runtimeDiagnosticsObserverChannelFilter.Selected);
+
+        return
+            $"当前主题: {channelText}\n" +
+            $"当前焦点: {focusText}\n" +
+            $"匹配日志: {matchCount} 条\n" +
+            $"当前页: {snapshot.CurrentPageId}";
+    }
+
+    private string BuildRuntimeDiagnosticsObserverText(
+        List<FacetEditorLogEntry> allEntries,
+        FacetRuntimeDiagnosticsSnapshot? snapshot)
+    {
+        if (allEntries.Count == 0)
+        {
+            return "当前还没有可供观察的结构化日志。";
+        }
+
+        string focus = _runtimeDiagnosticsFocusFilter.Text.Trim();
+        int channel = (int)_runtimeDiagnosticsObserverChannelFilter.GetSelectedId();
+        List<FacetEditorLogEntry> matches = new();
+
+        for (int index = allEntries.Count - 1; index >= 0 && matches.Count < MaxObserverEntries; index--)
+        {
+            FacetEditorLogEntry entry = allEntries[index];
+            if (!MatchesObserverChannel(entry, channel))
+            {
+                continue;
+            }
+
+            if (!MatchesObserverFocus(entry, focus))
+            {
+                continue;
+            }
+
+            matches.Add(entry);
+        }
+
+        if (matches.Count == 0)
+        {
+            string fallbackFocus = string.IsNullOrWhiteSpace(focus) ? "当前筛选" : $"焦点 `{focus}`";
+            return $"{fallbackFocus} 下没有匹配的深度观察日志。";
+        }
+
+        matches.Reverse();
+
+        StringBuilder builder = new();
+        if (snapshot != null && !string.IsNullOrWhiteSpace(snapshot.CurrentPageId))
+        {
+            builder.Append("当前页: ");
+            builder.Append(snapshot.CurrentPageId);
+            builder.AppendLine();
+            builder.AppendLine();
+        }
+
+        for (int index = 0; index < matches.Count; index++)
+        {
+            FacetEditorLogEntry entry = matches[index];
+            builder.Append('[');
+            builder.Append(entry.LevelName);
+            builder.Append("] ");
+            builder.Append(entry.Category);
+            builder.Append(" @ ");
+            builder.Append(entry.TimestampUtc);
+            builder.AppendLine();
+            builder.Append(entry.Message);
+            builder.AppendLine();
+
+            if (!string.IsNullOrWhiteSpace(entry.PayloadJson))
+            {
+                builder.Append("payload: ");
+                builder.Append(entry.PayloadJson);
+                builder.AppendLine();
+            }
+
+            if (index < matches.Count - 1)
+            {
+                builder.AppendLine();
+                builder.AppendLine("----------------------------------------");
+                builder.AppendLine();
+            }
+        }
+
+        return builder.ToString().TrimEnd();
+    }
+
+    private static string BuildLayoutEvidenceText(List<FacetEditorLogEntry> allEntries)
+    {
+        List<FacetEditorLogEntry> matches = new();
+        for (int index = allEntries.Count - 1; index >= 0 && matches.Count < 6; index--)
+        {
+            FacetEditorLogEntry entry = allEntries[index];
+            if (!string.Equals(entry.Category, "UI.Layout", StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(entry.Category, "UI.Page", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            if (!ContainsLayoutLabMarker(entry.Message) &&
+                !ContainsLayoutLabMarker(entry.PayloadJson))
+            {
+                continue;
+            }
+
+            matches.Add(entry);
+        }
+
+        if (matches.Count == 0)
+        {
+            return "尚未发现与阶段 11 布局实验室相关的结构化日志。";
+        }
+
+        matches.Reverse();
+
+        StringBuilder builder = new();
+        for (int index = 0; index < matches.Count; index++)
+        {
+            FacetEditorLogEntry entry = matches[index];
+            builder.Append('[');
+            builder.Append(entry.LevelName);
+            builder.Append("] ");
+            builder.Append(entry.TimestampUtc);
+            builder.AppendLine();
+            builder.Append(entry.Message);
+            builder.AppendLine();
+
+            if (!string.IsNullOrWhiteSpace(entry.PayloadJson))
+            {
+                builder.Append("payload: ");
+                builder.Append(entry.PayloadJson);
+                builder.AppendLine();
+            }
+
+            if (index < matches.Count - 1)
+            {
+                builder.AppendLine();
+                builder.AppendLine("----------------------------------------");
+                builder.AppendLine();
+            }
+        }
+
+        return builder.ToString().TrimEnd();
+    }
+
+    private static void AppendRegisteredPages(StringBuilder builder, List<FacetRuntimeRegisteredPageSnapshot> pages)
+    {
+        if (pages.Count == 0)
+        {
+            builder.AppendLine("无");
+            return;
+        }
+
+        foreach (FacetRuntimeRegisteredPageSnapshot page in pages)
+        {
+            builder.Append(page.PageId);
+            builder.Append(" | ");
+            builder.Append(page.LayoutType);
+            builder.Append(" | ");
+            builder.Append(page.CachePolicy);
+            builder.Append(" | layer=");
+            builder.Append(page.Layer);
+            builder.Append(" | layout=");
+            builder.Append(page.LayoutPath);
+
+            if (!string.IsNullOrWhiteSpace(page.ControllerScript))
+            {
+                builder.Append(" | lua=");
+                builder.Append(page.ControllerScript);
+            }
+
+            builder.AppendLine();
+        }
+    }
+
+    private static void AppendActiveRuntimes(StringBuilder builder, List<FacetRuntimePageRuntimeSnapshot> runtimes)
+    {
+        if (runtimes.Count == 0)
+        {
+            builder.AppendLine("无");
+            return;
+        }
+
+        foreach (FacetRuntimePageRuntimeSnapshot runtime in runtimes)
+        {
+            builder.Append(runtime.IsCurrentPage ? "* " : "- ");
+            builder.Append(runtime.PageId);
+            builder.Append(" | state=");
+            builder.Append(runtime.State);
+            builder.Append(" | layout=");
+            builder.Append(runtime.LayoutType);
+            builder.Append(" | lua=");
+            builder.Append(runtime.HasLuaController ? "yes" : "no");
+
+            if (!string.IsNullOrWhiteSpace(runtime.ControllerScript))
+            {
+                builder.Append(" | script=");
+                builder.Append(runtime.ControllerScript);
+            }
+
+            if (!string.IsNullOrWhiteSpace(runtime.LuaControllerVersionToken))
+            {
+                builder.Append(" | version=");
+                builder.Append(runtime.LuaControllerVersionToken);
+            }
+
+            builder.AppendLine();
+            builder.Append("  path=");
+            builder.Append(runtime.PageRootPath);
+            builder.AppendLine();
+
+            if (runtime.BindingScope != null)
+            {
+                builder.Append("  binding=");
+                builder.Append(runtime.BindingScope.ScopeId);
+                builder.Append(" | count=");
+                builder.Append(runtime.BindingScope.BindingCount);
+                builder.Append(" | refresh=");
+                builder.Append(runtime.BindingScope.RefreshCount);
+
+                if (!string.IsNullOrWhiteSpace(runtime.BindingScope.LastRefreshReason))
+                {
+                    builder.Append(" | reason=");
+                    builder.Append(runtime.BindingScope.LastRefreshReason);
+                }
+
+                builder.AppendLine();
+            }
+        }
+    }
+
+    private static void AppendStringList(StringBuilder builder, List<string> items)
+    {
+        if (items.Count == 0)
+        {
+            builder.AppendLine("无");
+            return;
+        }
+
+        foreach (string item in items)
+        {
+            builder.Append("- ");
+            builder.Append(item);
+            builder.AppendLine();
+        }
+    }
+
+    private int CountObserverEntries(List<FacetEditorLogEntry> allEntries, string focus, int channel)
+    {
+        int count = 0;
+        foreach (FacetEditorLogEntry entry in allEntries)
+        {
+            if (MatchesObserverChannel(entry, channel) &&
+                MatchesObserverFocus(entry, focus))
+            {
+                count++;
+            }
+        }
+
+        return count;
+    }
+
+    private static bool MatchesObserverChannel(FacetEditorLogEntry entry, int channel)
+    {
+        return channel switch
+        {
+            0 => IsObserverCategory(entry.Category),
+            1 => string.Equals(entry.Category, "UI.Page.Lifecycle", StringComparison.OrdinalIgnoreCase),
+            2 => entry.Category.StartsWith("Projection", StringComparison.OrdinalIgnoreCase),
+            3 => entry.Category.StartsWith("RedDot", StringComparison.OrdinalIgnoreCase),
+            4 => entry.Category.StartsWith("UI.Binding", StringComparison.OrdinalIgnoreCase),
+            5 => entry.Category.StartsWith("Tooling", StringComparison.OrdinalIgnoreCase) ||
+                 entry.Category.StartsWith("Lua.HotReload", StringComparison.OrdinalIgnoreCase),
+            _ => false,
+        };
+    }
+
+    private static bool IsObserverCategory(string category)
+    {
+        return string.Equals(category, "UI.Page.Lifecycle", StringComparison.OrdinalIgnoreCase) ||
+               category.StartsWith("Projection", StringComparison.OrdinalIgnoreCase) ||
+               category.StartsWith("RedDot", StringComparison.OrdinalIgnoreCase) ||
+               category.StartsWith("UI.Binding", StringComparison.OrdinalIgnoreCase) ||
+               category.StartsWith("Tooling", StringComparison.OrdinalIgnoreCase) ||
+               category.StartsWith("Lua.HotReload", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool MatchesObserverFocus(FacetEditorLogEntry entry, string focus)
+    {
+        if (string.IsNullOrWhiteSpace(focus))
+        {
+            return true;
+        }
+
+        return entry.Category.Contains(focus, StringComparison.OrdinalIgnoreCase) ||
+               entry.Message.Contains(focus, StringComparison.OrdinalIgnoreCase) ||
+               entry.PayloadJson.Contains(focus, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool ContainsLayoutLabMarker(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return false;
+        }
+
+        return value.Contains(UIPageIds.GeneratedLayoutLab, StringComparison.OrdinalIgnoreCase) ||
+               value.Contains(UIPageIds.TemplateLayoutLab, StringComparison.OrdinalIgnoreCase) ||
+               value.Contains("布局实验室", StringComparison.OrdinalIgnoreCase) ||
+               value.Contains("阶段 11", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string GetLevelColorHex(int levelRank)

@@ -39,6 +39,7 @@ namespace Sideline.Facet.Runtime
             _logger = logger;
             _pageLifecycle = PageRoot as IUIPageLifecycle;
             _luaRuntimeHost = ResolveLuaRuntimeHost(runtimeContext);
+            OwnsRootNode = layoutResult.OwnsRootNode;
             State = UIPageState.Created;
 
             if (runtimeContext.Services.TryGet<UIBindingService>(out UIBindingService? bindingService) &&
@@ -70,6 +71,8 @@ namespace Sideline.Facet.Runtime
         public UIContext Context { get; }
 
         public IUIBindingScope? BindingScope { get; }
+
+        public bool OwnsRootNode { get; }
 
         public UIPageState State { get; private set; }
 
@@ -166,7 +169,7 @@ namespace Sideline.Facet.Runtime
 
             if (GodotObject.IsInstanceValid(PageRoot))
             {
-                if (Definition.LayoutType == UIPageLayoutType.PackedScene)
+                if (OwnsRootNode)
                 {
                     PageRoot.QueueFree();
                 }

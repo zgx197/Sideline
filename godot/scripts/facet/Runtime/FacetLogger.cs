@@ -15,6 +15,13 @@ namespace Sideline.Facet.Runtime
     public sealed class FacetLogger : IFacetLogger
     {
         private const string HistoryDirectoryName = "history";
+        private static readonly HashSet<string> SuppressedConsoleDebugCategories = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "UI.Binding.Register",
+            "UI.Binding.Refresh",
+            "UI.Binding.Component",
+            "UI.Binding.ComplexList",
+        };
 
         private static readonly UTF8Encoding Utf8WithoutBom = new(false);
         private static readonly UTF8Encoding Utf8WithBom = new(true);
@@ -105,8 +112,12 @@ namespace Sideline.Facet.Runtime
                 payload);
 
             BufferEntry(entry);
-            WriteConsoleEntry(entry);
-            WriteConsoleMirrorEntry(entry);
+            if (ShouldWriteToConsoleSurfaces(entry))
+            {
+                WriteConsoleEntry(entry);
+                WriteConsoleMirrorEntry(entry);
+            }
+
             WriteStructuredEntry(entry);
             NotifyEntryLogged(entry);
         }
@@ -168,6 +179,17 @@ namespace Sideline.Facet.Runtime
                     GD.Print(formatted);
                     break;
             }
+        }
+
+        private static bool ShouldWriteToConsoleSurfaces(FacetLogEntry entry)
+        {
+            if (entry.Level == FacetLogLevel.Debug &&
+                SuppressedConsoleDebugCategories.Contains(entry.Category))
+            {
+                return false;
+            }
+
+            return true;
         }
 
         private void WriteConsoleMirrorEntry(FacetLogEntry entry)

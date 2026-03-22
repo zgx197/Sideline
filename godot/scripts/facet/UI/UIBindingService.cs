@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Godot;
+using Sideline.Facet.Extensions.RedDot;
 using Sideline.Facet.Runtime;
 
 namespace Sideline.Facet.UI
@@ -124,6 +125,20 @@ namespace Sideline.Facet.UI
             RegisterBinding(
                 new VisibilityBinding(target, valueFactory),
                 new UIBindingDescriptor("Visibility", key, target.GetType().Name));
+        }
+
+        /// <inheritdoc />
+        public void BindRedDotVisibility(string key, IRedDotService redDotService, string path, bool fallback = false)
+        {
+            EnsureNotDisposed();
+            ArgumentException.ThrowIfNullOrWhiteSpace(key);
+            ArgumentNullException.ThrowIfNull(redDotService);
+            ArgumentException.ThrowIfNullOrWhiteSpace(path);
+
+            CanvasItem target = ResolveRequired<CanvasItem>(key);
+            RegisterBinding(
+                new RedDotBinding(target, redDotService, path, fallback),
+                new UIBindingDescriptor("RedDotVisibility", key, target.GetType().Name, path));
         }
 
         /// <inheritdoc />
@@ -480,6 +495,34 @@ namespace Sideline.Facet.UI
         public void Apply()
         {
             _target.Visible = _valueFactory();
+        }
+
+        public void Dispose()
+        {
+        }
+    }
+
+    /// <summary>
+    /// 红点显隐绑定。
+    /// </summary>
+    internal sealed class RedDotBinding : IUINodeBinding
+    {
+        private readonly CanvasItem _target;
+        private readonly IRedDotService _redDotService;
+        private readonly string _path;
+        private readonly bool _fallback;
+
+        public RedDotBinding(CanvasItem target, IRedDotService redDotService, string path, bool fallback)
+        {
+            _target = target;
+            _redDotService = redDotService;
+            _path = RedDotAggregator.NormalizePath(path);
+            _fallback = fallback;
+        }
+
+        public void Apply()
+        {
+            _target.Visible = _redDotService.GetStateOrDefault(_path, _fallback);
         }
 
         public void Dispose()
