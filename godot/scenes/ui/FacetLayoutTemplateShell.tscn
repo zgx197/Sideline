@@ -1,0 +1,59 @@
+[gd_scene format=3]
+
+[node name="FacetLayoutTemplateShell" type="PanelContainer"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+metadata/facet_node_key = "TemplateShellRoot"
+
+[node name="RootMargin" type="MarginContainer" parent="."]
+layout_mode = 2
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/margin_left = 18
+theme_override_constants/margin_top = 18
+theme_override_constants/margin_right = 18
+theme_override_constants/margin_bottom = 18
+metadata/facet_node_key = "TemplateRootMargin"
+
+[node name="TemplateColumn" type="VBoxContainer" parent="RootMargin"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+theme_override_constants/separation = 10
+metadata/facet_node_key = "TemplateColumn"
+
+[node name="TemplateShellTitleLabel" type="Label" parent="RootMargin/TemplateColumn"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Facet Template Shell"
+horizontal_alignment = 1
+autowrap_mode = 2
+metadata/facet_node_key = "TemplateShellTitleLabel"
+
+[node name="TemplateShellSummaryLabel" type="Label" parent="RootMargin/TemplateColumn"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "这个壳体节点来自固定模板，下面的内容区会由阶段 11 的动态节点工厂在运行时填充。"
+autowrap_mode = 2
+metadata/facet_node_key = "TemplateShellSummaryLabel"
+
+[node name="TemplateContentSlot" type="VBoxContainer" parent="RootMargin/TemplateColumn"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+theme_override_constants/separation = 10
+metadata/facet_node_key = "TemplateContentSlot"
+
+[node name="TemplateFooterLabel" type="Label" parent="RootMargin/TemplateColumn"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Template Footer / Stable shell"
+horizontal_alignment = 2
+autowrap_mode = 2
+metadata/facet_node_key = "TemplateFooterLabel"

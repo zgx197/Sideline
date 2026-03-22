@@ -9,10 +9,48 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Include="Application\**\*.cs" />
+    <Compile Include="Extensions\**\*.cs" />
+    <Compile Include="Layout\FacetBuiltInLayoutDefinitions.cs" />
+    <Compile Include="Layout\FacetGeneratedLayoutDefinition.cs" />
+    <Compile Include="Layout\FacetGeneratedLayoutNodeDefinition.cs" />
+    <Compile Include="Layout\FacetLayoutNodeType.cs" />
+    <Compile Include="Layout\FacetTemplateLayoutDefinition.cs" />
+    <Compile Include="Layout\IFacetGeneratedLayoutStore.cs" />
+    <Compile Include="Layout\IFacetTemplateLayoutStore.cs" />
+    <Compile Include="Layout\InMemoryFacetGeneratedLayoutStore.cs" />
+    <Compile Include="Layout\InMemoryFacetTemplateLayoutStore.cs" />
+    <Compile Include="Lua\**\*.cs" />
+    <Compile Include="Projection\**\*.cs" />
     <Compile Include="Runtime\FacetConfig.cs" />
+    <Compile Include="Runtime\FacetLogEntry.cs" />
     <Compile Include="Runtime\FacetLogLevel.cs" />
     <Compile Include="Runtime\FacetRuntimeContext.cs" />
     <Compile Include="Runtime\FacetServices.cs" />
     <Compile Include="Runtime\IFacetLogger.cs" />
+    <Compile Include="Runtime\Pages\FacetBuiltInPageDefinitions.cs" />
+    <Compile Include="Runtime\Pages\IPageDefinitionSource.cs" />
+    <Compile Include="Runtime\Pages\IUIBindingScope.cs" />
+    <Compile Include="Runtime\Pages\IUIComponentBindingScope.cs" />
+    <Compile Include="Runtime\Pages\IUIComplexListBinding.cs" />
+    <Compile Include="Runtime\Pages\IUIObjectResolver.cs" />
+    <Compile Include="Runtime\Pages\IUIPageLifecycle.cs" />
+    <Compile Include="Runtime\Pages\IUIPageNavigator.cs" />
+    <Compile Include="Runtime\Pages\InMemoryPageDefinitionSource.cs" />
+    <Compile Include="Runtime\Pages\UIBindingDescriptor.cs" />
+    <Compile Include="Runtime\Pages\UIBindingDiagnosticsSnapshot.cs" />
+    <Compile Include="Runtime\Pages\UIContext.cs" />
+    <Compile Include="Runtime\Pages\UIPageCachePolicy.cs" />
+    <Compile Include="Runtime\Pages\UIPageDefinition.cs" />
+    <Compile Include="Runtime\Pages\UIPageIds.cs" />
+    <Compile Include="Runtime\Pages\UIPageLayoutType.cs" />
+    <Compile Include="Runtime\Pages\UIPageRegistry.cs" />
+    <Compile Include="Runtime\Pages\UIPageState.cs" />
+    <Compile Include="Runtime\Pages\UIRouteEntry.cs" />
+    <Compile Include="Runtime\Pages\UIRouteService.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="MoonSharp" Version="2.0.0" />
   </ItemGroup>
 </Project>

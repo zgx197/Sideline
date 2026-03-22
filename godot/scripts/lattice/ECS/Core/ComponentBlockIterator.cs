@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Sideline Authors. All rights reserved.
 // Licensed under GPL-3.0.
 
-// 姝ゆ枃浠朵娇鐢?unsafe 浠ｇ爜杩涜楂樻€ц兘杩唬
-// 鎵€鏈夋寚閽堟搷浣滃湪 DEBUG 妯″紡涓嬫湁杈圭晫妫€鏌?
+// 本文件使用 unsafe 指针和块式遍历来实现高性能 ECS 组件迭代。
+// 所有版本校验仅在 DEBUG 模式下启用，用于在开发期尽早发现边迭代边修改的问题。
 
 using System;
 using System.Runtime.CompilerServices;
@@ -11,71 +11,8 @@ using Lattice.Core;
 namespace Lattice.ECS.Core
 {
     /// <summary>
-    /// 缁勪欢鍧楄凯浠ｅ櫒 - 鎵归噺閬嶅巻缁勪欢锛屾渶澶у寲缂撳瓨鍛戒腑鐜?
-    /// 
-    /// ============================================================
-    /// 涓轰粈涔堥渶瑕?Block Iterator锛?
-    /// ============================================================
-    /// 
-    /// 浼犵粺杩唬鏂瑰紡鐨勯棶棰橈細
-    ///   foreach (var entity in filter) { ... }
-    ///   - 姣忔杩唬閮借妫€鏌ョ増鏈彿
-    ///   - 姣忔閮借璁＄畻 Block/Offset
-    ///   - 缂撳瓨鏈懡涓巼楂橈紙璺冲埌涓嬩竴涓疄浣擄級
-    /// 
-    /// Block Iterator 鐨勪紭鍔匡細
-    ///   while (iterator.NextBlock(out entities, out comps, out count)) {
-    ///       for (int i = 0; i &lt; count; i++) { ... }
-    ///   }
-    ///   - 涓€娆¤幏鍙?128 涓粍浠?
-    ///   - 鍐呭眰寰幆鏃犲垎鏀€佹棤鍑芥暟璋冪敤
-    ///   - 缂撳瓨鍛戒腑鐜囨帴杩?100%
-    /// 
-    /// 鎬ц兘瀵规瘮锛堢悊璁猴級锛?
-    /// - 浼犵粺杩唬锛殈50-100 CPU 鍛ㄦ湡/瀹炰綋
-    /// - Block 杩唬锛殈5-10 CPU 鍛ㄦ湡/瀹炰綋锛堝唴灞傚惊鐜級
-    /// 
-    /// ============================================================
-    /// 鏋舵瀯璁捐鍐崇瓥
-    /// ============================================================
-    /// 
-    /// Q: 涓轰粈涔堟彁渚涗袱绉嶈凯浠ｆā寮忥紵
-    /// A:
-    ///   1. NextBlock锛氭壒閲忓鐞嗭紝閫傚悎 SIMD锛堜竴娆″鐞?128 涓級
-    ///   2. Next锛氶€愪釜澶勭悊锛岄€傚悎澶嶆潅閫昏緫锛堟瘡涓疄浣撲笉鍚屾搷浣滐級
-    /// 
-    /// Q: 涓轰粈涔堣烦杩囩储寮?0锛?
-    /// A:
-    ///   1. 涓?FrameSync 淇濇寔涓€鑷达紙绱㈠紩 0 淇濈暀涓烘棤鏁堝€硷級
-    ///   2. 绠€鍖栧垹闄ら€昏緫锛氱敤 0 浣滀负 TOMBSTONE
-    ///   3. 閬垮厤绌哄紩鐢ㄦ鏌ワ細entity.Index == 0 鐩存帴杩斿洖鏃犳晥
-    /// 
-    /// Q: 涓轰粈涔堥渶瑕佺増鏈彿妫€娴嬶紵
-    /// A:
-    ///   1. C# IEnumerator 妯″紡锛氭鏌ラ泦鍚堜慨鏀?
-    ///   2. 璋冭瘯鍙嬪ソ锛氬揩閫熷け璐ワ紝缁欏嚭娓呮櫚閿欒
-    ///   3. 鎬ц兘寮€閿€灏忥細鍙湪 DEBUG 妯″紡妫€鏌?
-    /// 
-    /// ============================================================
-    /// 棰勫彇浼樺寲 (PrefetchedBlockIterator)
-    /// ============================================================
-    /// 
-    /// 闂锛氬鐞嗗綋鍓?Block 鏃讹紝涓嬩竴涓?Block 涓嶅湪缂撳瓨涓?
-    /// 瑙ｅ喅锛氬湪 CPU 澶勭悊褰撳墠鏁版嵁鏃讹紝寮傛鍔犺浇涓嬩竴涓?Block
-    /// 
-    /// 纭欢棰勫彇 vs 杞欢棰勫彇锛?
-    /// - 纭欢棰勫彇锛氳嚜鍔ㄦ娴嬮『搴忚闂ā寮忥紝浣嗗欢杩熻緝楂?
-    /// - 杞欢棰勫彇锛氱▼搴忓憳鏄庣‘鎸囩ず锛屾彁鍓?100+ 鍛ㄦ湡寮€濮嬪姞杞?
-    /// 
-    /// 棰勫彇璺濈锛?
-    /// - 澶繎锛氭暟鎹繕娌＄敤瀹屽氨鍔犺浇锛屾氮璐瑰甫瀹?
-    /// - 澶繙锛氭暟鎹鍏朵粬缂撳瓨琛岄┍閫?
-    /// - 缁忛獙鍊硷細2 涓?Block锛?56 涓粍浠讹紝绾?4-8KB锛?
-    /// 
-    /// 浣跨敤鍦烘櫙锛?
-    /// - 澶у閲忓瓨鍌紙> 1000 涓粍浠讹級
-    /// - 椤哄簭閬嶅巻锛堥殢鏈鸿闂棤鏁堬級
-    /// - 鍐呭瓨甯﹀鍏呰冻锛堥潪澶氱嚎绋嬬珵浜夛級
+    /// 组件块迭代器。
+    /// 通过按块批量返回实体引用与组件指针，尽量提升缓存命中率并降低循环中的分支与函数调用开销。
     /// </summary>
     public unsafe struct ComponentBlockIterator<T> where T : unmanaged
     {
@@ -89,7 +26,7 @@ namespace Lattice.ECS.Core
         private int _startGlobalIndex;
 
         /// <summary>
-        /// 鍒涘缓瀹屾暣杩唬鍣?
+        /// 创建一个覆盖整个存储区的迭代器实例。
         /// </summary>
         internal ComponentBlockIterator(Storage<T>* storage)
         {
@@ -97,13 +34,14 @@ namespace Lattice.ECS.Core
             _version = storage->Version;
             _blockCapacity = storage->BlockItemCapacity;
             _currentBlock = 0;
-            _currentOffset = 1; // 璺宠繃绱㈠紩0
+            _currentOffset = 1; // 跳过索引 0，保持与实体无效值约定一致。
             _remaining = storage->Count;
             _startGlobalIndex = 1;
         }
 
         /// <summary>
-        /// 鍒涘缓鑼冨洿杩唬鍣?
+        /// 创建一个带偏移量与数量限制的范围迭代器。
+        /// 该构造用于分页式扫描或仅遍历某一段连续组件数据。
         /// </summary>
         internal ComponentBlockIterator(Storage<T>* storage, int offset, int count)
         {
@@ -112,7 +50,7 @@ namespace Lattice.ECS.Core
             _blockCapacity = storage->BlockItemCapacity;
             _startGlobalIndex = offset + 1;
 
-            // 璁＄畻璧峰浣嶇疆
+            // 把输入范围收敛到当前存储真实有效范围内，避免越界。
             int clampedOffset = System.Math.Min(_startGlobalIndex, storage->Count);
             int clampedCount = System.Math.Max(0, System.Math.Min(count, storage->Count - clampedOffset));
 
@@ -122,7 +60,7 @@ namespace Lattice.ECS.Core
         }
 
         /// <summary>
-        /// 閲嶇疆杩唬鍣?
+        /// 重置迭代器到起始位置，重新遍历当前存储中的所有有效数据。
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void Reset()
@@ -134,12 +72,13 @@ namespace Lattice.ECS.Core
         }
 
         /// <summary>
-        /// 鑾峰彇涓嬩竴涓?Block 鐨勬暟鎹?
+        /// 获取下一个连续数据块。
+        /// 调用方可直接对返回的指针区间做顺序遍历或 SIMD 批处理。
         /// </summary>
-        /// <param name="entities">瀹炰綋寮曠敤鏁扮粍鎸囬拡</param>
-        /// <param name="components">缁勪欢鏁版嵁鏁扮粍鎸囬拡</param>
-        /// <param name="count">姝?Block 涓殑鏈夋晥椤规暟</param>
-        /// <returns>鏄惁杩樻湁鏇村鏁版嵁</returns>
+        /// <param name="entities">当前块内实体引用数组的起始指针。</param>
+        /// <param name="components">当前块内组件数组的起始指针。</param>
+        /// <param name="count">当前块中可用元素数量。</param>
+        /// <returns>若成功取得下一块数据则返回 <c>true</c>。</returns>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool NextBlock(out EntityRef* entities, out T* components, out int count)
         {
@@ -170,7 +109,8 @@ namespace Lattice.ECS.Core
         }
 
         /// <summary>
-        /// 绉诲姩鍒颁笅涓€涓疄浣擄紙閫愪釜杩唬锛?
+        /// 逐个返回下一个实体与组件指针。
+        /// 适合单体逻辑较复杂、不适合整块批处理的调用场景。
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool Next(out EntityRef entity, out T* component)
@@ -179,7 +119,7 @@ namespace Lattice.ECS.Core
 
             if (_remaining > 0)
             {
-                // 纭繚褰撳墠 offset 鍦ㄦ湁鏁堣寖鍥村唴
+                // 当前块已消耗完时，切到下一个块的起始位置。
                 if (_currentOffset >= _blockCapacity)
                 {
                     _currentBlock++;
@@ -209,7 +149,7 @@ namespace Lattice.ECS.Core
         }
 
         /// <summary>
-        /// 楠岃瘉瀛樺偍鏈淇敼锛堥槻姝㈣凯浠ｄ腑澧炲垹缁勪欢锛?
+        /// 在 DEBUG 模式下校验存储版本，防止遍历过程中对容器做结构性修改。
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void ValidateVersion()
@@ -226,7 +166,8 @@ namespace Lattice.ECS.Core
     }
 
     /// <summary>
-    /// 澧炲己鐗堝潡杩唬鍣?- 甯﹂鍙栦紭鍖?
+    /// 带预取优化的块迭代器。
+    /// 在遍历当前块时尝试提前把后续块拉入缓存，以降低大批量顺序遍历的等待成本。
     /// </summary>
     public unsafe struct PrefetchedBlockIterator<T> where T : unmanaged
     {
@@ -239,6 +180,10 @@ namespace Lattice.ECS.Core
         private int _currentOffset;
         private int _remaining;
 
+        /// <summary>
+        /// 创建带预取能力的块迭代器。
+        /// <paramref name="prefetchDistance" /> 表示提前预取多少个后续块。
+        /// </summary>
         public PrefetchedBlockIterator(Storage<T>* storage, int prefetchDistance = 2)
         {
             _storage = storage;
@@ -249,10 +194,13 @@ namespace Lattice.ECS.Core
             _currentOffset = 1;
             _remaining = storage->Count;
 
-            // 棰勫彇鍓嶅嚑涓潡
+            // 在首次开始遍历前先预取一小段后续块。
             PrefetchUpcoming();
         }
 
+        /// <summary>
+        /// 获取下一块数据，并在成功返回后继续预取更靠后的块。
+        /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool NextBlock(out EntityRef* entities, out T* components, out int count)
         {
@@ -270,7 +218,7 @@ namespace Lattice.ECS.Core
                     _remaining -= count;
                     _currentOffset += count;
 
-                    // 棰勫彇鍚庣画鍧?
+                    // 当前块返回后，立刻尝试预取后续块。
                     PrefetchUpcoming();
 
                     return true;
@@ -286,20 +234,29 @@ namespace Lattice.ECS.Core
             return false;
         }
 
+        /// <summary>
+        /// 预取后续若干块的实体引用与组件数据。
+        /// 该优化仅在顺序遍历、大容量存储场景下才更容易带来收益。
+        /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void PrefetchUpcoming()
         {
             for (int i = 1; i <= _prefetchDistance; i++)
             {
                 int prefetchBlock = _currentBlock + i;
-                if (prefetchBlock >= _storage->BlockCount) break;
+                if (prefetchBlock >= _storage->BlockCount)
+                {
+                    break;
+                }
 
-                // 棰勫彇瀹炰綋寮曠敤鍜屾暟鎹?
                 SIMDUtils.PrefetchL2(_storage->GetBlockEntityRefs(prefetchBlock));
                 SIMDUtils.PrefetchL2(_storage->GetBlockData(prefetchBlock));
             }
         }
 
+        /// <summary>
+        /// 在 DEBUG 模式下校验预取迭代器绑定的存储版本。
+        /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void ValidateVersion()
         {
