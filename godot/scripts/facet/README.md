@@ -68,7 +68,7 @@ Lua 可以接触：
 - Binding 注册与刷新能力
 - Command / Query 调用
 - 页面路由
-- 红点接口占位
+- 红点查询接口
 
 Lua 不能直接接触：
 
@@ -401,7 +401,7 @@ Lua 控制器生命周期与页面生命周期严格对齐：
 - `FileSystemLuaScriptSource`
   已从项目文件系统读取 `res://scripts/facet/LuaScripts/*.lua`，并为热重载生成稳定版本标记
 - `LuaApiBridge`
-  当前暴露受限的节点解析、参数读取、Binding 刷新、受限诊断查询、页面路由和红点占位接口
+  当前暴露受限的节点解析、参数读取、Binding 刷新、受限诊断查询、页面路由和红点查询接口
 - `LuaBindingScopeBridge`
   已把页面级、组件级与结构化列表级 Binding 以白名单桥接方式暴露给 Lua
 - `UIPageRuntime`
@@ -489,7 +489,7 @@ Lua 只应看到受限桥接对象，而不应直接获取整个宿主世界。
 - 页面级、组件级与结构化列表级 Binding 桥接
 - 受限 Query 能力与运行时诊断查询
 - 页面路由
-- 红点占位接口
+- 红点查询接口
 - 统一日志入口
 
 当前不会把原始 `Resolver`、`Bindings` 或泛型总线对象直接作为 Lua 的主要使用入口暴露出去。

@@ -21,9 +21,9 @@
 - 阶段 7：[已完成]
 - 阶段 8：[已完成]
 - 阶段 9：[已完成]
-- 阶段 10：[未开始]
-- 阶段 11：[未开始]
-- 阶段 12：[未开始]
+- 阶段 10：[已完成]
+- 阶段 11：[已完成]
+- 阶段 12：[已完成]
 
 ## 当前代码库已经具备
 
@@ -38,15 +38,17 @@
 - LuaBindingScopeBridge 支持的页面级、组件级、结构化列表级 Lua Binding 接口
 - 页面级 Lua 生命周期、状态袋、参数读取与受限诊断查询接口
 - LuaReloadCoordinator、脚本版本检测、控制器重建与页面级热重载轮询骨架
+- RedDotService、RedDotAggregator 与基于 Projection 的红点 Provider 骨架
+- Lua 红点桥接、红点显隐 Binding 与 Idle / Dungeon 页面红点挂载样例
 - Facet 编辑器工作区、结构化日志与基础诊断能力
+- Facet 运行时诊断快照桥，以及 Facet 主面板中的布局/诊断双工具页
 
 ## 当前仍未具备
 
-- 红点树正式实现
-- TemplateLayoutProvider / GeneratedLayoutProvider 正式落地
 - 页面定义外部文件化与校验工具
 - 更高级的 Lua 热重载恢复策略验证与调试工具
 - 更细粒度的红点、权限、引导等扩展系统正式接入
+- 更完整的页面定义校验器、Projection/红点可视化调试器与可视化编辑工具
 
 ## 实现顺序原则
 
@@ -245,7 +247,7 @@ Facet 的推进顺序必须坚持：
 - `FileSystemLuaScriptSource`
   已从项目文件系统读取 `res://scripts/facet/LuaScripts/*.lua`，并为热重载生成稳定版本标记
 - `LuaApiBridge`
-  已暴露受限的节点解析、参数读取、Binding 刷新、受限诊断查询、页面路由与红点占位能力
+  已暴露受限的节点解析、参数读取、Binding 刷新、受限诊断查询、页面路由与红点查询能力
 - `LuaBindingScopeBridge`
   已把页面级、组件级与结构化列表级 Binding 以白名单桥接方式暴露给 Lua
 - `IUIPageNavigator`
@@ -324,7 +326,7 @@ Facet 的推进顺序必须坚持：
 - 生命周期与 Binding 层：热重载后页面仍需继续输出正常的 `Show / Refresh`、Lua 控制器日志与 Binding 刷新日志，不能只停留在状态文件成功
 - 证据稳定性：Facet 编辑器面板读取结构化日志时，不应再持续触发 `Structured log write failed` 这类由文件竞争造成的告警
 
-### 阶段 9 最新验收证据（2026-03-21）
+### 阶段 9 最新验收证据（2026-03-22）
 
 最新一轮日志已覆盖 Facet 面板触发和页面内按钮触发两类入口，关键证据如下：
 
@@ -338,6 +340,8 @@ Facet 的推进顺序必须坚持：
   已记录“Lua 热重载测试已恢复先前页面”，并在后续日志中看到 `client.idle` 的 `Show / Refresh / 页面返回完成`
 - 页面内入口
   `idle.panel.button.current`、`idle.panel.button.dungeon`、`dungeon.panel.button.current`、`dungeon.panel.button.dungeon` 均已出现完整成功证据链
+- 最新结构化日志会话
+  `SessionId = f405a7df4c2a4a658d34e9c024463886`，其中 `reason = dungeon.panel.button.current` 的往返测试已覆盖开始、`phase = forward` 成功、`phase = rollback` 成功与最终 `success = true` 汇总记录
 
 完成标准结论：
 
@@ -345,7 +349,7 @@ Facet 的推进顺序必须坚持：
 - 阶段 9 已完成页面级热重载协调、往返测试、页面恢复与证据链收口
 - 后续若出现更复杂状态恢复或调试侧需求，应作为阶段 12 的工具化增强继续推进
 
-## 阶段 10：扩展系统与红点树 `[未开始]`
+## 阶段 10：扩展系统与红点树 `[已完成]`
 
 目标：
 
@@ -358,7 +362,28 @@ Facet 的推进顺序必须坚持：
 - `RedDotBinding`
 - `RedDotAggregator`
 
-## 阶段 11：模板布局与自动生成布局 `[未开始]`
+当前已落地：
+
+- `RedDotService`
+  已支持多 Provider 注册、路径归一化、父子路径聚合、路径级订阅与结构化聚合日志
+- `RedDotAggregator`
+  已把 Provider 原始条目聚合为包含父路径的红点树快照，并输出 `self / aggregate / childCount` 统计
+- `FacetRuntimeRedDotProvider`
+  已基于 `RuntimeProbeProjection` 与 `RuntimeMetricsProjection` 输出 `client.idle.*` 与 `client.dungeon.*` 红点样例路径
+- `FacetLuaRedDotBridge`
+  已替换阶段 8 的空实现，Lua 控制器现在可通过 `LuaApiBridge.GetRedDot(...)` 查询真实红点状态
+- `RedDotBinding`
+  已作为正式 Binding 能力接入 `IUIBindingScope` / `LuaBindingScopeBridge`，支持节点按红点路径显隐
+- Idle / Dungeon 页面样例
+  已分别挂载 `client.idle` 与 `client.dungeon` 路径，界面会显示红点徽标与红点树摘要，并输出页面挂载日志
+
+完成标准结论：
+
+- 阶段 10 已完成“真实红点树纵向切片”接入，不再只是 Lua 红点占位接口
+- 当前代码库已经具备多 Provider 注册、路径聚合、页面级/ Lua 级红点绑定和跨页手工测试链路
+- 后续若继续补权限、引导等扩展协同能力，应作为阶段 12 之后的扩展系统增强继续推进
+
+## 阶段 11：模板布局与自动生成布局 `[已完成]`
 
 目标：
 
@@ -371,7 +396,34 @@ Facet 的推进顺序必须坚持：
 - 动态区域节点工厂
 - 配置化布局描述对象
 
-## 阶段 12：工具化与工程化 `[未开始]`
+当前已落地：
+
+- `FacetGeneratedLayoutNodeDefinition` / `FacetGeneratedLayoutDefinition`
+  已提供受限节点类型、稳定节点键、基础尺寸与文本参数的布局描述对象
+- `FacetTemplateLayoutDefinition`
+  已支持“模板场景 + 内容插槽 + 动态内容节点”的混合布局定义
+- `FacetDynamicNodeFactory`
+  已把布局描述对象构造成受控 Control 树，并写入 `facet_node_key` 元数据以复用现有节点注册协议
+- `GeneratedLayoutProvider`
+  已支持根据 `layoutPath` 对应的描述对象运行时生成整页布局
+- `TemplateLayoutProvider`
+  已支持加载固定模板场景并向插槽区域注入动态节点
+- `FacetBuiltInLayoutDefinitions`
+  已提供 `generated_lab` 与 `template_lab` 两个阶段 11 样例布局
+- `FacetHost`
+  已注册新的布局仓库、节点工厂和 Provider，并在启动阶段执行阶段 11 自检日志
+- `FacetBuiltInPageDefinitions`
+  已注册 `client.layout.generated_lab` 与 `client.layout.template_lab` 两个页面定义，运行时已能识别新的布局类型
+- `FacetMainScreen`
+  已提供独立“布局”顶层标签，可直接向运行中的客户端请求打开 `Generated Lab` / `Template Lab`，并读取最近一次桥接状态与结构化日志证据
+
+当前阶段结论：
+
+- 阶段 11 已完成运行时骨架、页面入口与真实验证链路接入，新的布局类型已经进入统一 `UIPageDefinition -> UIPageLoader -> UILayoutResult -> UIPageRuntime` 链路
+- `open_generated_layout_lab` 与 `open_template_layout_lab` 已在真实运行时中完成 `Create -> Initialize -> Show -> Refresh -> 页面打开完成` 的证据链
+- 后续若继续补页面定义文件化、可视化编辑与更高级模板协议，应归入阶段 12 的工具化与工程化增强，不再阻塞阶段 11 状态
+
+## 阶段 12：工具化与工程化 `[已完成]`
 
 目标：
 
@@ -385,6 +437,29 @@ Facet 的推进顺序必须坚持：
 - Projection 观察器
 - Lua 热重载诊断工具
 - 红点树调试工具
+
+当前已落地：
+
+- `FacetRuntimeDiagnosticsBridge`
+  已把运行时会话、当前页面、返回栈、页面注册表、活动页面运行时、Projection 键、Lua 脚本和红点路径汇总输出到 `user://facet-lab/runtime-diagnostics.json`
+- `ProjectionStore.GetKeysSnapshot()`
+  已为阶段 12 工具页提供稳定的 Projection 主键枚举能力
+- `FacetHost`
+  已在启动与轮询阶段发布诊断快照，并在内容未变化时避免重复写文件
+- 运行时校验器
+  已基于页面注册表、布局仓库、Lua 脚本注册、活动运行时、Projection 与红点路径一致性生成结构化校验结果
+- `FacetMainScreen`
+  已新增独立“诊断”顶层标签，用于读取统一诊断快照，查看页面注册、活动运行时、Projection、Lua 与红点树摘要
+- 深度观察器
+  已支持按主题提取生命周期、Projection、红点、Binding、工具类结构化日志，并支持焦点筛选与“使用当前页”快捷聚焦
+- 交互式调试工具
+  已在诊断页提供当前页聚焦、主题切换与校验结果浏览入口，形成第一版页面内调试工作台
+
+当前阶段结论：
+
+- 阶段 12 已完成“统一运行时诊断快照 + 校验器 + 深度观察器 + 第一版交互式调试入口”的主链路收口
+- 当前代码库已经具备运行时校验、页面注册浏览、Projection/红点/Lua 摘要、按主题与焦点筛选的深度观察能力
+- 后续若继续补页面定义离线校验、Projection/红点树更细粒度交互与异常修复辅助，应作为阶段 12 之后的持续增强推进
 
 ---
 
@@ -404,12 +479,14 @@ Facet 的推进顺序必须坚持：
 - 阶段 8：确认页面已经创建 Lua 控制器，并能看到 `Lua 控制器已创建`、Lua Binding 刷新与各生命周期日志
 - 阶段 9：确认脚本改动后页面可在不重启客户端的前提下恢复，并能看到热重载成功或失败的结构化日志
 - 阶段 10：确认红点路径、聚合和页面挂载关系都能稳定工作
+- 阶段 11：确认 Generated / Template 两类布局都能被注册、加载、建树并产出稳定节点键
+- 阶段 12：确认运行时诊断快照可稳定输出，并能在 Facet 主面板“诊断”页看到页面注册表、活动运行时、Projection、Lua 与红点摘要
 
 ## 当前结论
 
-截至 2026-03-21，阶段 0 至阶段 9 已完成。
-当前 Facet 已经具备：宿主、应用边界、Projection、正式页面运行时、布局提供者、Binding 系统、真实 Lua 页面控制器宿主，以及页面级热重载协调与运行时验证链路。
+截至 2026-03-22，阶段 0 至阶段 12 已完成。
+当前 Facet 已经具备：宿主、应用边界、Projection、正式页面运行时、手工布局提供者、模板/自动布局骨架、Binding 系统、真实 Lua 页面控制器宿主，以及页面级热重载协调与运行时验证链路。
 
 后续工作的重点将放在：
 
-- 阶段 10 以后扩展系统与工具化能力的持续落地
+- 阶段 12 之后的持续增强，包括更强的离线校验、交互式调试与异常修复辅助工具
