@@ -95,6 +95,9 @@ release/
 *.tmp
 *.temp
 crash_log_*.txt
+temp_test_file.txt
+godot/temp_test_file.txt
+godot/*-diag.txt
 
 # Godot 4 .uid files
 *.uid

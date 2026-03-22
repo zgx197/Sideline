@@ -25,6 +25,10 @@ window/stretch/mode="canvas_items"
 
 project/assembly_name="Sideline"
 
+[editor_plugins]
+
+enabled=PackedStringArray("res://addons/facet-tools/plugin.cfg")
+
 [input]
 
 ui_toggle_mode={
