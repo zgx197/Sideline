@@ -621,7 +621,7 @@ jobs:
       run: |
         cd godot/Lattice.Benchmarks
         dotnet run --configuration Release -- \
-          --filter "*FPMathBenchmarks*" "*FPvsFloatBenchmarks*" "*EntityRegistryBenchmarks*" "*EntityBranchlessBenchmarks*" "*EntityMicroBenchmarks*" \
+          --filter "*FPMathBenchmarks*" "*FPvsFloatBenchmarks*" "*EntityRegistryBenchmarks*" "*EntityBranchlessBenchmarks*" "*EntityMicroBenchmarks*" "*QueryBenchmarks*" "*ComponentArchitectureBenchmarks*" \
           --exporters json html markdown
 
     - name: Debug Benchmark Output Paths

@@ -28,14 +28,14 @@ namespace Lattice.ECS.Core
         };
 
         /// <summary>添加必须包含的组件</summary>
-        public ComponentFilter With<T>() where T : unmanaged
+        public ComponentFilter With<T>() where T : unmanaged, IComponent
         {
             Required.Add(ComponentTypeId<T>.Id);
             return this;
         }
 
         /// <summary>添加必须排除的组件</summary>
-        public ComponentFilter Without<T>() where T : unmanaged
+        public ComponentFilter Without<T>() where T : unmanaged, IComponent
         {
             Excluded.Add(ComponentTypeId<T>.Id);
             return this;

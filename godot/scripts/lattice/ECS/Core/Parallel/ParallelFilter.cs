@@ -9,7 +9,8 @@ using Lattice.Core;
 namespace Lattice.ECS.Core.Parallel
 {
     /// <summary>
-    /// 并行 Filter - 多线程安全遍历组件
+    /// 并行查询兼容层。
+    /// 为既有并行遍历调用方保留外形，内部按致密索引顺序只读扫描组件。
     /// 
     /// 使用方式：
     /// 1. 将迭代范围分割给多个线程
@@ -18,7 +19,7 @@ namespace Lattice.ECS.Core.Parallel
     /// 
     /// 注意：只支持只读操作！写入需要额外同步。
     /// </summary>
-    public unsafe class ParallelFilter<T> where T : unmanaged
+    public unsafe class ParallelFilter<T> where T : unmanaged, IComponent
     {
         private readonly Storage<T>* _storage;
         private readonly JobSystem* _jobSystem;
@@ -30,13 +31,12 @@ namespace Lattice.ECS.Core.Parallel
         }
 
         /// <summary>
-        /// 并行遍历所有组件（只读）
+    /// 并行遍历所有组件（只读）
         /// </summary>
         public void ForEach(ParallelForDelegate<T> action)
         {
-            if (_storage == null || _storage->Count == 0) return;
+            if (_storage == null || _storage->Count == 0 || action == null) return;
 
-            int blockCount = _storage->BlockCount;
             int totalItems = _storage->Count;
 
             // 创建上下文
@@ -54,12 +54,7 @@ namespace Lattice.ECS.Core.Parallel
 
                 for (int i = startIndex; i < endIndex; i++)
                 {
-                    int blockIdx = i / Storage<T>.DefaultBlockCapacity;
-                    int itemIdx = i % Storage<T>.DefaultBlockCapacity;
-                    if (i == 0) continue;
-
-                    var entity = storage->GetBlockEntityRefs(blockIdx)[itemIdx];
-                    var component = &storage->GetBlockData(blockIdx)[itemIdx];
+                    storage->GetDenseEntryByLinearIndex(i, out EntityRef entity, out T* component);
                     ctx->Action(entity, component);
                 }
             };
@@ -69,7 +64,7 @@ namespace Lattice.ECS.Core.Parallel
             _jobSystem->WaitForComplete(handle);
         }
 
-        private unsafe struct ForEachContext<T1> where T1 : unmanaged
+        private unsafe struct ForEachContext<T1> where T1 : unmanaged, IComponent
         {
             public Storage<T1>* Storage;
             public ParallelForDelegate<T1> Action;
@@ -79,53 +74,79 @@ namespace Lattice.ECS.Core.Parallel
     /// <summary>
     /// 并行 For 委托
     /// </summary>
-    public unsafe delegate void ParallelForDelegate<T>(EntityRef entity, T* component) where T : unmanaged;
+    public unsafe delegate void ParallelForDelegate<T>(EntityRef entity, T* component) where T : unmanaged, IComponent;
 
     /// <summary>
-    /// 线程安全的只读 Frame 访问
-    /// 
-    /// 类似 FrameSync 的 FrameThreadSafe
+    /// 线程安全的只读 Frame 访问视图。
+    /// 新代码可直接在该视图上使用 Query API 构建只读查询。
     /// </summary>
     public unsafe readonly struct FrameReadOnly
     {
-        private readonly Frame* _frame;
+        private readonly Frame _frame;
 
-        public FrameReadOnly(Frame* frame)
+        public FrameReadOnly(Frame frame)
         {
-            _frame = frame;
+            _frame = frame ?? throw new ArgumentNullException(nameof(frame));
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool IsValid(EntityRef entity)
         {
-            return _frame->IsValid(entity);
+            return _frame.IsValid(entity);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public bool Has<T>(EntityRef entity) where T : unmanaged
+        public bool Has<T>(EntityRef entity) where T : unmanaged, IComponent
         {
-            return _frame->Has<T>(entity);
+            return _frame.Has<T>(entity);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public T Get<T>(EntityRef entity) where T : unmanaged
+        public T Get<T>(EntityRef entity) where T : unmanaged, IComponent
         {
-            return _frame->Get<T>(entity);
+            return _frame.Get<T>(entity);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public T* GetPointer<T>(EntityRef entity) where T : unmanaged
+        public T* GetPointer<T>(EntityRef entity) where T : unmanaged, IComponent
         {
-            return _frame->GetPointer<T>(entity);
+            return _frame.GetPointer<T>(entity);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public bool TryGet<T>(EntityRef entity, out T component) where T : unmanaged
+        public bool TryGet<T>(EntityRef entity, out T component) where T : unmanaged, IComponent
         {
-            return _frame->TryGet<T>(entity, out component);
+            return _frame.TryGet<T>(entity, out component);
         }
 
-        // 禁止写入操作！
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public Query<T> Query<T>() where T : unmanaged, IComponent
+        {
+            return _frame.Query<T>();
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public Query<T1, T2> Query<T1, T2>()
+            where T1 : unmanaged, IComponent
+            where T2 : unmanaged, IComponent
+        {
+            return _frame.Query<T1, T2>();
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public Query<T1, T2, T3> Query<T1, T2, T3>()
+            where T1 : unmanaged, IComponent
+            where T2 : unmanaged, IComponent
+            where T3 : unmanaged, IComponent
+        {
+            return _frame.Query<T1, T2, T3>();
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public ComponentBlockIterator<T> GetComponentBlockIterator<T>() where T : unmanaged, IComponent
+        {
+            return _frame.GetComponentBlockIterator<T>();
+        }
     }
 
     /// <summary>

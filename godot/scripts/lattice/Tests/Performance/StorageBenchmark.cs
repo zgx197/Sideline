@@ -21,7 +21,7 @@ namespace Lattice.Tests.Performance
 
         private readonly ITestOutputHelper _output;
 
-        private struct TestComponent
+        private struct TestComponent : IComponent
         {
             public int X;
             public int Y;
