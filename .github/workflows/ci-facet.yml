@@ -1,0 +1,79 @@
+# Facet CI Pipeline
+# 触发条件: Facet 模块、Facet 编辑器工具、主工程 Facet 集成层变更
+
+name: Facet CI
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'godot/.editorconfig'
+      - 'godot/Sideline.csproj'
+      - 'godot/Sideline.sln'
+      - 'godot/project.godot'
+      - 'godot/addons/facet-tools/**'
+      - 'godot/scenes/main/**'
+      - 'godot/scenes/ui/**'
+      - 'godot/scripts/facet/**'
+      - 'godot/scripts/main/**'
+      - 'godot/scripts/ui/**'
+      - 'godot/scripts/window/**'
+      - '.github/workflows/ci-facet.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'godot/.editorconfig'
+      - 'godot/Sideline.csproj'
+      - 'godot/Sideline.sln'
+      - 'godot/project.godot'
+      - 'godot/addons/facet-tools/**'
+      - 'godot/scenes/main/**'
+      - 'godot/scenes/ui/**'
+      - 'godot/scripts/facet/**'
+      - 'godot/scripts/main/**'
+      - 'godot/scripts/ui/**'
+      - 'godot/scripts/window/**'
+      - '.github/workflows/ci-facet.yml'
+
+env:
+  DOTNET_VERSION: '8.0.x'
+
+jobs:
+  facet-core-build:
+    name: Facet Core Build
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v5
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v5
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+
+    - name: Restore Facet Core Project
+      run: dotnet restore godot/scripts/facet/Facet.Core.csproj
+
+    - name: Build Facet Core Project
+      run: dotnet build godot/scripts/facet/Facet.Core.csproj --no-restore --configuration Release -nologo
+
+  facet-integration-build:
+    name: Facet Integration Build
+    runs-on: ubuntu-latest
+    needs: facet-core-build
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v5
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v5
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+
+    - name: Restore Sideline Project
+      run: dotnet restore godot/Sideline.csproj
+
+    - name: Build Sideline Project
+      run: dotnet build godot/Sideline.csproj --no-restore --configuration Debug -nologo
