@@ -46,7 +46,7 @@
 │                  Framework Layer（框架层）                    │
 │  - CommandBuffer（命令缓冲，用于预测回滚）                     │
 │  - CullingSystem（裁剪系统）                                  │
-│  - FilterOptimized（优化的查询系统）                          │
+│  - Query / Query 兼容层（强类型查询系统）                     │
 ├─────────────────────────────────────────────────────────────┤
 │                    Core Layer（核心层）                       │
 │  - Storage<T>（组件存储，SOA）                                │
@@ -220,7 +220,7 @@ SIMDUtils.PrefetchL2(nextBlockPtr);
 
 **性能对比**：
 ```
-传统 Filter<T1, T2>:
+传统手写双组件遍历:
   10000 实体 × 50 周期 = 500,000 周期
 
 FullOwningGroup<T1, T2>:
@@ -345,9 +345,14 @@ var group = new FullOwningGroup<Position, Velocity>();
 group.Initialize(allocator);
 
 // 场景 3: 查询满足条件的实体
-// 选择: Filter
-var filter = new Filter<Position, Velocity>(frame);
-foreach (var (entity, pos, vel) in filter) { ... }
+// 选择: Query
+var query = frame.Query<Position, Velocity>();
+var enumerator = query.GetEnumerator();
+while (enumerator.MoveNext())
+{
+    ref var pos = ref enumerator.Component1;
+    ref var vel = ref enumerator.Component2;
+}
 ```
 
 ### 性能优化检查清单

@@ -115,8 +115,8 @@ namespace Lattice.ECS.Core
     /// - 预取器可以预测 T1[i+1], T2[i+1] 的访问模式
     /// </summary>
     public unsafe struct FullOwningGroup<T1, T2>
-        where T1 : unmanaged
-        where T2 : unmanaged
+        where T1 : unmanaged, IComponent
+        where T2 : unmanaged, IComponent
     {
         #region 常量
 
@@ -245,20 +245,7 @@ namespace Lattice.ECS.Core
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void RemoveAt(int blockIndex, int indexInBlock)
         {
-            Block* block = &_blocks[blockIndex];
-            int lastIndex = block->Count - 1;
-
-            // 与最后一个交换
-            if (indexInBlock != lastIndex)
-            {
-                block->Entities[indexInBlock] = block->Entities[lastIndex];
-                block->Data1[indexInBlock] = block->Data1[lastIndex];
-                block->Data2[indexInBlock] = block->Data2[lastIndex];
-            }
-
-            block->Count--;
-            _count--;
-            _version++;
+            RemoveAtLinearIndex((blockIndex * BlockCapacity) + indexInBlock, out _);
         }
 
         #endregion
@@ -314,6 +301,72 @@ namespace Lattice.ECS.Core
             return true;
         }
 
+        /// <summary>
+        /// 按 0 基 dense 索引直接访问组内条目。
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public bool GetAtLinearIndex(int linearIndex, out EntityRef entity, out T1* c1, out T2* c2)
+        {
+            if ((uint)linearIndex >= (uint)_count)
+            {
+                entity = EntityRef.None;
+                c1 = null;
+                c2 = null;
+                return false;
+            }
+
+            int blockIdx = linearIndex / BlockCapacity;
+            int itemIdx = linearIndex % BlockCapacity;
+
+            Block* block = &_blocks[blockIdx];
+            entity = block->Entities[itemIdx];
+            c1 = &block->Data1[itemIdx];
+            c2 = &block->Data2[itemIdx];
+            return true;
+        }
+
+        /// <summary>
+        /// 按 0 基 dense 索引删除条目，并返回被交换到该位置的实体。
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public bool RemoveAtLinearIndex(int linearIndex, out EntityRef movedEntity)
+        {
+            if ((uint)linearIndex >= (uint)_count)
+            {
+                movedEntity = EntityRef.None;
+                return false;
+            }
+
+            int lastLinearIndex = _count - 1;
+            int targetBlockIndex = linearIndex / BlockCapacity;
+            int targetItemIndex = linearIndex % BlockCapacity;
+            int lastBlockIndex = lastLinearIndex / BlockCapacity;
+            int lastItemIndex = lastLinearIndex % BlockCapacity;
+
+            Block* targetBlock = &_blocks[targetBlockIndex];
+            Block* lastBlock = &_blocks[lastBlockIndex];
+
+            movedEntity = EntityRef.None;
+            if (linearIndex != lastLinearIndex)
+            {
+                movedEntity = lastBlock->Entities[lastItemIndex];
+                targetBlock->Entities[targetItemIndex] = movedEntity;
+                targetBlock->Data1[targetItemIndex] = lastBlock->Data1[lastItemIndex];
+                targetBlock->Data2[targetItemIndex] = lastBlock->Data2[lastItemIndex];
+            }
+
+            lastBlock->Count--;
+            _count--;
+
+            if (_blockCount > 0 && _blocks[_blockCount - 1].Count == 0)
+            {
+                _blockCount--;
+            }
+
+            _version++;
+            return true;
+        }
+
         #endregion
 
         #region 内部辅助
@@ -356,9 +409,9 @@ namespace Lattice.ECS.Core
     /// 三组件 Full-Owning Group
     /// </summary>
     public unsafe struct FullOwningGroup<T1, T2, T3>
-        where T1 : unmanaged
-        where T2 : unmanaged
-        where T3 : unmanaged
+        where T1 : unmanaged, IComponent
+        where T2 : unmanaged, IComponent
+        where T3 : unmanaged, IComponent
     {
         public struct Block
         {
@@ -405,6 +458,127 @@ namespace Lattice.ECS.Core
             block->Data3[index] = c3;
 
             _count++;
+        }
+
+        /// <summary>
+        /// Block 迭代器 - 批量访问。
+        /// </summary>
+        public bool NextBlock(int* blockIndex, out EntityRef* entities, out T1* data1, out T2* data2, out T3* data3, out int count)
+        {
+            if (*blockIndex >= _blockCount)
+            {
+                entities = null;
+                data1 = null;
+                data2 = null;
+                data3 = null;
+                count = 0;
+                return false;
+            }
+
+            Block* block = &_blocks[*blockIndex];
+            entities = block->Entities;
+            data1 = block->Data1;
+            data2 = block->Data2;
+            data3 = block->Data3;
+            count = block->Count;
+
+            (*blockIndex)++;
+            return true;
+        }
+
+        /// <summary>
+        /// 逐个迭代。
+        /// </summary>
+        public bool Next(int* globalIndex, out EntityRef entity, out T1* c1, out T2* c2, out T3* c3)
+        {
+            if (*globalIndex >= _count)
+            {
+                entity = EntityRef.None;
+                c1 = null;
+                c2 = null;
+                c3 = null;
+                return false;
+            }
+
+            int blockIdx = *globalIndex / FullOwningGroup<T1, T2>.BlockCapacity;
+            int itemIdx = *globalIndex % FullOwningGroup<T1, T2>.BlockCapacity;
+
+            Block* block = &_blocks[blockIdx];
+            entity = block->Entities[itemIdx];
+            c1 = &block->Data1[itemIdx];
+            c2 = &block->Data2[itemIdx];
+            c3 = &block->Data3[itemIdx];
+
+            (*globalIndex)++;
+            return true;
+        }
+
+        /// <summary>
+        /// 按 0 基 dense 索引直接访问组内条目。
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public bool GetAtLinearIndex(int linearIndex, out EntityRef entity, out T1* c1, out T2* c2, out T3* c3)
+        {
+            if ((uint)linearIndex >= (uint)_count)
+            {
+                entity = EntityRef.None;
+                c1 = null;
+                c2 = null;
+                c3 = null;
+                return false;
+            }
+
+            int blockIdx = linearIndex / FullOwningGroup<T1, T2>.BlockCapacity;
+            int itemIdx = linearIndex % FullOwningGroup<T1, T2>.BlockCapacity;
+
+            Block* block = &_blocks[blockIdx];
+            entity = block->Entities[itemIdx];
+            c1 = &block->Data1[itemIdx];
+            c2 = &block->Data2[itemIdx];
+            c3 = &block->Data3[itemIdx];
+            return true;
+        }
+
+        /// <summary>
+        /// 按 0 基 dense 索引删除条目，并返回被交换到该位置的实体。
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public bool RemoveAtLinearIndex(int linearIndex, out EntityRef movedEntity)
+        {
+            if ((uint)linearIndex >= (uint)_count)
+            {
+                movedEntity = EntityRef.None;
+                return false;
+            }
+
+            int lastLinearIndex = _count - 1;
+            int targetBlockIndex = linearIndex / FullOwningGroup<T1, T2>.BlockCapacity;
+            int targetItemIndex = linearIndex % FullOwningGroup<T1, T2>.BlockCapacity;
+            int lastBlockIndex = lastLinearIndex / FullOwningGroup<T1, T2>.BlockCapacity;
+            int lastItemIndex = lastLinearIndex % FullOwningGroup<T1, T2>.BlockCapacity;
+
+            Block* targetBlock = &_blocks[targetBlockIndex];
+            Block* lastBlock = &_blocks[lastBlockIndex];
+
+            movedEntity = EntityRef.None;
+            if (linearIndex != lastLinearIndex)
+            {
+                movedEntity = lastBlock->Entities[lastItemIndex];
+                targetBlock->Entities[targetItemIndex] = movedEntity;
+                targetBlock->Data1[targetItemIndex] = lastBlock->Data1[lastItemIndex];
+                targetBlock->Data2[targetItemIndex] = lastBlock->Data2[lastItemIndex];
+                targetBlock->Data3[targetItemIndex] = lastBlock->Data3[lastItemIndex];
+            }
+
+            lastBlock->Count--;
+            _count--;
+
+            if (_blockCount > 0 && _blocks[_blockCount - 1].Count == 0)
+            {
+                _blockCount--;
+            }
+
+            return true;
         }
 
         private void EnsureBlockSpace()

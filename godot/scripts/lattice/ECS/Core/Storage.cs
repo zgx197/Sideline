@@ -2,6 +2,7 @@
 // Licensed under GPL-3.0.
 
 using System;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using Lattice.Core;
 
@@ -118,15 +119,24 @@ namespace Lattice.ECS.Core
     /// - 更简单的偏移计算：直接 array[index] 而不是 ptr + stride * index
     /// - 更好的 SIMD 支持：连续的同类型数据
     /// </summary>
-    public unsafe struct Storage<T> where T : unmanaged
+    public unsafe struct Storage<T> where T : unmanaged, IComponent
     {
         #region 常量
 
-        /// <summary>默认 Block 容量（与 FrameSync 一致）</summary>
-        public const int DefaultBlockCapacity = 128;
+        /// <summary>自动推导 Block 容量。</summary>
+        public const int DefaultBlockCapacity = 0;
+
+        /// <summary>Block 数据面的目标字节数。</summary>
+        public const int TargetBlockBytes = 2048;
 
         /// <summary>Block 列表初始容量</summary>
         public const int InitialBlockListCapacity = 4;
+
+        /// <summary>自动推导时允许的最小 Block 容量。</summary>
+        public const int MinBlockCapacity = 8;
+
+        /// <summary>自动推导时允许的最大 Block 容量。</summary>
+        public const int MaxBlockCapacity = 512;
 
         /// <summary>稀疏数组 Tombstone 标记</summary>
         public const ushort TOMBSTONE = 0;
@@ -163,6 +173,8 @@ namespace Lattice.ECS.Core
         // 稀疏数组：Entity.Index → GlobalIndex (1-based, 0 = empty)
         private ushort* _sparse;
         private int _sparseCapacity;
+        private byte* _entryStates;
+        private ushort* _pendingQueueIndices;
 
         // 状态
         private int _count;
@@ -216,6 +228,12 @@ namespace Lattice.ECS.Core
         /// <summary>实际使用中的组件数量（减去待删除）</summary>
         public int UsedCount => Count - _pendingRemoval;
 
+        /// <summary>是否为条目状态分配了独立跟踪存储。</summary>
+        internal bool HasEntryStateTracking => _entryStates != null;
+
+        /// <summary>是否为延迟删除队列索引分配了独立跟踪存储。</summary>
+        internal bool HasPendingQueueTracking => _pendingQueueIndices != null;
+
         /// <summary>单例实体引用（仅单例模式有效）</summary>
         public EntityRef SingletonEntity
         {
@@ -244,9 +262,7 @@ namespace Lattice.ECS.Core
         /// </summary>
         public void Initialize(int maxEntities, StorageFlags flags, int blockCapacity = DefaultBlockCapacity, int componentTypeId = 0)
         {
-            // 使用 Marshal 分配非托管内存来存储 Allocator
-            var allocatorPtr = (Allocator*)System.Runtime.InteropServices.Marshal.AllocHGlobal(sizeof(Allocator)).ToPointer();
-            *allocatorPtr = new Allocator();
+            var allocatorPtr = Allocator.Create();
             Initialize(maxEntities, allocatorPtr, flags, blockCapacity, componentTypeId);
             _ownsAllocator = true;
         }
@@ -265,7 +281,7 @@ namespace Lattice.ECS.Core
         public void Initialize(int maxEntities, Allocator* allocator, StorageFlags flags, int blockCapacity = DefaultBlockCapacity, int componentTypeId = 0)
         {
             _sparseCapacity = maxEntities;
-            _blockItemCapacity = System.Math.Max(blockCapacity, 16);
+            _blockItemCapacity = ResolveBlockCapacity(blockCapacity);
             _stride = sizeof(T);
             _componentTypeId = componentTypeId;
             _count = 1; // 索引0保留为无效值
@@ -278,6 +294,21 @@ namespace Lattice.ECS.Core
 
             // 分配稀疏数组（初始化为0，即TOMBSTONE）
             _sparse = (ushort*)_allocator->AllocAndClear(sizeof(ushort) * maxEntities);
+
+            if (IsDeferredRemoval)
+            {
+                _entryStates = (byte*)_allocator->AllocAndClear(maxEntities + 1);
+                _pendingQueueIndices = (ushort*)_allocator->Alloc(sizeof(ushort) * (maxEntities + 1));
+                for (int i = 0; i <= maxEntities; i++)
+                {
+                    _pendingQueueIndices[i] = PendingQueueIndexNone;
+                }
+            }
+            else
+            {
+                _entryStates = null;
+                _pendingQueueIndices = null;
+            }
 
             // 分配 Block 列表
             _blockCapacity = InitialBlockListCapacity;
@@ -297,12 +328,13 @@ namespace Lattice.ECS.Core
         {
             if (_ownsAllocator && _allocator != null)
             {
-                _allocator->Dispose();
-                System.Runtime.InteropServices.Marshal.FreeHGlobal((IntPtr)_allocator);
+                Allocator.Destroy(_allocator);
             }
 
             _blocks = null;
             _sparse = null;
+            _entryStates = null;
+            _pendingQueueIndices = null;
             _count = 0;
             _blockCount = 0;
             _allocator = null;
@@ -317,10 +349,10 @@ namespace Lattice.ECS.Core
         /// </summary>
         public int GetSnapshotSize()
         {
-            // 稀疏数组 + 组件数据 + 元数据
-            return sizeof(ushort) * _sparseCapacity +  // 稀疏数组
-                   sizeof(T) * _count +              // 组件数据（已使用部分）
-                   sizeof(int) * 4;                   // _count, _version, _singletonSparse, _pendingRemoval
+            return (sizeof(int) * 2) + (sizeof(ushort) * 2) +
+                   (sizeof(EntityRef) * Count) +
+                   (sizeof(T) * Count) +
+                   Count;
         }
 
         /// <summary>
@@ -336,20 +368,26 @@ namespace Lattice.ECS.Core
             *(ushort*)ptr = _singletonSparse; ptr += sizeof(ushort);
             *(ushort*)ptr = (ushort)_pendingRemoval; ptr += sizeof(ushort);
 
-            // 写入稀疏数组（只写入有效部分）
-            int sparseBytes = sizeof(ushort) * _sparseCapacity;
-            Buffer.MemoryCopy(_sparse, ptr, sparseBytes, sparseBytes);
-            ptr += sparseBytes;
+            int denseCount = Count;
+            int handlesBytes = sizeof(EntityRef) * denseCount;
+            int dataBytes = sizeof(T) * denseCount;
 
-            // 写入组件数据（按 Block 写入）
-            for (int i = 0; i < _blockCount; i++)
+            CopyDenseEntities((EntityRef*)ptr, bufferSize >= handlesBytes ? denseCount : 0);
+            ptr += handlesBytes;
+
+            CopyDenseComponentBytes(ptr, bufferSize >= handlesBytes + dataBytes ? denseCount : 0);
+            ptr += dataBytes;
+
+            if (_entryStates != null)
             {
-                int blockItems = System.Math.Min(_blockItemCapacity, _count - i * _blockItemCapacity);
-                if (blockItems <= 0) break;
-
-                int dataBytes = sizeof(T) * blockItems;
-                Buffer.MemoryCopy(_blocks[i].PackedData, ptr, dataBytes, dataBytes);
-                ptr += dataBytes;
+                Buffer.MemoryCopy(_entryStates + 1, ptr, denseCount, denseCount);
+            }
+            else
+            {
+                for (int i = 0; i < denseCount; i++)
+                {
+                    ptr[i] = EntryStateActive;
+                }
             }
         }
 
@@ -366,30 +404,43 @@ namespace Lattice.ECS.Core
             ushort savedSingletonSparse = *(ushort*)ptr; ptr += sizeof(ushort);
             ushort savedPendingRemoval = *(ushort*)ptr; ptr += sizeof(ushort);
 
-            // 确保容量足够
-            EnsureEntityCapacity(savedCount);
+            int denseCount = savedCount - 1;
 
             // 恢复元数据
             _count = savedCount;
             _version = savedVersion;
             _singletonSparse = savedSingletonSparse;
-            _pendingRemoval = savedPendingRemoval;
+            _pendingRemoval = 0;
 
-            // 恢复稀疏数组
-            int sparseBytes = sizeof(ushort) * _sparseCapacity;
-            Buffer.MemoryCopy(ptr, _sparse, sparseBytes, sparseBytes);
-            ptr += sparseBytes;
+            ClearSparseAndStates();
+            EnsureEntityCapacity(savedCount);
 
-            // 恢复组件数据
-            for (int i = 0; i < _blockCount; i++)
+            RestoreDenseEntities((EntityRef*)ptr, denseCount);
+            ptr += sizeof(EntityRef) * denseCount;
+
+            RestoreDenseComponentBytes(ptr, denseCount);
+            ptr += sizeof(T) * denseCount;
+
+            if (denseCount > 0)
             {
-                int blockItems = System.Math.Min(_blockItemCapacity, _count - i * _blockItemCapacity);
-                if (blockItems <= 0) break;
+                if (_entryStates != null)
+                {
+                    Buffer.MemoryCopy(ptr, _entryStates + 1, denseCount, denseCount);
+                }
 
-                int dataBytes = sizeof(T) * blockItems;
-                Buffer.MemoryCopy(ptr, _blocks[i].PackedData, dataBytes, dataBytes);
-                ptr += dataBytes;
+                for (int i = 1; i <= denseCount; i++)
+                {
+                    EntityRef entity = GetEntityRefByGlobalIndex(i);
+                    _sparse[entity.Index] = (ushort)i;
+
+                    if (IsSingleton && GetEntryStateByIndex(i) == EntryStateActive)
+                    {
+                        _singletonSparse = (ushort)i;
+                    }
+                }
             }
+
+            _pendingRemoval = savedPendingRemoval;
         }
 
         /// <summary>
@@ -425,6 +476,12 @@ namespace Lattice.ECS.Core
                 int blockIndex = _blockCount++;
                 _blocks[blockIndex].PackedHandles = (EntityRef*)_allocator->Alloc(sizeof(EntityRef) * _blockItemCapacity);
                 _blocks[blockIndex].PackedData = (T*)_allocator->Alloc(sizeof(T) * _blockItemCapacity);
+
+                if (blockIndex == 0)
+                {
+                    _blocks[0].PackedHandles[0] = EntityRef.None;
+                    _blocks[0].PackedData[0] = default;
+                }
             }
         }
 
@@ -443,7 +500,7 @@ namespace Lattice.ECS.Core
 #if DEBUG
             if ((uint)index >= (uint)_sparseCapacity)
                 throw new ArgumentOutOfRangeException(nameof(entity), "Entity index out of range");
-            if (_sparse[index] != TOMBSTONE)
+            if (GetSparseIndex(entity) != TOMBSTONE)
                 throw new InvalidOperationException($"Component already exists for entity {entity}");
 #endif
 
@@ -473,6 +530,8 @@ namespace Lattice.ECS.Core
 
             // 更新稀疏数组
             _sparse[index] = (ushort)globalIndex;
+            SetEntryStateByIndex(globalIndex, EntryStateActive);
+            SetPendingQueueIndexByIndex(globalIndex, PendingQueueIndexNone);
 
             // 更新单例索引
             if (IsSingleton)
@@ -491,7 +550,7 @@ namespace Lattice.ECS.Core
         public void Remove(EntityRef entity)
         {
             int index = entity.Index;
-            ushort globalIndex = _sparse[index];
+            ushort globalIndex = GetSparseIndex(entity);
 
 #if DEBUG
             if ((uint)index >= (uint)_sparseCapacity || globalIndex == TOMBSTONE)
@@ -501,6 +560,12 @@ namespace Lattice.ECS.Core
             // 延迟删除模式：只标记，不立即删除
             if (IsDeferredRemoval)
             {
+                if (GetEntryStateByIndex(globalIndex) == EntryStatePendingRemoval)
+                {
+                    return;
+                }
+
+                SetEntryStateByIndex(globalIndex, EntryStatePendingRemoval);
                 _pendingRemoval++;
 
                 // 清除单例索引
@@ -536,9 +601,12 @@ namespace Lattice.ECS.Core
 
                 EntityRef lastEntity = _blocks[lastBlock].PackedHandles[lastOffset];
                 T lastComponent = _blocks[lastBlock].PackedData[lastOffset];
+                byte lastState = GetEntryStateByIndex(lastGlobalIndex);
 
                 _blocks[block].PackedHandles[offset] = lastEntity;
                 _blocks[block].PackedData[offset] = lastComponent;
+                SetEntryStateByIndex(globalIndex, lastState);
+                SetPendingQueueIndexByIndex(globalIndex, GetPendingQueueIndexByIndex(lastGlobalIndex));
 
                 // 更新被移动实体的稀疏索引
                 _sparse[lastEntity.Index] = globalIndex;
@@ -551,6 +619,8 @@ namespace Lattice.ECS.Core
             }
 
             _sparse[entityIndex] = TOMBSTONE;
+            SetEntryStateByIndex(lastGlobalIndex, EntryStateEmpty);
+            SetPendingQueueIndexByIndex(lastGlobalIndex, PendingQueueIndexNone);
 
             // 清除单例索引
             if (IsSingleton && _singletonSparse == globalIndex)
@@ -572,18 +642,8 @@ namespace Lattice.ECS.Core
 
             foreach (var entity in entitiesToRemove)
             {
-                int index = entity.Index;
-                if ((uint)index < (uint)_sparseCapacity)
-                {
-                    ushort globalIndex = _sparse[index];
-                    if (globalIndex != TOMBSTONE)
-                    {
-                        RemoveImmediate(index, globalIndex);
-                    }
-                }
+                CommitRemoval(entity);
             }
-
-            _pendingRemoval = 0;
         }
 
         /// <summary>
@@ -599,7 +659,7 @@ namespace Lattice.ECS.Core
             }
 
             int index = entity.Index;
-            ushort globalIndex = _sparse[index];
+            ushort globalIndex = GetSparseIndex(entity);
 
 #if DEBUG
             if ((uint)index >= (uint)_sparseCapacity || globalIndex == TOMBSTONE)
@@ -607,6 +667,7 @@ namespace Lattice.ECS.Core
 #endif
 
             _pendingRemoval++;
+            SetEntryStateByIndex(globalIndex, EntryStatePendingRemoval);
 
             // 清除单例索引
             if (IsSingleton && _singletonSparse == globalIndex)
@@ -615,6 +676,75 @@ namespace Lattice.ECS.Core
             }
 
             _version++;
+        }
+
+        /// <summary>
+        /// 取消待删除状态，允许组件在同一帧内恢复。
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal void CancelPendingRemoval(EntityRef entity)
+        {
+            if (!IsDeferredRemoval)
+            {
+                return;
+            }
+
+            int index = entity.Index;
+            if ((uint)index >= (uint)_sparseCapacity)
+            {
+                return;
+            }
+
+            ushort globalIndex = GetSparseIndex(entity);
+            if (globalIndex == TOMBSTONE)
+            {
+                return;
+            }
+
+            if (_pendingRemoval > 0)
+            {
+                _pendingRemoval--;
+            }
+
+            SetEntryStateByIndex(globalIndex, EntryStateActive);
+            SetPendingQueueIndexByIndex(globalIndex, PendingQueueIndexNone);
+
+            if (IsSingleton)
+            {
+                _singletonSparse = globalIndex;
+            }
+
+            _version++;
+        }
+
+        /// <summary>
+        /// 提交单个待删除组件。
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal void CommitRemoval(EntityRef entity)
+        {
+            int index = entity.Index;
+            if ((uint)index >= (uint)_sparseCapacity)
+            {
+                return;
+            }
+
+            ushort globalIndex = GetSparseIndex(entity);
+            if (globalIndex == TOMBSTONE)
+            {
+                return;
+            }
+
+            if (GetEntryStateByIndex(globalIndex) != EntryStatePendingRemoval)
+            {
+                return;
+            }
+
+            RemoveImmediate(index, globalIndex);
+            if (_pendingRemoval > 0)
+            {
+                _pendingRemoval--;
+            }
         }
 
         /// <summary>
@@ -651,7 +781,7 @@ namespace Lattice.ECS.Core
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public ref T Get(EntityRef entity)
         {
-            ushort globalIndex = _sparse[entity.Index];
+            ushort globalIndex = GetSparseIndex(entity);
 #if DEBUG
             if ((uint)entity.Index >= (uint)_sparseCapacity || globalIndex == TOMBSTONE)
                 throw new InvalidOperationException($"Component not found for entity {entity}");
@@ -667,8 +797,46 @@ namespace Lattice.ECS.Core
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public T* GetPointer(EntityRef entity)
         {
-            ushort globalIndex = _sparse[entity.Index];
+            ushort globalIndex = GetSparseIndex(entity);
             if (globalIndex == TOMBSTONE) return null;
+            int block = globalIndex / _blockItemCapacity;
+            int offset = globalIndex % _blockItemCapacity;
+            return &_blocks[block].PackedData[offset];
+        }
+
+        /// <summary>
+        /// 在调用方已经通过 Frame 位图确认组件存在时，直接按实体索引读取组件指针。
+        /// 该路径跳过额外的 EntityRef 回读校验，用于 Query 热路径。
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal T* GetPointerAssumePresent(EntityRef entity)
+        {
+            uint entityIndex = (uint)entity.Index;
+            if (entityIndex >= (uint)_sparseCapacity)
+            {
+                return null;
+            }
+
+            ushort globalIndex = _sparse[entityIndex];
+            if (globalIndex == TOMBSTONE)
+            {
+                return null;
+            }
+
+#if DEBUG
+            if (GetEntityRefByGlobalIndex(globalIndex).Raw != entity.Raw)
+            {
+                throw new InvalidOperationException(
+                    $"Storage<{typeof(T).Name}> 检测到实体位图与稀疏索引不一致，Entity={entity}。");
+            }
+
+            if (GetEntryStateByIndex(globalIndex) != EntryStateActive)
+            {
+                throw new InvalidOperationException(
+                    $"Storage<{typeof(T).Name}> 检测到非 Active 条目进入 Query 热路径，Entity={entity}。");
+            }
+#endif
+
             int block = globalIndex / _blockItemCapacity;
             int offset = globalIndex % _blockItemCapacity;
             return &_blocks[block].PackedData[offset];
@@ -683,7 +851,7 @@ namespace Lattice.ECS.Core
             int index = entity.Index;
             if ((uint)index < (uint)_sparseCapacity)
             {
-                ushort globalIndex = _sparse[index];
+                ushort globalIndex = GetSparseIndex(entity);
                 if (globalIndex != TOMBSTONE)
                 {
                     int block = globalIndex / _blockItemCapacity;
@@ -703,7 +871,42 @@ namespace Lattice.ECS.Core
         public bool Has(EntityRef entity)
         {
             uint index = (uint)entity.Index;
-            return index < (uint)_sparseCapacity && _sparse[index] != TOMBSTONE;
+            return index < (uint)_sparseCapacity && GetSparseIndex(entity) != TOMBSTONE;
+        }
+
+        /// <summary>
+        /// 检查组件是否处于待删除状态。
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal bool IsPendingRemoval(EntityRef entity)
+        {
+            ushort globalIndex = GetSparseIndex(entity);
+            return globalIndex != TOMBSTONE && GetEntryStateByIndex(globalIndex) == EntryStatePendingRemoval;
+        }
+
+        /// <summary>
+        /// 获取待删除队列索引。
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal int GetPendingQueueIndex(EntityRef entity)
+        {
+            ushort globalIndex = GetSparseIndex(entity);
+            return globalIndex == TOMBSTONE ? PendingQueueIndexNone : GetPendingQueueIndexByIndex(globalIndex);
+        }
+
+        /// <summary>
+        /// 设置待删除队列索引。
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal void SetPendingQueueIndex(EntityRef entity, int queueIndex)
+        {
+            ushort globalIndex = GetSparseIndex(entity);
+            if (globalIndex == TOMBSTONE)
+            {
+                return;
+            }
+
+            SetPendingQueueIndexByIndex(globalIndex, queueIndex);
         }
 
         #endregion
@@ -749,6 +952,158 @@ namespace Lattice.ECS.Core
             return System.Math.Max(0, endIndex - startIndex);
         }
 
+        /// <summary>
+        /// 获取指定全局索引上的实体引用。
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal EntityRef GetEntityRefByIndex(int globalIndex)
+        {
+            return GetEntityRefByGlobalIndex(globalIndex);
+        }
+
+        /// <summary>
+        /// 获取指定全局索引上的组件数据指针。
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal T* GetDataPointerByIndex(int globalIndex)
+        {
+#if DEBUG
+            if (globalIndex <= 0 || globalIndex >= _count)
+                throw new ArgumentOutOfRangeException(nameof(globalIndex));
+#endif
+            int block = globalIndex / _blockItemCapacity;
+            int offset = globalIndex % _blockItemCapacity;
+            return &_blocks[block].PackedData[offset];
+        }
+
+        /// <summary>
+        /// 按 0 基 dense 索引访问条目。
+        /// 该辅助方法用于把对外的连续遍历索引映射到内部 1 基稠密存储布局。
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal void GetDenseEntryByLinearIndex(int denseIndex, out EntityRef entity, out T* component)
+        {
+#if DEBUG
+            if ((uint)denseIndex >= (uint)Count)
+                throw new ArgumentOutOfRangeException(nameof(denseIndex));
+#endif
+            int globalIndex = denseIndex + 1;
+            int block = globalIndex / _blockItemCapacity;
+            int offset = globalIndex % _blockItemCapacity;
+            entity = _blocks[block].PackedHandles[offset];
+            component = &_blocks[block].PackedData[offset];
+        }
+
+        /// <summary>
+        /// 检查指定全局索引上的条目是否为 active。
+        /// 没有启用状态跟踪时，非空 dense 条目都视为 active。
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal bool IsDenseEntryActive(int globalIndex)
+        {
+            return GetEntryStateByIndex(globalIndex) == EntryStateActive;
+        }
+
+        /// <summary>
+        /// 将密集实体数组复制到托管缓冲区。
+        /// </summary>
+        internal void CopyDenseEntities(EntityRef[] destination)
+        {
+            if (destination == null)
+            {
+                throw new ArgumentNullException(nameof(destination));
+            }
+
+            if (destination.Length < Count)
+            {
+                throw new ArgumentException("Destination buffer is too small.", nameof(destination));
+            }
+
+            fixed (EntityRef* dest = destination)
+            {
+                CopyDenseEntities(dest, Count);
+            }
+        }
+
+        /// <summary>
+        /// 将密集组件数据复制到字节缓冲区。
+        /// </summary>
+        internal void CopyDenseComponentBytes(byte[] destination)
+        {
+            if (destination == null)
+            {
+                throw new ArgumentNullException(nameof(destination));
+            }
+
+            int byteCount = Count * sizeof(T);
+            if (destination.Length < byteCount)
+            {
+                throw new ArgumentException("Destination buffer is too small.", nameof(destination));
+            }
+
+            fixed (byte* dest = destination)
+            {
+                CopyDenseComponentBytes(dest, Count);
+            }
+        }
+
+        /// <summary>
+        /// 使用原始密集快照恢复组件存储。
+        /// </summary>
+        internal void RestoreDenseSnapshot(EntityRef[] entities, byte[] componentData)
+        {
+            if (entities == null)
+            {
+                throw new ArgumentNullException(nameof(entities));
+            }
+
+            if (componentData == null)
+            {
+                throw new ArgumentNullException(nameof(componentData));
+            }
+
+            int denseCount = entities.Length;
+            if (componentData.Length != denseCount * sizeof(T))
+            {
+                throw new ArgumentException("Component snapshot data size does not match entity count.", nameof(componentData));
+            }
+
+            ClearSparseAndStates();
+            _count = denseCount + 1;
+            _pendingRemoval = 0;
+            _singletonSparse = 0;
+
+            EnsureEntityCapacity(_count);
+
+            if (denseCount == 0)
+            {
+                _version++;
+                return;
+            }
+
+            fixed (EntityRef* entityPtr = entities)
+            fixed (byte* dataPtr = componentData)
+            {
+                RestoreDenseEntities(entityPtr, denseCount);
+                RestoreDenseComponentBytes(dataPtr, denseCount);
+
+                for (int i = 0; i < denseCount; i++)
+                {
+                    EntityRef entity = entityPtr[i];
+                    int globalIndex = i + 1;
+                    _sparse[entity.Index] = (ushort)globalIndex;
+                    SetEntryStateByIndex(globalIndex, EntryStateActive);
+
+                    if (IsSingleton)
+                    {
+                        _singletonSparse = (ushort)globalIndex;
+                    }
+                }
+            }
+
+            _version++;
+        }
+
         #endregion
 
         #region 内部辅助
@@ -766,6 +1121,202 @@ namespace Lattice.ECS.Core
             int block = globalIndex / _blockItemCapacity;
             int offset = globalIndex % _blockItemCapacity;
             return _blocks[block].PackedHandles[offset];
+        }
+
+        private static int ResolveBlockCapacity(int requestedCapacity)
+        {
+            if (requestedCapacity > 0)
+            {
+                return System.Math.Clamp(requestedCapacity, MinBlockCapacity, MaxBlockCapacity);
+            }
+
+            int ideal = TargetBlockBytes / System.Math.Max(sizeof(T), 1);
+            ideal = System.Math.Clamp(ideal, MinBlockCapacity, MaxBlockCapacity);
+            return RoundDownToPowerOfTwo(ideal);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private ushort GetSparseIndex(EntityRef entity)
+        {
+            uint index = (uint)entity.Index;
+            if (index >= (uint)_sparseCapacity)
+            {
+                return TOMBSTONE;
+            }
+
+            ushort sparse = _sparse[index];
+            if (sparse == TOMBSTONE)
+            {
+                return TOMBSTONE;
+            }
+
+            int block = sparse / _blockItemCapacity;
+            int offset = sparse % _blockItemCapacity;
+            return _blocks[block].PackedHandles[offset].Raw == entity.Raw ? sparse : TOMBSTONE;
+        }
+
+        private void CopyDenseEntities(EntityRef* destination, int denseCount)
+        {
+            if (denseCount <= 0)
+            {
+                return;
+            }
+
+            int copied = 0;
+            for (int blockIndex = 0; blockIndex < _blockCount && copied < denseCount; blockIndex++)
+            {
+                int blockCount = GetDenseBlockCopyCount(blockIndex, denseCount - copied);
+                if (blockCount <= 0)
+                {
+                    continue;
+                }
+
+                int sourceOffset = blockIndex == 0 ? 1 : 0;
+                Buffer.MemoryCopy(
+                    _blocks[blockIndex].PackedHandles + sourceOffset,
+                    destination + copied,
+                    sizeof(EntityRef) * (denseCount - copied),
+                    sizeof(EntityRef) * blockCount);
+                copied += blockCount;
+            }
+        }
+
+        private void CopyDenseComponentBytes(byte* destination, int denseCount)
+        {
+            if (denseCount <= 0)
+            {
+                return;
+            }
+
+            int copied = 0;
+            for (int blockIndex = 0; blockIndex < _blockCount && copied < denseCount; blockIndex++)
+            {
+                int blockCount = GetDenseBlockCopyCount(blockIndex, denseCount - copied);
+                if (blockCount <= 0)
+                {
+                    continue;
+                }
+
+                int sourceOffset = blockIndex == 0 ? 1 : 0;
+                Buffer.MemoryCopy(
+                    _blocks[blockIndex].PackedData + sourceOffset,
+                    destination + (copied * sizeof(T)),
+                    sizeof(T) * (denseCount - copied),
+                    sizeof(T) * blockCount);
+                copied += blockCount;
+            }
+        }
+
+        private void RestoreDenseEntities(EntityRef* source, int denseCount)
+        {
+            int copied = 0;
+            for (int blockIndex = 0; blockIndex < _blockCount && copied < denseCount; blockIndex++)
+            {
+                int blockCount = GetDenseBlockCopyCount(blockIndex, denseCount - copied);
+                if (blockCount <= 0)
+                {
+                    continue;
+                }
+
+                int destinationOffset = blockIndex == 0 ? 1 : 0;
+                Buffer.MemoryCopy(
+                    source + copied,
+                    _blocks[blockIndex].PackedHandles + destinationOffset,
+                    sizeof(EntityRef) * blockCount,
+                    sizeof(EntityRef) * blockCount);
+                copied += blockCount;
+            }
+        }
+
+        private void RestoreDenseComponentBytes(byte* source, int denseCount)
+        {
+            int copied = 0;
+            for (int blockIndex = 0; blockIndex < _blockCount && copied < denseCount; blockIndex++)
+            {
+                int blockCount = GetDenseBlockCopyCount(blockIndex, denseCount - copied);
+                if (blockCount <= 0)
+                {
+                    continue;
+                }
+
+                int destinationOffset = blockIndex == 0 ? 1 : 0;
+                Buffer.MemoryCopy(
+                    source + (copied * sizeof(T)),
+                    _blocks[blockIndex].PackedData + destinationOffset,
+                    sizeof(T) * blockCount,
+                    sizeof(T) * blockCount);
+                copied += blockCount;
+            }
+        }
+
+        private int GetDenseBlockCopyCount(int blockIndex, int remainingCount)
+        {
+            if (remainingCount <= 0)
+            {
+                return 0;
+            }
+
+            int blockCapacity = blockIndex == 0 ? _blockItemCapacity - 1 : _blockItemCapacity;
+            return System.Math.Min(blockCapacity, remainingCount);
+        }
+
+        private void ClearSparseAndStates()
+        {
+            Unsafe.InitBlockUnaligned(_sparse, 0, checked((uint)(sizeof(ushort) * _sparseCapacity)));
+            if (_entryStates != null)
+            {
+                Unsafe.InitBlockUnaligned(_entryStates, 0, checked((uint)(_sparseCapacity + 1)));
+            }
+
+            if (_pendingQueueIndices != null)
+            {
+                for (int i = 0; i <= _sparseCapacity; i++)
+                {
+                    _pendingQueueIndices[i] = PendingQueueIndexNone;
+                }
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private byte GetEntryStateByIndex(int globalIndex)
+        {
+            return _entryStates != null ? _entryStates[globalIndex] : EntryStateActive;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void SetEntryStateByIndex(int globalIndex, byte state)
+        {
+            if (_entryStates != null)
+            {
+                _entryStates[globalIndex] = state;
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private int GetPendingQueueIndexByIndex(int globalIndex)
+        {
+            return _pendingQueueIndices != null && _pendingQueueIndices[globalIndex] != PendingQueueIndexNone
+                ? _pendingQueueIndices[globalIndex]
+                : PendingQueueIndexNone;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void SetPendingQueueIndexByIndex(int globalIndex, int queueIndex)
+        {
+            if (_pendingQueueIndices != null)
+            {
+                _pendingQueueIndices[globalIndex] = queueIndex >= 0 ? checked((ushort)queueIndex) : PendingQueueIndexNone;
+            }
+        }
+
+        private static int RoundDownToPowerOfTwo(int value)
+        {
+            if (value <= 1)
+            {
+                return 1;
+            }
+
+            return 1 << (BitOperations.Log2((uint)value));
         }
 
         private void EnsureBlockSpace()
@@ -811,6 +1362,11 @@ namespace Lattice.ECS.Core
                 }
             }
         }
+
+        private const byte EntryStateEmpty = 0;
+        private const byte EntryStateActive = 1;
+        private const byte EntryStatePendingRemoval = 2;
+        private const ushort PendingQueueIndexNone = ushort.MaxValue;
 
         #endregion
     }

@@ -7,7 +7,7 @@ using Lattice.ECS.Core;
 
 namespace Lattice.Benchmarks
 {
-    internal struct PositionComponent
+    internal struct PositionComponent : IComponent
     {
         public int X;
         public int Y;
@@ -19,7 +19,7 @@ namespace Lattice.Benchmarks
         }
     }
 
-    internal struct VelocityComponent
+    internal struct VelocityComponent : IComponent
     {
         public int X;
         public int Y;
@@ -31,11 +31,21 @@ namespace Lattice.Benchmarks
         }
     }
 
-    internal struct HealthComponent
+    internal struct HealthComponent : IComponent
     {
         public int Value;
 
         public HealthComponent(int value)
+        {
+            Value = value;
+        }
+    }
+
+    internal struct DeferredHealthComponent : IComponent
+    {
+        public int Value;
+
+        public DeferredHealthComponent(int value)
         {
             Value = value;
         }
@@ -62,16 +72,28 @@ namespace Lattice.Benchmarks
                 RegisterIfNeeded<PositionComponent>();
                 RegisterIfNeeded<VelocityComponent>();
                 RegisterIfNeeded<HealthComponent>();
+                RegisterDeferredIfNeeded<DeferredHealthComponent>();
 
                 Volatile.Write(ref _initialized, 1);
             }
         }
 
-        private static void RegisterIfNeeded<T>() where T : unmanaged
+        private static void RegisterIfNeeded<T>() where T : unmanaged, IComponent
         {
             if (!ComponentTypeId<T>.IsRegistered)
             {
                 ComponentRegistry.Register<T>();
+            }
+        }
+
+        private static void RegisterDeferredIfNeeded<T>() where T : unmanaged, IComponent
+        {
+            if (!ComponentTypeId<T>.IsRegistered)
+            {
+                ComponentRegistry.Register<T>(
+                    ComponentFlags.None,
+                    ComponentCallbacks.Empty,
+                    StorageFlags.DeferredRemoval);
             }
         }
     }
@@ -377,6 +399,334 @@ namespace Lattice.Benchmarks
             var entity = _frame.CreateEntity();
             _frame.DestroyEntity(entity);
             return entity.Index;
+        }
+    }
+
+    /// <summary>
+    /// 查询热路径基准测试。
+    /// </summary>
+    [MemoryDiagnoser]
+    [InProcess]
+    [WarmupCount(3)]
+    [IterationCount(5)]
+    public unsafe class QueryBenchmarks
+    {
+        private Frame _frame = null!;
+        private OwningGroup<PositionComponent, VelocityComponent> _pairGroup = null!;
+        private OwningGroup<PositionComponent, VelocityComponent, HealthComponent> _tripleGroup = null!;
+        private int _queryPairSum;
+
+        [Params(1000, 10000)]
+        public int EntityCount { get; set; }
+
+        [GlobalSetup]
+        public void Setup()
+        {
+            BenchmarkComponentRegistration.EnsureRegistered();
+
+            _frame = new Frame(EntityCount + 8);
+            for (int i = 0; i < EntityCount; i++)
+            {
+                EntityRef entity = _frame.CreateEntity();
+                PositionComponent position = new PositionComponent(i, i + 1);
+                VelocityComponent velocity = new VelocityComponent(i + 2, i + 3);
+                HealthComponent health = new HealthComponent(100 + i);
+
+                _frame.Add(entity, position);
+
+                if ((i & 1) == 0)
+                {
+                    _frame.Add(entity, velocity);
+                }
+
+                if ((i % 3) == 0)
+                {
+                    _frame.Add(entity, health);
+                }
+            }
+
+            _pairGroup = _frame.RegisterOwningGroup<PositionComponent, VelocityComponent>();
+            _tripleGroup = _frame.RegisterOwningGroup<PositionComponent, VelocityComponent, HealthComponent>();
+        }
+
+        [GlobalCleanup]
+        public void Cleanup()
+        {
+            _frame.Dispose();
+        }
+
+        [Benchmark(Baseline = true)]
+        public int ManualIterator_PositionVelocity()
+        {
+            int sum = 0;
+            var iterator = _frame.GetComponentBlockIterator<PositionComponent>();
+            while (iterator.Next(out EntityRef entity, out PositionComponent* position))
+            {
+                if (!_frame.Has<VelocityComponent>(entity))
+                {
+                    continue;
+                }
+
+                VelocityComponent* velocity = _frame.GetPointer<VelocityComponent>(entity);
+                if (velocity == null)
+                {
+                    continue;
+                }
+
+                sum += position->X + velocity->X;
+            }
+
+            return sum;
+        }
+
+        [Benchmark]
+        public int QueryEnumerator_PositionVelocity()
+        {
+            int sum = 0;
+            var query = _frame.Query<PositionComponent, VelocityComponent>();
+            var enumerator = query.GetEnumerator();
+            while (enumerator.MoveNext())
+            {
+                sum += enumerator.Component1.X + enumerator.Component2.X;
+            }
+
+            return sum;
+        }
+
+        [Benchmark]
+        public int QueryForEachFunctionPointer_PositionVelocity()
+        {
+            _queryPairSum = 0;
+            _current = this;
+            _frame.Query<PositionComponent, VelocityComponent>().ForEach(&AccumulatePositionVelocity);
+            _current = null!;
+            return _queryPairSum;
+        }
+
+        [Benchmark]
+        public int QueryEnumerator_PositionVelocityHealth()
+        {
+            int sum = 0;
+            var query = _frame.Query<PositionComponent, VelocityComponent, HealthComponent>();
+            var enumerator = query.GetEnumerator();
+            while (enumerator.MoveNext())
+            {
+                sum += enumerator.Component1.X + enumerator.Component2.X + enumerator.Component3.Value;
+            }
+
+            return sum;
+        }
+
+        [Benchmark]
+        public int FullOwningGroupSequential_PositionVelocity()
+        {
+            int sum = 0;
+            int index = 0;
+            while (_pairGroup.Next(&index, out EntityRef _, out PositionComponent* position, out VelocityComponent* velocity))
+            {
+                sum += position->X + velocity->X;
+            }
+
+            return sum;
+        }
+
+        [Benchmark]
+        public int FullOwningGroupBlock_PositionVelocity()
+        {
+            int sum = 0;
+            int blockIndex = 0;
+            while (_pairGroup.NextBlock(&blockIndex, out EntityRef* _, out PositionComponent* positions, out VelocityComponent* velocities, out int count))
+            {
+                for (int i = 0; i < count; i++)
+                {
+                    sum += positions[i].X + velocities[i].X;
+                }
+            }
+
+            return sum;
+        }
+
+        [Benchmark]
+        public int FullOwningGroupBlock_PositionVelocityHealth()
+        {
+            int sum = 0;
+            int blockIndex = 0;
+            while (_tripleGroup.NextBlock(&blockIndex, out EntityRef* _, out PositionComponent* positions, out VelocityComponent* velocities, out HealthComponent* healths, out int count))
+            {
+                for (int i = 0; i < count; i++)
+                {
+                    sum += positions[i].X + velocities[i].X + healths[i].Value;
+                }
+            }
+
+            return sum;
+        }
+
+        private static QueryBenchmarks _current = null!;
+
+        private static void AccumulatePositionVelocity(EntityRef entity, PositionComponent* position, VelocityComponent* velocity)
+        {
+            QueryBenchmarks current = _current;
+            current._queryPairSum += position->X + velocity->X;
+        }
+    }
+
+    /// <summary>
+    /// 组件基座的代表性性能基准：
+    /// 快照、延迟删除、OwningGroup 构建与增量同步。
+    /// </summary>
+    [MemoryDiagnoser]
+    [InProcess]
+    [WarmupCount(3)]
+    [IterationCount(5)]
+    public unsafe class ComponentArchitectureBenchmarks
+    {
+        private Frame _snapshotSource = null!;
+        private FrameSnapshot _snapshot = null!;
+        private Frame _restoreTarget = null!;
+        private Frame _baselineMutationFrame = null!;
+        private Frame _owningMutationFrame = null!;
+        private OwningGroup<PositionComponent, VelocityComponent> _mutationGroup = null!;
+        private EntityRef[] _mutationEntities = Array.Empty<EntityRef>();
+        private int _mutationVersion;
+
+        [Params(1000, 10000)]
+        public int EntityCount { get; set; }
+
+        [GlobalSetup]
+        public void Setup()
+        {
+            BenchmarkComponentRegistration.EnsureRegistered();
+
+            _snapshotSource = new Frame(EntityCount + 8);
+            for (int i = 0; i < EntityCount; i++)
+            {
+                EntityRef entity = _snapshotSource.CreateEntity();
+                _snapshotSource.Add(entity, new PositionComponent(i, i + 1));
+                _snapshotSource.Add(entity, new VelocityComponent(i + 2, i + 3));
+                _snapshotSource.Add(entity, new HealthComponent(100 + i));
+            }
+
+            _snapshot = _snapshotSource.CreateSnapshot();
+            _restoreTarget = new Frame(EntityCount + 8);
+
+            _baselineMutationFrame = new Frame(EntityCount + 8);
+            _owningMutationFrame = new Frame(EntityCount + 8);
+            _mutationEntities = new EntityRef[EntityCount];
+
+            for (int i = 0; i < EntityCount; i++)
+            {
+                EntityRef baselineEntity = _baselineMutationFrame.CreateEntity();
+                _baselineMutationFrame.Add(baselineEntity, new PositionComponent(i, i));
+                _baselineMutationFrame.Add(baselineEntity, new VelocityComponent(i + 1, i + 2));
+
+                EntityRef owningEntity = _owningMutationFrame.CreateEntity();
+                _owningMutationFrame.Add(owningEntity, new PositionComponent(i, i));
+                _owningMutationFrame.Add(owningEntity, new VelocityComponent(i + 1, i + 2));
+                _mutationEntities[i] = owningEntity;
+            }
+
+            _mutationGroup = _owningMutationFrame.RegisterOwningGroup<PositionComponent, VelocityComponent>();
+        }
+
+        [GlobalCleanup]
+        public void Cleanup()
+        {
+            _snapshotSource.Dispose();
+            _restoreTarget.Dispose();
+            _baselineMutationFrame.Dispose();
+            _owningMutationFrame.Dispose();
+        }
+
+        [Benchmark(Baseline = true)]
+        public ulong CreateSnapshot_RawDenseTripleComponent()
+        {
+            return _snapshotSource.CreateSnapshot().Checksum;
+        }
+
+        [Benchmark]
+        public ulong RestoreSnapshot_RawDenseTripleComponent()
+        {
+            _restoreTarget.RestoreFromSnapshot(_snapshot);
+            return _restoreTarget.CalculateChecksum();
+        }
+
+        [Benchmark]
+        public int RegisterOwningGroup_Rebuild_PositionVelocity()
+        {
+            using var frame = new Frame(EntityCount + 8);
+            for (int i = 0; i < EntityCount; i++)
+            {
+                EntityRef entity = frame.CreateEntity();
+                frame.Add(entity, new PositionComponent(i, i + 1));
+
+                if ((i & 1) == 0)
+                {
+                    frame.Add(entity, new VelocityComponent(i + 2, i + 3));
+                }
+            }
+
+            return frame.RegisterOwningGroup<PositionComponent, VelocityComponent>().Count;
+        }
+
+        [Benchmark]
+        public int DeferredRemoval_RemoveAndCommit_FullCycle()
+        {
+            using var frame = new Frame(EntityCount + 8);
+            EntityRef[] entities = new EntityRef[EntityCount];
+
+            for (int i = 0; i < EntityCount; i++)
+            {
+                EntityRef entity = frame.CreateEntity();
+                entities[i] = entity;
+                frame.Add(entity, new DeferredHealthComponent(100 + i));
+            }
+
+            for (int i = 0; i < entities.Length; i++)
+            {
+                frame.Remove<DeferredHealthComponent>(entities[i]);
+            }
+
+            frame.CommitDeferredRemovals();
+            return frame.PendingDeferredRemovalCount;
+        }
+
+        [Benchmark]
+        public int SetQualifiedPosition_NoOwningGroup()
+        {
+            int version = ++_mutationVersion;
+            int sum = 0;
+
+            for (int i = 0; i < _mutationEntities.Length; i++)
+            {
+                EntityRef entity = _mutationEntities[i];
+                _baselineMutationFrame.Set(entity, new PositionComponent(version + i, version - i));
+                sum += _baselineMutationFrame.Get<PositionComponent>(entity).X;
+            }
+
+            return sum;
+        }
+
+        [Benchmark]
+        public int SetQualifiedPosition_WithOwningGroup()
+        {
+            int version = ++_mutationVersion;
+            int sum = 0;
+
+            for (int i = 0; i < _mutationEntities.Length; i++)
+            {
+                EntityRef entity = _mutationEntities[i];
+                _owningMutationFrame.Set(entity, new PositionComponent(version + i, version - i));
+            }
+
+            int index = 0;
+            while (_mutationGroup.Next(&index, out EntityRef _, out PositionComponent* position, out VelocityComponent* velocity))
+            {
+                _ = velocity;
+                sum += position->X;
+            }
+
+            return sum;
         }
     }
 }
