@@ -51,7 +51,11 @@ Facet 是：
 - Lua API 边界：`Lua/LuaApiBridge.cs`
 - 红点树：`Extensions/RedDot/RedDotService.cs`
 
-## 设计目标
+1. 让页面层不直接依赖底层逻辑对象结构
+2. 让页面行为可以逐步迁移到 Lua，并具备后续热更新能力
+3. 让手工布局、模板布局、自动布局共享同一套运行时协议
+4. 让客户端层从一开始就具备清晰的应用边界和可替换数据源
+5. 让红点、诊断、工具化等高频能力沉淀为框架能力，而不是页面私有逻辑
 
 Facet 的核心目标有五个：
 
@@ -68,7 +72,7 @@ Facet 当前明确不追求：
 - 让页面直接依赖 Godot 节点路径和底层数据对象
 - 一开始就支持任意 C# 逻辑热更或任意资源热更
 
-## 总体结构
+## 6. 统一术语
 
 ```text
 Lattice / Domain
@@ -93,7 +97,37 @@ Lattice / Domain
 
 ## 模块分层
 
-### Application
+### 6.7 Layout Provider
+
+页面布局来源的统一抽象。
+它决定页面根节点如何被构建，但不决定页面行为如何执行。
+
+### 6.8 Extension
+
+沉淀在框架层的通用能力单元，例如：
+
+- 红点树
+- 权限控制
+- 引导锚点
+- 诊断面板
+
+## 7. 总体架构
+
+```text
+Lattice / Domain
+    -> Application Services / Gateway
+    -> Projection Store / ViewModel
+    -> Facet Runtime
+        -> Layout Providers
+        -> Lua Controllers
+        -> Binding System
+        -> Extensions
+    -> Godot Scene / Node / Asset / Animation
+```
+
+## 8. 模块划分
+
+### 8.1 Application
 
 职责：
 
@@ -109,7 +143,7 @@ Lattice / Domain
 - `IAppService`
 - `IGateway`
 
-### Projection
+### 8.2 Projection
 
 职责：
 
@@ -124,7 +158,7 @@ Lattice / Domain
 - `ProjectionChange`
 - `ProjectionRefreshCoordinator`
 
-### Runtime
+### 8.3 Runtime
 
 职责：
 
@@ -141,7 +175,7 @@ Lattice / Domain
 - `UIPageRuntime`
 - `UIContext`
 
-### Layout
+### 8.4 Layout
 
 职责：
 
@@ -173,7 +207,7 @@ Lattice / Domain
 - `IUIBindingScope`
 - `IUIComponentBindingScope`
 
-### Lua
+### 8.6 Lua
 
 职责：
 
