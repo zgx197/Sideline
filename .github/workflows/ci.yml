@@ -10,6 +10,7 @@ on:
       - 'godot/scripts/lattice/**'
       - 'godot/scripts/lattice/Tests/**'
       - 'godot/scripts/lattice/Lattice.Tests.csproj'
+      - 'godot/scripts/facet/**'
       - 'godot/Lattice.Benchmarks/**'
       - '.github/workflows/**'
   pull_request:
@@ -18,6 +19,7 @@ on:
       - 'godot/scripts/lattice/**'
       - 'godot/scripts/lattice/Tests/**'
       - 'godot/scripts/lattice/Lattice.Tests.csproj'
+      - 'godot/scripts/facet/**'
       - 'godot/Lattice.Benchmarks/**'
       - '.github/workflows/**'
 
