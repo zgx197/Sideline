@@ -31,7 +31,7 @@ namespace Lattice.ECS.Core.Parallel
         }
 
         /// <summary>
-    /// 并行遍历所有组件（只读）
+        /// 并行遍历所有组件（只读）
         /// </summary>
         public void ForEach(ParallelForDelegate<T> action)
         {
