@@ -124,7 +124,7 @@ namespace Lattice.Tests.ECS
             host.Buffer.Dispose();
         }
 
-        private static unsafe EntityRef GetSingleEntityWith<T>(Frame frame) where T : unmanaged
+        private static unsafe EntityRef GetSingleEntityWith<T>(Frame frame) where T : unmanaged, IComponent
         {
             var iterator = frame.GetComponentBlockIterator<T>();
             Assert.True(iterator.Next(out EntityRef entity, out T* _));
@@ -132,17 +132,17 @@ namespace Lattice.Tests.ECS
             return entity;
         }
 
-        private struct Position
+        private struct Position : IComponent
         {
             public FP Value;
         }
 
-        private struct Velocity
+        private struct Velocity : IComponent
         {
             public FP Value;
         }
 
-        private struct Lifetime
+        private struct Lifetime : IComponent
         {
             public FP Remaining;
         }

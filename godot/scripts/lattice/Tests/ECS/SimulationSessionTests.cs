@@ -158,12 +158,12 @@ namespace Lattice.Tests.ECS
             public EntityRef Entity;
         }
 
-        private struct Position
+        private struct Position : IComponent
         {
             public FP Value;
         }
 
-        private struct Velocity
+        private struct Velocity : IComponent
         {
             public FP Value;
         }

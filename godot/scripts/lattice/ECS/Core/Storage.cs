@@ -349,21 +349,16 @@ namespace Lattice.ECS.Core
         /// </summary>
         public int GetSnapshotSize()
         {
+            int denseCount = Count;
             int size =
                 sizeof(int) * 6 +    // _count, _version, _blockCount, _blockItemCapacity, _componentTypeId, _sparseCapacity
                 sizeof(ushort) * 4 + // _singletonSparse, _pendingRemoval, _flags, reserved
-                sizeof(ushort) * _sparseCapacity;
+                sizeof(EntityRef) * denseCount +
+                sizeof(T) * denseCount;
 
-            for (int i = 0; i < _blockCount; i++)
+            if (_entryStates != null)
             {
-                int blockItems = System.Math.Min(_blockItemCapacity, _count - i * _blockItemCapacity);
-                if (blockItems <= 0)
-                {
-                    break;
-                }
-
-                size += EntityRef.Size * blockItems;
-                size += sizeof(T) * blockItems;
+                size += denseCount;
             }
 
             return size;
@@ -392,16 +387,15 @@ namespace Lattice.ECS.Core
             int handlesBytes = sizeof(EntityRef) * denseCount;
             int dataBytes = sizeof(T) * denseCount;
 
-            CopyDenseEntities((EntityRef*)ptr, bufferSize >= handlesBytes ? denseCount : 0);
+            CopyDenseEntities((EntityRef*)ptr, denseCount);
             ptr += handlesBytes;
 
-                int handleBytes = EntityRef.Size * blockItems;
-                Buffer.MemoryCopy(_blocks[i].PackedHandles, ptr, handleBytes, handleBytes);
-                ptr += handleBytes;
+            CopyDenseComponentBytes(ptr, denseCount);
+            ptr += dataBytes;
 
-                int dataBytes = sizeof(T) * blockItems;
-                Buffer.MemoryCopy(_blocks[i].PackedData, ptr, dataBytes, dataBytes);
-                ptr += dataBytes;
+            if (_entryStates != null && denseCount > 0)
+            {
+                Buffer.MemoryCopy(_entryStates + 1, ptr, denseCount, denseCount);
             }
         }
 
@@ -447,6 +441,7 @@ namespace Lattice.ECS.Core
             ClearSparseAndStates();
             EnsureEntityCapacity(savedCount);
 
+            int denseCount = System.Math.Max(savedCount - 1, 0);
             RestoreDenseEntities((EntityRef*)ptr, denseCount);
             ptr += sizeof(EntityRef) * denseCount;
 
@@ -458,15 +453,21 @@ namespace Lattice.ECS.Core
                 if (_entryStates != null)
                 {
                     Buffer.MemoryCopy(ptr, _entryStates + 1, denseCount, denseCount);
+                    ptr += denseCount;
                 }
+                else
+                {
+                    for (int i = 1; i <= denseCount; i++)
+                    {
+                        SetEntryStateByIndex(i, EntryStateActive);
+                    }
+                }
+            }
 
-                int handleBytes = EntityRef.Size * blockItems;
-                Buffer.MemoryCopy(ptr, _blocks[i].PackedHandles, handleBytes, handleBytes);
-                ptr += handleBytes;
-
-                int dataBytes = sizeof(T) * blockItems;
-                Buffer.MemoryCopy(ptr, _blocks[i].PackedData, dataBytes, dataBytes);
-                ptr += dataBytes;
+            for (int globalIndex = 1; globalIndex <= denseCount; globalIndex++)
+            {
+                EntityRef entity = GetEntityRefByIndex(globalIndex);
+                _sparse[entity.Index] = (ushort)globalIndex;
             }
 
             _pendingRemoval = savedPendingRemoval;

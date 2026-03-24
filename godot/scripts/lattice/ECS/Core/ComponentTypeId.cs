@@ -118,6 +118,7 @@ namespace Lattice.ECS.Core
                 SnapshotRestorers[id] = ComponentRuntimeDispatch<T>.RestoreSnapshot;
                 PendingRemovalMarkers[id] = ComponentRuntimeDispatch<T>.MarkPendingRemoval;
                 PendingQueueIndexSetters[id] = ComponentRuntimeDispatch<T>.SetPendingQueueIndex;
+                ComponentCommandRegistry.Register<T>(id);
 
                 ReverseLookup.Add(typeof(T), id);
                 ReverseNameLookup[typeof(T).Name] = id;
@@ -125,6 +126,19 @@ namespace Lattice.ECS.Core
                 ComponentTypeId<T>.SetRegistration(id, sizeof(T), flags, resolvedStorageFlags, callbacks);
                 return id;
             }
+        }
+
+        /// <summary>
+        /// 确保组件类型已注册。
+        /// </summary>
+        public static void EnsureRegistered<T>() where T : unmanaged, IComponent
+        {
+            if (ComponentTypeId<T>.IsRegistered)
+            {
+                return;
+            }
+
+            Register<T>();
         }
 
         public static int GetComponentIndex(Type type)
@@ -408,20 +422,185 @@ namespace Lattice.ECS.Core
 
         public static ComponentFlags Flags
         {
-            int typeId = _nextId++;
-            ComponentTypeId<T>.Register(typeId);
-            ComponentCommandRegistry.Register<T>(typeId);
+            get
+            {
+                if (_id == 0)
+                {
+                    _ = Id;
+                }
+
+                return _flags;
+            }
         }
 
-        /// <summary>确保组件类型已注册。</summary>
-        public static void EnsureRegistered<T>() where T : unmanaged
+        public static StorageFlags StorageFlags
         {
-            if (ComponentTypeId<T>.IsRegistered)
+            get
+            {
+                if (_id == 0)
+                {
+                    _ = Id;
+                }
+
+                return _storageFlags;
+            }
+        }
+
+        public static ComponentCallbacks Callbacks
+        {
+            get
+            {
+                if (_id == 0)
+                {
+                    _ = Id;
+                }
+
+                return _callbacks;
+            }
+        }
+
+        public static bool IsRegistered => _id != 0;
+
+        internal static void SetRegistration(
+            int id,
+            int size,
+            ComponentFlags flags,
+            StorageFlags storageFlags,
+            ComponentCallbacks callbacks)
+        {
+            if (_id != 0 && _id != id)
+            {
+                throw new InvalidOperationException($"Component type already registered with ID {_id}");
+            }
+
+            _id = id;
+            _size = size;
+            _flags = flags;
+            _storageFlags = storageFlags;
+            _callbacks = callbacks;
+        }
+    }
+
+    internal static unsafe class ComponentRuntimeDispatch<T> where T : unmanaged, IComponent
+    {
+        public static void RemoveFromFrame(Frame frame, EntityRef entity)
+        {
+            frame.Remove<T>(entity);
+        }
+
+        public static void AddToFrame(Frame frame, EntityRef entity, void* componentData)
+        {
+            frame.Add(entity, *(T*)componentData);
+        }
+
+        public static void SetInFrame(Frame frame, EntityRef entity, void* componentData)
+        {
+            frame.Set(entity, *(T*)componentData);
+        }
+
+        public static void CommitDeferred(void* storage, EntityRef entity)
+        {
+            var typedStorage = (Storage<T>*)storage;
+            if (typedStorage == null)
             {
                 return;
             }
 
-            Register<T>();
+            typedStorage->CommitRemoval(entity);
+        }
+
+        public static ComponentStorageSnapshot? CaptureSnapshot(void* storage, ComponentSerializationMode mode)
+        {
+            int typeId = ComponentTypeId<T>.Id;
+            if (!ComponentRegistry.CanSerializeComponent(typeId, mode))
+            {
+                return null;
+            }
+
+            var typedStorage = (Storage<T>*)storage;
+            if (typedStorage == null || typedStorage->Count == 0)
+            {
+                return null;
+            }
+
+            if (ComponentTypeId<T>.Callbacks.Serialize == null)
+            {
+                int rawCount = typedStorage->Count;
+                var entities = new EntityRef[rawCount];
+                var data = new byte[rawCount * sizeof(T)];
+
+                typedStorage->CopyDenseEntities(entities);
+                typedStorage->CopyDenseComponentBytes(data);
+
+                return new ComponentStorageSnapshot(typeId, entities, data);
+            }
+
+            int count = typedStorage->Count;
+            var entries = new ComponentEntrySnapshot[count];
+
+            for (int index = 1; index <= count; index++)
+            {
+                EntityRef entity = typedStorage->GetEntityRefByIndex(index);
+                T* componentData = typedStorage->GetDataPointerByIndex(index);
+                var serializer = new FrameSerializer(new BitStream(), writing: true);
+                ComponentRegistry.SerializeComponent(typeId, componentData, serializer, mode);
+                entries[index - 1] = new ComponentEntrySnapshot(entity, serializer.Stream.ToArray());
+            }
+
+            return new ComponentStorageSnapshot(typeId, entries);
+        }
+
+        public static void RestoreSnapshot(Frame frame, ComponentStorageSnapshot snapshot, ComponentSerializationMode mode)
+        {
+            int typeId = ComponentTypeId<T>.Id;
+            var storage = frame.GetOrCreateStorageForSnapshotRestore<T>(typeId);
+
+            if (snapshot.Kind == ComponentSnapshotDataKind.RawDense)
+            {
+                storage->RestoreDenseSnapshot(snapshot.DenseEntities, snapshot.DenseData);
+                return;
+            }
+
+            if (snapshot.Entries.Length == 0)
+            {
+                return;
+            }
+
+            for (int i = 0; i < snapshot.Entries.Length; i++)
+            {
+                ComponentEntrySnapshot entry = snapshot.Entries[i];
+                T component = default;
+
+                if (entry.Payload.Length > 0)
+                {
+                    var serializer = new FrameSerializer(new BitStream(entry.Payload), writing: false);
+                    ComponentRegistry.SerializeComponent(typeId, &component, serializer, mode);
+                }
+
+                storage->Add(entry.Entity, component);
+            }
+        }
+
+        public static void MarkPendingRemoval(void* storage, EntityRef entity)
+        {
+            var typedStorage = (Storage<T>*)storage;
+            if (typedStorage == null)
+            {
+                return;
+            }
+
+            typedStorage->MarkForRemoval(entity);
+        }
+
+        public static void SetPendingQueueIndex(void* storage, EntityRef entity, int queueIndex)
+        {
+            var typedStorage = (Storage<T>*)storage;
+            if (typedStorage == null)
+            {
+                return;
+            }
+
+            typedStorage->SetPendingQueueIndex(entity, queueIndex);
         }
     }
 }

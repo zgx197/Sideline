@@ -546,6 +546,30 @@
             在 DEBUG 模式下校验预取迭代器绑定的存储版本。
             </summary>
         </member>
+        <member name="T:Lattice.ECS.Core.ComponentSerializeDelegate">
+            <summary>
+            组件序列化委托，对齐 FrameSync 的组件序列化回调设计。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Core.ComponentChangedDelegate">
+            <summary>
+            组件生命周期回调，在组件添加或移除时触发。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Core.ComponentCallbacks">
+            <summary>
+            组件回调集合。
+            </summary>
+        </member>
+        <member name="P:Lattice.ECS.Core.ComponentCallbacks.Serialize">
+            <summary>组件序列化回调。</summary>
+        </member>
+        <member name="P:Lattice.ECS.Core.ComponentCallbacks.OnAdded">
+            <summary>组件添加回调。</summary>
+        </member>
+        <member name="P:Lattice.ECS.Core.ComponentCallbacks.OnRemoved">
+            <summary>组件移除回调。</summary>
+        </member>
         <member name="T:Lattice.ECS.Core.ComponentCommandRegistry">
             <summary>
             组件命令回放注册表。
@@ -667,6 +691,11 @@
             组件类型注册中心，负责维护运行期组件元数据。
             </summary>
         </member>
+        <member name="M:Lattice.ECS.Core.ComponentRegistry.EnsureRegistered``1">
+            <summary>
+            确保组件类型已注册。
+            </summary>
+        </member>
         <member name="T:Lattice.ECS.Core.ComponentRegistry.Builder">
             <summary>
             增量式注册 Builder，接口形态向 FrameSync 对齐。
@@ -676,9 +705,6 @@
             <summary>
             组件类型 ID 与元数据缓存（FrameSync 风格）。
             </summary>
-        </member>
-        <member name="M:Lattice.ECS.Core.ComponentRegistry.EnsureRegistered``1">
-            <summary>确保组件类型已注册。</summary>
         </member>
         <member name="T:Lattice.ECS.Core.CullingZone">
             <summary>
@@ -905,6 +931,29 @@
         <member name="P:Lattice.ECS.Core.Frame.EntityCapacity">
             <summary>实体容量。</summary>
         </member>
+        <member name="P:Lattice.ECS.Core.Frame.PendingDeferredRemovalCount">
+            <summary>待提交的延迟删除数量。</summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.Frame.CreateSnapshot(Lattice.ECS.Core.ComponentSerializationMode)">
+            <summary>
+            创建帧快照。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.Frame.RestoreFromSnapshot(Lattice.ECS.Core.FrameSnapshot,Lattice.ECS.Core.ComponentSerializationMode)">
+            <summary>
+            从快照恢复帧状态。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.Frame.Clone(Lattice.ECS.Core.ComponentSerializationMode)">
+            <summary>
+            克隆当前帧。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.Frame.CalculateChecksum(Lattice.ECS.Core.ComponentSerializationMode)">
+            <summary>
+            计算帧校验和。
+            </summary>
+        </member>
         <member name="M:Lattice.ECS.Core.Frame.CreateEntity">
             <summary>
             创建实体 - O(1)
@@ -968,26 +1017,6 @@
         <member name="M:Lattice.ECS.Core.Frame.Filter``3">
             <summary>
             获取三组件过滤器。
-            </summary>
-        </member>
-        <member name="M:Lattice.ECS.Core.Frame.CreateSnapshot">
-            <summary>
-            创建当前帧快照。
-            </summary>
-        </member>
-        <member name="M:Lattice.ECS.Core.Frame.RestoreFromSnapshot(Lattice.ECS.Core.FrameSnapshot)">
-            <summary>
-            从快照恢复当前帧。
-            </summary>
-        </member>
-        <member name="M:Lattice.ECS.Core.Frame.Clone">
-            <summary>
-            克隆当前帧。
-            </summary>
-        </member>
-        <member name="M:Lattice.ECS.Core.Frame.CalculateChecksum">
-            <summary>
-            计算当前帧确定性校验和。
             </summary>
         </member>
         <member name="M:Lattice.ECS.Core.Frame.GetStorage``1(System.Int32)">
@@ -1083,28 +1112,25 @@
             获取帧内部使用的分配器。
             </summary>
         </member>
-        <member name="T:Lattice.ECS.Core.FrameSnapshot">
+        <member name="T:Lattice.ECS.Core.ComponentEntrySnapshot">
             <summary>
-            帧快照。
+            组件条目快照。
             </summary>
         </member>
-        <member name="P:Lattice.ECS.Core.FrameSnapshot.Tick">
-            <summary>快照对应的 tick。</summary>
+        <member name="T:Lattice.ECS.Core.ComponentSnapshotDataKind">
+            <summary>
+            组件存储快照数据类型。
+            </summary>
         </member>
-        <member name="P:Lattice.ECS.Core.FrameSnapshot.DeltaTime">
-            <summary>快照记录的固定时间步长。</summary>
+        <member name="T:Lattice.ECS.Core.ComponentStorageSnapshot">
+            <summary>
+            单个组件类型的存储快照。
+            </summary>
         </member>
-        <member name="P:Lattice.ECS.Core.FrameSnapshot.EntityCapacity">
-            <summary>快照对应的实体容量。</summary>
-        </member>
-        <member name="P:Lattice.ECS.Core.FrameSnapshot.Data">
-            <summary>快照原始数据。</summary>
-        </member>
-        <member name="P:Lattice.ECS.Core.FrameSnapshot.DataLength">
-            <summary>快照字节长度。</summary>
-        </member>
-        <member name="P:Lattice.ECS.Core.FrameSnapshot.Checksum">
-            <summary>快照校验和。</summary>
+        <member name="T:Lattice.ECS.Core.FrameSnapshot">
+            <summary>
+            帧状态快照。
+            </summary>
         </member>
         <member name="T:Lattice.ECS.Core.FullOwningGroup`2">
             <summary>
@@ -1990,6 +2016,11 @@
         </member>
         <member name="P:Lattice.ECS.Framework.CommandBuffer.CreatedEntityCount">
             <summary>命令数量</summary>
+        </member>
+        <member name="M:Lattice.ECS.Framework.CommandBuffer.Initialize(System.Int32)">
+            <summary>
+            初始化命令缓冲
+            </summary>
         </member>
         <member name="M:Lattice.ECS.Framework.CommandBuffer.Initialize(Lattice.ECS.Core.Frame,System.Int32)">
             <summary>

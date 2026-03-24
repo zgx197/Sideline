@@ -33,7 +33,7 @@ namespace Lattice.ECS.Core
         private static readonly ComponentStorageSnapshotReadHandler?[] StorageSnapshotReadHandlers = new ComponentStorageSnapshotReadHandler[Frame.MaxComponentTypes];
         private static readonly ComponentStorageCreateHandler?[] StorageCreateHandlers = new ComponentStorageCreateHandler[Frame.MaxComponentTypes];
 
-        public static void Register<T>(int typeId) where T : unmanaged
+        public static void Register<T>(int typeId) where T : unmanaged, IComponent
         {
             ComponentSizes[typeId] = sizeof(T);
             AddHandlers[typeId] = static (frame, entity, data) => frame.Add(entity, *(T*)data);
