@@ -463,7 +463,8 @@ DeterministicLoopDesign
 
 按照当前实现状态，建议后续按下面顺序推进：
 
-1. 底座与上层运行时总览文档阶段已完成，后续按实现优先级拆分 Bridge / Runner / View / Debug 子文档
+1. 底座与上层运行时总览文档阶段已完成，先按 [TechnicalDebtBacklog.md](/d:/UGit/Sideline/godot/scripts/lattice/ECS/TechnicalDebtBacklog.md) 偿还 P0 / P1 技术债
+2. 再按实现优先级拆分 Bridge / Runner / View / Debug 子文档
 
 ---
 
