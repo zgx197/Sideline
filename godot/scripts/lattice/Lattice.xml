@@ -121,105 +121,94 @@
             </summary>
         </member>
         <member name="T:Lattice.ECS.Core.Allocator">
-            <summary>
-            高性能非托管内存分配器
+             <summary>
+             高性能非托管 Arena 分配器。
             
-            特性：
-            1. 基于内存池的分配策略，减少系统调用
-            2. 对齐分配（默认8字节对齐）
-            3. 零初始化选项
-            4. 线程不安全（ECS单线程操作）
-            </summary>
+             设计目标：
+             1. 完全驻留于非托管内存，可安全通过 <c>Allocator*</c> 传递；
+             2. 采用线性追加分配，避免 ECS 热路径中的碎片化与单次释放开销；
+             3. 为组件块、位图、命令缓冲等场景提供稳定的对齐分配能力。
+             </summary>
         </member>
         <member name="F:Lattice.ECS.Core.Allocator.DefaultAlignment">
-            <summary>默认对齐边界（8字节）</summary>
+            <summary>默认对齐边界（16 字节，兼顾 SIMD 与常见平台 ABI）。</summary>
         </member>
         <member name="F:Lattice.ECS.Core.Allocator.MinBlockSize">
-            <summary>最小分配块大小（1KB）</summary>
+            <summary>最小分配块大小（4KB）。</summary>
         </member>
         <member name="F:Lattice.ECS.Core.Allocator.MaxBlockSize">
-            <summary>最大分配块大小（1MB）</summary>
-        </member>
-        <member name="T:Lattice.ECS.Core.Allocator.BlockHeader">
-            <summary>
-            内存块头部信息
-            </summary>
-        </member>
-        <member name="F:Lattice.ECS.Core.Allocator.BlockHeader.Size">
-            <summary>块大小（不包括头部）</summary>
-        </member>
-        <member name="F:Lattice.ECS.Core.Allocator.BlockHeader.Used">
-            <summary>已使用字节数</summary>
-        </member>
-        <member name="F:Lattice.ECS.Core.Allocator.BlockHeader.Prev">
-            <summary>前一个块</summary>
-        </member>
-        <member name="F:Lattice.ECS.Core.Allocator.BlockHeader.Next">
-            <summary>后一个块</summary>
-        </member>
-        <member name="P:Lattice.ECS.Core.Allocator.BlockHeader.Data">
-            <summary>数据起始地址</summary>
+            <summary>最大常规分配块大小（1MB）。超出时按需扩展。</summary>
         </member>
         <member name="P:Lattice.ECS.Core.Allocator.TotalAllocated">
-            <summary>总分配内存（字节）</summary>
+            <summary>总分配内存（字节）。</summary>
         </member>
         <member name="P:Lattice.ECS.Core.Allocator.TotalUsed">
-            <summary>总使用内存（字节）</summary>
+            <summary>总使用内存（字节）。</summary>
         </member>
         <member name="P:Lattice.ECS.Core.Allocator.Utilization">
-            <summary>内存使用效率（定点数 0-1）</summary>
+            <summary>内存使用效率（定点数 0-1）。</summary>
         </member>
-        <member name="M:Lattice.ECS.Core.Allocator.Alloc(System.Int32)">
+        <member name="M:Lattice.ECS.Core.Allocator.Create">
             <summary>
-            分配内存（不对齐）
+            创建一个驻留在非托管内存中的分配器实例。
             </summary>
         </member>
-        <member name="M:Lattice.ECS.Core.Allocator.AllocAndClear(System.Int32)">
+        <member name="M:Lattice.ECS.Core.Allocator.Destroy(Lattice.ECS.Core.Allocator*)">
             <summary>
-            分配并清零内存
-            </summary>
-        </member>
-        <member name="M:Lattice.ECS.Core.Allocator.AllocAligned(System.Int32,System.Int32)">
-            <summary>
-            分配对齐内存
-            </summary>
-        </member>
-        <member name="M:Lattice.ECS.Core.Allocator.Realloc(System.Void*,System.Int32,System.Int32)">
-            <summary>
-            重新分配内存
-            </summary>
-        </member>
-        <member name="M:Lattice.ECS.Core.Allocator.Free(System.Void*)">
-            <summary>
-            释放内存（当前实现为空，整块释放）
+            销毁非托管分配器实例及其持有的所有块。
             </summary>
         </member>
         <member name="M:Lattice.ECS.Core.Allocator.Dispose">
             <summary>
-            释放所有内存
+            释放所有 Arena 块。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.Allocator.Alloc(System.Int32)">
+            <summary>
+            分配默认对齐的非托管内存。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.Allocator.AllocAndClear(System.Int32)">
+            <summary>
+            分配并清零非托管内存。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.Allocator.AllocAligned(System.Int32,System.Int32)">
+            <summary>
+            分配指定对齐的非托管内存。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.Allocator.Realloc(System.Void*,System.Int32,System.Int32)">
+            <summary>
+            重新分配内存。Arena 不支持原地扩容，因此会申请新区域并复制旧内容。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.Allocator.Free(System.Void*)">
+            <summary>
+            单个块不支持提前释放，统一由 <see cref="M:Lattice.ECS.Core.Allocator.Dispose" /> 回收。
             </summary>
         </member>
         <member name="M:Lattice.ECS.Core.Allocator.GetStats">
             <summary>
-            获取分配器统计信息
+            获取当前分配器统计信息。
             </summary>
         </member>
         <member name="T:Lattice.ECS.Core.AllocatorStats">
             <summary>
-            分配器统计信息
+            分配器统计信息。
             </summary>
         </member>
         <member name="F:Lattice.ECS.Core.AllocatorStats.TotalAllocated">
-            <summary>总分配内存（字节）</summary>
+            <summary>总分配内存（字节）。</summary>
         </member>
         <member name="F:Lattice.ECS.Core.AllocatorStats.TotalUsed">
-            <summary>总使用内存（字节）</summary>
+            <summary>总使用内存（字节）。</summary>
         </member>
         <member name="F:Lattice.ECS.Core.AllocatorStats.BlockCount">
-            <summary>内存块数量</summary>
+            <summary>内存块数量。</summary>
         </member>
         <member name="F:Lattice.ECS.Core.AllocatorStats.Utilization">
-            <summary>内存使用效率（定点数 0-1）</summary>
+            <summary>内存使用效率（定点数 0-1）。</summary>
         </member>
         <member name="T:Lattice.ECS.Core.BitStream">
             <summary>
@@ -523,6 +512,12 @@
             在 DEBUG 模式下校验存储版本，防止遍历过程中对容器做结构性修改。
             </summary>
         </member>
+        <member name="T:Lattice.ECS.Core.ActiveComponentIterator`1">
+            <summary>
+            仅遍历 active 条目的组件迭代器。
+            相比通用块迭代器，它会跳过延迟删除中的条目，适合 Query 等查询热路径。
+            </summary>
+        </member>
         <member name="T:Lattice.ECS.Core.PrefetchedBlockIterator`1">
             <summary>
             带预取优化的块迭代器。
@@ -648,34 +643,39 @@
         <member name="F:Lattice.ECS.Core.ComponentFlags.HideInDump">
             <summary>在编辑器的帧转储中隐藏</summary>
         </member>
-        <member name="T:Lattice.ECS.Core.ComponentTypeId`1">
+        <member name="T:Lattice.ECS.Core.ComponentSerializationMode">
             <summary>
-            组件类型 ID - 编译期常量（FrameSync 风格）
+            组件序列化场景。
             </summary>
         </member>
-        <member name="P:Lattice.ECS.Core.ComponentTypeId`1.Id">
-            <summary>类型 ID（0 表示未初始化）</summary>
+        <member name="F:Lattice.ECS.Core.ComponentSerializationMode.Default">
+            <summary>常规序列化。</summary>
         </member>
-        <member name="P:Lattice.ECS.Core.ComponentTypeId`1.IsRegistered">
-            <summary>是否已注册</summary>
+        <member name="F:Lattice.ECS.Core.ComponentSerializationMode.Prediction">
+            <summary>预测帧序列化。</summary>
         </member>
-        <member name="M:Lattice.ECS.Core.ComponentTypeId`1.Register(System.Int32)">
+        <member name="F:Lattice.ECS.Core.ComponentSerializationMode.Checkpoint">
+            <summary>检查点/快照序列化。</summary>
+        </member>
+        <member name="T:Lattice.ECS.Core.ComponentTypeInfo">
             <summary>
-            注册组件类型（必须在首次使用前调用）
-            </summary>
-        </member>
-        <member name="M:Lattice.ECS.Core.ComponentTypeId`1.#cctor">
-            <summary>
-            静态构造函数 - 延迟检查
+            组件类型元数据。
             </summary>
         </member>
         <member name="T:Lattice.ECS.Core.ComponentRegistry">
             <summary>
-            组件类型注册器
+            组件类型注册中心，负责维护运行期组件元数据。
             </summary>
         </member>
-        <member name="M:Lattice.ECS.Core.ComponentRegistry.Register``1">
-            <summary>注册组件类型（自动分配 ID）</summary>
+        <member name="T:Lattice.ECS.Core.ComponentRegistry.Builder">
+            <summary>
+            增量式注册 Builder，接口形态向 FrameSync 对齐。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Core.ComponentTypeId`1">
+            <summary>
+            组件类型 ID 与元数据缓存（FrameSync 风格）。
+            </summary>
         </member>
         <member name="M:Lattice.ECS.Core.ComponentRegistry.EnsureRegistered``1">
             <summary>确保组件类型已注册。</summary>
@@ -807,27 +807,25 @@
         </member>
         <member name="T:Lattice.ECS.Core.Filter`1">
             <summary>
-            组件过滤器 - FrameSync 风格的高效查询，支持 Block 批量迭代
-            
-            性能特性：
-            1. 自动选择组件数最少的类型作为主遍历源
-            2. 支持 Block 级别的批量迭代，缓存友好
-            3. 零分配遍历（ref struct）
+            旧版单组件 Filter 兼容层。
+            新代码应直接使用 <see cref="M:Lattice.ECS.Core.Frame.Query``1" />。
             </summary>
         </member>
         <member name="M:Lattice.ECS.Core.Filter`1.GetBlockIterator">
             <summary>
-            获取 Block 迭代器（批量遍历）
+            获取底层 Block 迭代器，供旧调用方继续使用。
             </summary>
         </member>
         <member name="T:Lattice.ECS.Core.Filter`2">
             <summary>
-            双组件过滤器 - 支持 Block 批量迭代
+            旧版双组件 Filter 兼容层。
+            新代码应直接使用 <see cref="M:Lattice.ECS.Core.Frame.Query``2" />。
             </summary>
         </member>
         <member name="T:Lattice.ECS.Core.Filter`3">
             <summary>
-            三组件过滤器
+            旧版三组件 Filter 兼容层。
+            新代码应直接使用 <see cref="M:Lattice.ECS.Core.Frame.Query``3" />。
             </summary>
         </member>
         <member name="T:Lattice.ECS.Core.Frame">
@@ -874,8 +872,26 @@
         <member name="F:Lattice.ECS.Core.Frame._storageInitialized">
             <summary>组件存储是否已初始化</summary>
         </member>
+        <member name="F:Lattice.ECS.Core.Frame._pendingRemovalEntities">
+            <summary>延迟删除队列中的实体。</summary>
+        </member>
+        <member name="F:Lattice.ECS.Core.Frame._pendingRemovalTypeIds">
+            <summary>延迟删除队列中的组件类型 ID。</summary>
+        </member>
+        <member name="F:Lattice.ECS.Core.Frame._pendingRemovalCount">
+            <summary>延迟删除队列数量。</summary>
+        </member>
+        <member name="F:Lattice.ECS.Core.Frame._pendingRemovalCapacity">
+            <summary>延迟删除队列容量。</summary>
+        </member>
         <member name="F:Lattice.ECS.Core.Frame._allocator">
             <summary>内存分配器</summary>
+        </member>
+        <member name="F:Lattice.ECS.Core.Frame._owningGroups">
+            <summary>显式注册的 Owning Group 索引。</summary>
+        </member>
+        <member name="F:Lattice.ECS.Core.Frame._owningGroupBindings">
+            <summary>Owning Group 生命周期维护列表。</summary>
         </member>
         <member name="P:Lattice.ECS.Core.Frame.Tick">
             <summary>当前帧号</summary>
@@ -907,6 +923,11 @@
         <member name="M:Lattice.ECS.Core.Frame.Add``1(Lattice.Core.EntityRef,``0@)">
             <summary>
             添加组件 - O(1) 均摊
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.Frame.Set``1(Lattice.Core.EntityRef,``0@)">
+            <summary>
+            设置组件值；若组件不存在则添加。
             </summary>
         </member>
         <member name="M:Lattice.ECS.Core.Frame.Remove``1(Lattice.Core.EntityRef)">
@@ -971,7 +992,8 @@
         </member>
         <member name="M:Lattice.ECS.Core.Frame.GetStorage``1(System.Int32)">
             <summary>
-            获取组件存储（用于 Filter）
+            获取组件存储。
+            供 Query、兼容层 Filter 以及底层高性能遍历入口使用。
             </summary>
         </member>
         <member name="M:Lattice.ECS.Core.Frame.GetComponentMaskPointer(System.Int32)">
@@ -979,9 +1001,20 @@
             获取实体组件位图指针
             </summary>
         </member>
+        <member name="M:Lattice.ECS.Core.Frame.HasComponentBit(System.Int32,System.Int32)">
+            <summary>
+            检查实体位图上是否仍然持有指定组件。
+            </summary>
+        </member>
         <member name="M:Lattice.ECS.Core.Frame.MatchesFilter(Lattice.Core.EntityRef,Lattice.ECS.Core.ComponentFilter@)">
             <summary>
-            检查实体是否匹配组件过滤器
+            检查实体是否匹配位图组件过滤器。
+            该 API 主要用于动态条件匹配，不替代强类型 Query。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.Frame.CommitDeferredRemovals">
+            <summary>
+            提交所有延迟删除。
             </summary>
         </member>
         <member name="M:Lattice.ECS.Core.Frame.GetComponentBlockIterator``1">
@@ -992,6 +1025,52 @@
         <member name="M:Lattice.ECS.Core.Frame.GetComponentBlockIterator``1(System.Int32,System.Int32)">
             <summary>
             获取组件块迭代器（范围版）
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.Frame.Query``1">
+            <summary>
+            获取单组件查询。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.Frame.Query``2">
+            <summary>
+            获取双组件查询。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.Frame.Query``3">
+            <summary>
+            获取三组件查询。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.Frame.RegisterOwningGroup``2">
+            <summary>
+            注册并维护双组件 Owning Group。
+            仅建议用于极少数稳定热点系统。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.Frame.RegisterOwningGroup``3">
+            <summary>
+            注册并维护三组件 Owning Group。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.Frame.GetOwningGroup``2">
+            <summary>
+            获取已注册的双组件 Owning Group。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.Frame.GetOwningGroup``3">
+            <summary>
+            获取已注册的三组件 Owning Group。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.Frame.TryGetOwningGroup``2(Lattice.ECS.Core.OwningGroup{``0,``1}@)">
+            <summary>
+            尝试获取已注册的双组件 Owning Group。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.Frame.TryGetOwningGroup``3(Lattice.ECS.Core.OwningGroup{``0,``1,``2}@)">
+            <summary>
+            尝试获取已注册的三组件 Owning Group。
             </summary>
         </member>
         <member name="M:Lattice.ECS.Core.Frame.GetStoragePointer``1">
@@ -1172,9 +1251,39 @@
             逐个迭代（保持接口一致）
             </summary>
         </member>
+        <member name="M:Lattice.ECS.Core.FullOwningGroup`2.GetAtLinearIndex(System.Int32,Lattice.Core.EntityRef@,`0*@,`1*@)">
+            <summary>
+            按 0 基 dense 索引直接访问组内条目。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.FullOwningGroup`2.RemoveAtLinearIndex(System.Int32,Lattice.Core.EntityRef@)">
+            <summary>
+            按 0 基 dense 索引删除条目，并返回被交换到该位置的实体。
+            </summary>
+        </member>
         <member name="T:Lattice.ECS.Core.FullOwningGroup`3">
             <summary>
             三组件 Full-Owning Group
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.FullOwningGroup`3.NextBlock(System.Int32*,Lattice.Core.EntityRef*@,`0*@,`1*@,`2*@,System.Int32@)">
+            <summary>
+            Block 迭代器 - 批量访问。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.FullOwningGroup`3.Next(System.Int32*,Lattice.Core.EntityRef@,`0*@,`1*@,`2*@)">
+            <summary>
+            逐个迭代。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.FullOwningGroup`3.GetAtLinearIndex(System.Int32,Lattice.Core.EntityRef@,`0*@,`1*@,`2*@)">
+            <summary>
+            按 0 基 dense 索引直接访问组内条目。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.FullOwningGroup`3.RemoveAtLinearIndex(System.Int32,Lattice.Core.EntityRef@)">
+            <summary>
+            按 0 基 dense 索引删除条目，并返回被交换到该位置的实体。
             </summary>
         </member>
         <member name="T:Lattice.ECS.Core.GenerateComponentAttribute">
@@ -1242,6 +1351,17 @@
             用于标识 ECS 组件类型
             </summary>
         </member>
+        <member name="T:Lattice.ECS.Core.OwningGroup`2">
+            <summary>
+            显式注册的双组件 Owning Group。
+            该结构由 Frame 自动维护，适合极少数固定热点系统的高频遍历。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Core.OwningGroup`3">
+            <summary>
+            显式注册的三组件 Owning Group。
+            </summary>
+        </member>
         <member name="T:Lattice.ECS.Core.Parallel.JobDelegate">
             <summary>
             任务委托 - 多线程执行的回调
@@ -1279,7 +1399,8 @@
         </member>
         <member name="T:Lattice.ECS.Core.Parallel.ParallelFilter`1">
             <summary>
-            并行 Filter - 多线程安全遍历组件
+            并行查询兼容层。
+            为既有并行遍历调用方保留外形，内部按致密索引顺序只读扫描组件。
             
             使用方式：
             1. 将迭代范围分割给多个线程
@@ -1301,9 +1422,8 @@
         </member>
         <member name="T:Lattice.ECS.Core.Parallel.FrameReadOnly">
             <summary>
-            线程安全的只读 Frame 访问
-            
-            类似 FrameSync 的 FrameThreadSafe
+            线程安全的只读 Frame 访问视图。
+            新代码可直接在该视图上使用 Query API 构建只读查询。
             </summary>
         </member>
         <member name="T:Lattice.ECS.Core.Parallel.AtomicCounter">
@@ -1314,6 +1434,21 @@
         <member name="T:Lattice.ECS.Core.Parallel.AtomicFlagArray">
             <summary>
             原子标志数组 - 多线程标记（如裁剪系统）
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Core.Query`1">
+            <summary>
+            单组件查询。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Core.Query`2">
+            <summary>
+            双组件查询。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Core.Query`3">
+            <summary>
+            三组件查询。
             </summary>
         </member>
         <member name="T:Lattice.ECS.Core.SIMDUtils">
@@ -1566,10 +1701,19 @@
              </summary>
         </member>
         <member name="F:Lattice.ECS.Core.Storage`1.DefaultBlockCapacity">
-            <summary>默认 Block 容量（与 FrameSync 一致）</summary>
+            <summary>自动推导 Block 容量。</summary>
+        </member>
+        <member name="F:Lattice.ECS.Core.Storage`1.TargetBlockBytes">
+            <summary>Block 数据面的目标字节数。</summary>
         </member>
         <member name="F:Lattice.ECS.Core.Storage`1.InitialBlockListCapacity">
             <summary>Block 列表初始容量</summary>
+        </member>
+        <member name="F:Lattice.ECS.Core.Storage`1.MinBlockCapacity">
+            <summary>自动推导时允许的最小 Block 容量。</summary>
+        </member>
+        <member name="F:Lattice.ECS.Core.Storage`1.MaxBlockCapacity">
+            <summary>自动推导时允许的最大 Block 容量。</summary>
         </member>
         <member name="F:Lattice.ECS.Core.Storage`1.TOMBSTONE">
             <summary>稀疏数组 Tombstone 标记</summary>
@@ -1620,6 +1764,12 @@
         </member>
         <member name="P:Lattice.ECS.Core.Storage`1.UsedCount">
             <summary>实际使用中的组件数量（减去待删除）</summary>
+        </member>
+        <member name="P:Lattice.ECS.Core.Storage`1.HasEntryStateTracking">
+            <summary>是否为条目状态分配了独立跟踪存储。</summary>
+        </member>
+        <member name="P:Lattice.ECS.Core.Storage`1.HasPendingQueueTracking">
+            <summary>是否为延迟删除队列索引分配了独立跟踪存储。</summary>
         </member>
         <member name="P:Lattice.ECS.Core.Storage`1.SingletonEntity">
             <summary>单例实体引用（仅单例模式有效）</summary>
@@ -1696,6 +1846,16 @@
             标记组件为待删除（延迟删除模式）
             </summary>
         </member>
+        <member name="M:Lattice.ECS.Core.Storage`1.CancelPendingRemoval(Lattice.Core.EntityRef)">
+            <summary>
+            取消待删除状态，允许组件在同一帧内恢复。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.Storage`1.CommitRemoval(Lattice.Core.EntityRef)">
+            <summary>
+            提交单个待删除组件。
+            </summary>
+        </member>
         <member name="M:Lattice.ECS.Core.Storage`1.GetSingletonPointer">
             <summary>
             获取单例组件指针（仅单例模式有效）
@@ -1716,6 +1876,12 @@
             获取组件指针 - O(1)
             </summary>
         </member>
+        <member name="M:Lattice.ECS.Core.Storage`1.GetPointerAssumePresent(Lattice.Core.EntityRef)">
+            <summary>
+            在调用方已经通过 Frame 位图确认组件存在时，直接按实体索引读取组件指针。
+            该路径跳过额外的 EntityRef 回读校验，用于 Query 热路径。
+            </summary>
+        </member>
         <member name="M:Lattice.ECS.Core.Storage`1.TryGet(Lattice.Core.EntityRef,`0@)">
             <summary>
             尝试获取组件 - O(1)
@@ -1724,6 +1890,21 @@
         <member name="M:Lattice.ECS.Core.Storage`1.Has(Lattice.Core.EntityRef)">
             <summary>
             检查是否存在 - O(1)
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.Storage`1.IsPendingRemoval(Lattice.Core.EntityRef)">
+            <summary>
+            检查组件是否处于待删除状态。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.Storage`1.GetPendingQueueIndex(Lattice.Core.EntityRef)">
+            <summary>
+            获取待删除队列索引。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.Storage`1.SetPendingQueueIndex(Lattice.Core.EntityRef,System.Int32)">
+            <summary>
+            设置待删除队列索引。
             </summary>
         </member>
         <member name="M:Lattice.ECS.Core.Storage`1.GetBlockData(System.Int32)">
@@ -1739,6 +1920,43 @@
         <member name="M:Lattice.ECS.Core.Storage`1.GetBlockItemCount(System.Int32)">
             <summary>
             获取 Block 中有效项的数量
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.Storage`1.GetEntityRefByIndex(System.Int32)">
+            <summary>
+            获取指定全局索引上的实体引用。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.Storage`1.GetDataPointerByIndex(System.Int32)">
+            <summary>
+            获取指定全局索引上的组件数据指针。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.Storage`1.GetDenseEntryByLinearIndex(System.Int32,Lattice.Core.EntityRef@,`0*@)">
+            <summary>
+            按 0 基 dense 索引访问条目。
+            该辅助方法用于把对外的连续遍历索引映射到内部 1 基稠密存储布局。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.Storage`1.IsDenseEntryActive(System.Int32)">
+            <summary>
+            检查指定全局索引上的条目是否为 active。
+            没有启用状态跟踪时，非空 dense 条目都视为 active。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.Storage`1.CopyDenseEntities(Lattice.Core.EntityRef[])">
+            <summary>
+            将密集实体数组复制到托管缓冲区。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.Storage`1.CopyDenseComponentBytes(System.Byte[])">
+            <summary>
+            将密集组件数据复制到字节缓冲区。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.Storage`1.RestoreDenseSnapshot(Lattice.Core.EntityRef[],System.Byte[])">
+            <summary>
+            使用原始密集快照恢复组件存储。
             </summary>
         </member>
         <member name="M:Lattice.ECS.Core.Storage`1.GetEntityRefByGlobalIndex(System.Int32)">
@@ -1888,22 +2106,14 @@
         </member>
         <member name="T:Lattice.ECS.Framework.FilterOptimized`1">
             <summary>
-            优化版 Filter - 集成裁剪和位图检查
-            
-            相比基础版 Filter 的改进：
-            1. 预计算组件位图掩码（避免多次 Storage.Has 调用）
-            2. 集成 CullingSystem 检查
-            3. 批量位图检查（一次检查 64 个实体）
+            旧版带裁剪能力的单组件 Filter 兼容层。
+            新代码建议直接使用 <see cref="M:Lattice.ECS.Core.Frame.Query``1" /> 并在循环中叠加裁剪判断。
             </summary>
         </member>
         <member name="T:Lattice.ECS.Framework.FilterOptimized`2">
             <summary>
-            双组件优化 Filter - 使用位图预检查
-            </summary>
-        </member>
-        <member name="M:Lattice.ECS.Framework.FilterOptimized`2.Enumerator.HasComponentBit(System.Int32,System.Int32)">
-            <summary>
-            使用位图检查组件是否存在（比 Storage.Has 更快）
+            旧版带裁剪能力的双组件 Filter 兼容层。
+            新代码建议直接使用 <see cref="M:Lattice.ECS.Core.Frame.Query``2" /> 并在循环中叠加裁剪判断。
             </summary>
         </member>
         <member name="T:Lattice.ECS.Framework.ISystem">
@@ -2165,6 +2375,11 @@
         <member name="T:Lattice.ECS.Serialization.IBitStream">
             <summary>
             位流接口（对齐 FrameSync IBitStream）
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Serialization.BitStreamAdapter">
+            <summary>
+            基于现有 Core.BitStream 的序列化适配器。
             </summary>
         </member>
         <member name="T:Lattice.ECS.Serialization.FrameSerializer">

@@ -40,10 +40,11 @@ public unsafe class MovementSystem : ISystem
     public void OnUpdate(Frame frame, FP deltaTime)
     {
         // 所有数据来自 frame 参数
-        var filter = frame.Filter<Transform, Velocity>();
-        while (filter.NextUnsafe(out var t, out var v))
+        var query = frame.Query<Transform, Velocity>();
+        var enumerator = query.GetEnumerator();
+        while (enumerator.MoveNext())
         {
-            t->Position += v->Value * deltaTime;
+            enumerator.Component1.Position += enumerator.Component2.Value * deltaTime;
         }
     }
 }

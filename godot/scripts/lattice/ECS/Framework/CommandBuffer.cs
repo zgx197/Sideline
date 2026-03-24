@@ -55,6 +55,7 @@ namespace Lattice.ECS.Framework
 
         // 分配器
         private Allocator* _allocator;
+        private bool _ownsAllocator;
 
         /// <summary>是否为空</summary>
         public bool IsEmpty => _writePosition == 0;
@@ -86,6 +87,7 @@ namespace Lattice.ECS.Framework
             _writePosition = 0;
             _createdCount = 0;
             _createdCapacity = 64;
+            _ownsAllocator = false;
 
             _buffer = (byte*)allocator->Alloc(capacity);
             _createdEntities = (EntityRef*)allocator->Alloc(sizeof(EntityRef) * _createdCapacity);
@@ -100,6 +102,14 @@ namespace Lattice.ECS.Framework
             _createdEntities = null;
             _writePosition = 0;
             _createdCount = 0;
+
+            if (_ownsAllocator && _allocator != null)
+            {
+                Allocator.Destroy(_allocator);
+            }
+
+            _allocator = null;
+            _ownsAllocator = false;
         }
 
         /// <summary>
@@ -151,7 +161,8 @@ namespace Lattice.ECS.Framework
         /// </summary>
         public void DestroyEntity(EntityRef entity)
         {
-            EnsureSpace(sizeof(CommandHeader));
+            int payloadSize = sizeof(EntityRef);
+            EnsureSpace(sizeof(CommandHeader) + payloadSize);
 
             var header = new CommandHeader
             {
@@ -161,15 +172,17 @@ namespace Lattice.ECS.Framework
             };
 
             WriteHeader(&header);
+            WriteData(&entity, payloadSize);
         }
 
         /// <summary>
         /// 添加组件命令（泛型版本，需要编译时知道类型）
         /// </summary>
-        public void AddComponent<T>(EntityRef entity, T component) where T : unmanaged
+        public void AddComponent<T>(EntityRef entity, T component) where T : unmanaged, IComponent
         {
             int componentSize = sizeof(T);
-            EnsureSpace(sizeof(CommandHeader) + componentSize);
+            int payloadSize = sizeof(EntityRef) + componentSize;
+            EnsureSpace(sizeof(CommandHeader) + payloadSize);
 
             var header = new CommandHeader
             {
@@ -179,15 +192,17 @@ namespace Lattice.ECS.Framework
             };
 
             WriteHeader(&header);
+            WriteData(&entity, sizeof(EntityRef));
             WriteData(&component, componentSize);
         }
 
         /// <summary>
         /// 移除组件命令
         /// </summary>
-        public void RemoveComponent<T>(EntityRef entity) where T : unmanaged
+        public void RemoveComponent<T>(EntityRef entity) where T : unmanaged, IComponent
         {
-            EnsureSpace(sizeof(CommandHeader));
+            int payloadSize = sizeof(EntityRef);
+            EnsureSpace(sizeof(CommandHeader) + payloadSize);
 
             var header = new CommandHeader
             {
@@ -197,15 +212,17 @@ namespace Lattice.ECS.Framework
             };
 
             WriteHeader(&header);
+            WriteData(&entity, payloadSize);
         }
 
         /// <summary>
         /// 设置组件命令（替换现有组件）
         /// </summary>
-        public void SetComponent<T>(EntityRef entity, T component) where T : unmanaged
+        public void SetComponent<T>(EntityRef entity, T component) where T : unmanaged, IComponent
         {
             int componentSize = sizeof(T);
-            EnsureSpace(sizeof(CommandHeader) + componentSize);
+            int payloadSize = sizeof(EntityRef) + componentSize;
+            EnsureSpace(sizeof(CommandHeader) + payloadSize);
 
             var header = new CommandHeader
             {
@@ -215,6 +232,7 @@ namespace Lattice.ECS.Framework
             };
 
             WriteHeader(&header);
+            WriteData(&entity, sizeof(EntityRef));
             WriteData(&component, componentSize);
         }
 
@@ -235,8 +253,21 @@ namespace Lattice.ECS.Framework
 
             while (ptr < end)
             {
+                if (end - ptr < sizeof(CommandHeader))
+                {
+                    throw new InvalidOperationException("Command buffer ended before a full header could be read.");
+                }
+
                 var header = *(CommandHeader*)ptr;
                 ptr += sizeof(CommandHeader);
+                byte* payload = ptr;
+                if (payload + header.PayloadSize > end)
+                {
+                    throw new InvalidOperationException($"Command payload exceeds buffer bounds. Type={header.Type}, PayloadSize={header.PayloadSize}");
+                }
+
+                ValidatePayloadSize(header);
+                ptr += header.PayloadSize;
 
                 switch (header.Type)
                 {
@@ -284,6 +315,7 @@ namespace Lattice.ECS.Framework
                 }
             }
 
+            frame.CommitDeferredRemovals();
             Clear();
         }
 
@@ -310,9 +342,24 @@ namespace Lattice.ECS.Framework
         /// </summary>
         public void Deserialize(byte[] data)
         {
+            if (data == null)
+            {
+                throw new ArgumentNullException(nameof(data));
+            }
+
+            if (data.Length < sizeof(int))
+            {
+                throw new InvalidOperationException("Serialized command buffer is too short.");
+            }
+
             fixed (byte* ptr = data)
             {
                 int size = *(int*)ptr;
+                if (size < 0 || size > data.Length - sizeof(int))
+                {
+                    throw new InvalidOperationException($"Serialized command buffer size is invalid: {size}");
+                }
+
                 EnsureSpace(size);
                 Buffer.MemoryCopy(ptr + sizeof(int), _buffer, size, size);
                 _writePosition = size;

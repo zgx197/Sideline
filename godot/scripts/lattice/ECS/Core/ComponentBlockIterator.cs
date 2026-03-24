@@ -14,7 +14,7 @@ namespace Lattice.ECS.Core
     /// 组件块迭代器。
     /// 通过按块批量返回实体引用与组件指针，尽量提升缓存命中率并降低循环中的分支与函数调用开销。
     /// </summary>
-    public unsafe struct ComponentBlockIterator<T> where T : unmanaged
+    public unsafe struct ComponentBlockIterator<T> where T : unmanaged, IComponent
     {
         private readonly Storage<T>* _storage;
         private readonly int _version;
@@ -166,10 +166,89 @@ namespace Lattice.ECS.Core
     }
 
     /// <summary>
+    /// 仅遍历 active 条目的组件迭代器。
+    /// 相比通用块迭代器，它会跳过延迟删除中的条目，适合 Query 等查询热路径。
+    /// </summary>
+    public unsafe struct ActiveComponentIterator<T> where T : unmanaged, IComponent
+    {
+        private readonly Storage<T>* _storage;
+        private readonly int _version;
+        private readonly int _blockCapacity;
+        private int _currentBlock;
+        private int _currentOffset;
+        private int _remainingActive;
+
+        internal ActiveComponentIterator(Storage<T>* storage)
+        {
+            _storage = storage;
+            _version = storage->Version;
+            _blockCapacity = storage->BlockItemCapacity;
+            _currentBlock = 0;
+            _currentOffset = 1;
+            _remainingActive = storage->UsedCount;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public bool Next(out EntityRef entity, out T* component)
+        {
+            ValidateVersion();
+
+            while (_remainingActive > 0 && _currentBlock < _storage->BlockCount)
+            {
+                if (_currentOffset >= _blockCapacity)
+                {
+                    _currentBlock++;
+                    _currentOffset = 0;
+                    continue;
+                }
+
+                int blockItems = _storage->GetBlockItemCount(_currentBlock);
+                while (_currentOffset < blockItems)
+                {
+                    int globalIndex = (_currentBlock * _blockCapacity) + _currentOffset;
+                    EntityRef currentEntity = _storage->GetBlockEntityRefs(_currentBlock)[_currentOffset];
+                    T* currentComponent = &_storage->GetBlockData(_currentBlock)[_currentOffset];
+                    _currentOffset++;
+
+                    if (!_storage->IsDenseEntryActive(globalIndex))
+                    {
+                        continue;
+                    }
+
+                    _remainingActive--;
+                    entity = currentEntity;
+                    component = currentComponent;
+                    return true;
+                }
+
+                _currentBlock++;
+                _currentOffset = 0;
+            }
+
+            entity = EntityRef.None;
+            component = null;
+            return false;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void ValidateVersion()
+        {
+#if DEBUG
+            if (_storage->Version != _version)
+            {
+                throw new InvalidOperationException(
+                    $"Cannot modify Storage<{typeof(T).Name}> while iterating over it. " +
+                    "Use a command buffer or defer modifications.");
+            }
+#endif
+        }
+    }
+
+    /// <summary>
     /// 带预取优化的块迭代器。
     /// 在遍历当前块时尝试提前把后续块拉入缓存，以降低大批量顺序遍历的等待成本。
     /// </summary>
-    public unsafe struct PrefetchedBlockIterator<T> where T : unmanaged
+    public unsafe struct PrefetchedBlockIterator<T> where T : unmanaged, IComponent
     {
         private readonly Storage<T>* _storage;
         private readonly int _version;
