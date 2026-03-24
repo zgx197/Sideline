@@ -1,832 +1,783 @@
-# Lattice ECS System 设计
+# Lattice ECS System 设计（Phase D5 已完成）
 
 ## 文档目的
 
-本文档用于基于 FrameSync 的 `System` 设计经验，重新梳理 Lattice 的 `System` 运行层设计。
+本文档用于正式定义 Lattice 当前阶段的 `System` 基座设计。
 
-目标不是照搬 FrameSync，而是提取其中真正适合 Lattice 当前阶段的部分，建立一套：
+这里的重点不是继续讨论“未来可能长成什么样的完整 system 框架”，而是先把当前已经进入主线的 system runtime 语义写清楚：
 
-- 与现有 `Frame / Storage / Query / OwningGroup` 基座一致
-- 支持确定性与回滚
-- 先单线程闭环，再逐步扩展到并行
-- 对未来热重载、调试工具、系统分组具备扩展空间
+- `ISystem / SystemBase / SystemGroup / SystemScheduler` 各自负责什么
+- 系统生命周期与启停规则是什么
+- 调度顺序如何稳定确定
+- `SystemMetadata / SystemNodeInfo / Trace` 的正式定位是什么
+- `System` 与 `Frame / Query / CommandBuffer / SimulationSession` 的依赖边界是什么
 
----
+本文档建立在前面的底座文档之上，尤其直接依赖：
 
-## 当前现状
-
-### 已具备
-
-Lattice 当前主线已经拥有一批可直接支撑系统调度的数据层能力：
-
-- `Frame`
-- `Storage<T>`
-- `Filter<T...>`
-- `ComponentBlockIterator<T>`
-- `FrameSnapshot`
-- `CommandBuffer`
-
-这些能力已经足以支撑 `System` 主线运行。
-
-### 当前完成度判断
-
-如果只看 `System` 自身，不考虑它和 `Session / Snapshot / Rollback / Network` 的整合：
-
-- 作为“单线程确定性主线程 system 运行层”，当前完成度约为 `70 / 100`
-- 作为“完整的 ECS system 框架”，当前完成度约为 `40 / 100`
-
-这意味着：
-
-**Lattice 的 `System` 已经从“待设计概念”进入“正式可用的第一版 runtime”，但距离成熟 system 框架还有明显差距。**
-
-### 已经落地的能力
-
-当前已经具备：
-
-- 正式主线接口：`ISystem`
-- 基础基类：`SystemBase`
-- 层级容器：`SystemGroup`
-- 单线程固定顺序调度器：`SystemScheduler`
-- `OnEnabled / OnDisabled` 生命周期回调
-- 调度器状态机约束与更新期变更保护
-- 系统树 / 执行顺序 / 节点查询快照接口
-- 正式 `SystemMetadata` 元数据：`Order / Kind / Category / DebugCategory / AllowRuntimeToggle`
-- 基于 `Order` 的稳定排序，注册顺序作为并列兜底
-- `SystemScheduler` trace hook：`CurrentSystem / Trace / SystemSchedulerTraceEvent`
-- 生命周期与逐帧更新的 enter / exit trace 事件
-- `ParallelReserved` 执行类型的显式边界校验
-- 普通系统默认入口：`frame.Filter<T...>()`
-- 热点系统低层入口：`GetComponentBlockIterator<T>()`
-- 基本延迟结构修改闭环：`CommandBuffer`
-- 调度测试与系统集成测试
-
-### 当前还缺什么
-
-下面这些能力，仍然是 `System` 自身没有做完的，而不是外部模块问题：
-
-- system 分类边界仍未正式分层
-- 调度顺序还没有扩展到 before / after 与阶段化表达
-- trace hook 还没有进一步扩展为正式 profiler / timeline / 统计采样接口
-- 并行 system 目前只有显式拒绝边界，还没有真正的并行调度抽象
+- [FrameStorageDesign.md](/d:/UGit/Sideline/godot/scripts/lattice/ECS/FrameStorageDesign.md)
+- [QueryDesign.md](/d:/UGit/Sideline/godot/scripts/lattice/ECS/QueryDesign.md)
+- [CommandBufferDesign.md](/d:/UGit/Sideline/godot/scripts/lattice/ECS/CommandBufferDesign.md)
 
 ---
 
-## FrameSync 的可借鉴设计
+## 当前定位
 
-参考 FrameSync 的系统层，最有价值的不是“类名”，而是下面几条结构性经验。
+在 Lattice 当前底座链路中，`System` 位于：
 
-### 1. System 不是单一接口，而是分层体系
+```text
+Math
+  ↓
+Component
+  ↓
+Frame / Storage
+  ↓
+Query
+  ↓
+CommandBuffer
+  ↓
+System
+  ↓
+SimulationSession
+```
 
-FrameSync 的系统层不是只有一个 `ISystem`，而是：
+它的职责非常明确：
 
+- 定义系统对象的生命周期与元数据
+- 定义系统树与系统组层级
+- 定义单线程固定顺序调度语义
+- 为上层 session 提供稳定的“逐 tick 执行一组系统”能力
+
+它当前不负责：
+
+- 多帧历史管理
+- verified / predicted 双帧协调
+- 输入缓冲策略
+- rollback / resim 策略
+- 网络调度
+- 引擎层运行时桥接
+
+---
+
+## 设计目标
+
+### 1. 让 system runtime 成为正式可依赖的基础设施
+
+当前 `System` 不再只是一些零散的调用习惯，而是已经有了正式主线：
+
+- `ISystem`
 - `SystemBase`
-- `SystemMainThread`
-- `SystemMainThreadFilter<T>`
-- `SystemThreadedFilter<T>`
-- `SystemSignalsOnly`
 - `SystemGroup`
-- `SystemsConfig`
-- `DeterministicSystemSetup`
+- `SystemScheduler`
 
-这说明一个成熟的系统层需要同时解决：
+因此文档必须把这条主线收敛成明确规则，而不是继续停留在“建议这样做”的层面。
 
-- 生命周期
-- 调度入口
-- 分组层级
-- 启停控制
-- 数据驱动装配
-- 主线程与并行线程的职责分离
+### 2. 保持系统层只关心“执行”，不反向承载状态
 
-### 2. System 生命周期必须和启停控制绑定
-
-FrameSync 的 `SystemBase` 支持：
-
-- `OnInit`
-- `OnEnabled`
-- `OnDisabled`
-- `OnSchedule`
-
-并且系统本身具备：
-
-- 运行时索引
-- 父子层级
-- 启用 / 禁用状态
-
-这意味着：
-
-- “系统是否存在”
-- “系统是否启用”
-- “系统何时参与调度”
-
-应该是三件不同的事情。
-
-### 3. 系统分组是正式概念，不是临时约定
-
-FrameSync 中系统可以形成层级：
-
-- 根系统
-- 子系统
-- 组系统
-
-这带来的价值是：
-
-- 可以整体开关一组系统
-- 可以保证局部执行顺序
-- 可以给调试与 profiler 提供层级上下文
-
-### 4. 系统装配要有“代码入口”与“配置入口”
-
-FrameSync 不是直接把系统写死，而是通过：
-
-- `SystemsConfig`
-- `SystemSetup`
-
-来实例化系统列表。
-
-这意味着系统层最好分成：
-
-- 运行时系统定义
-- 系统注册 / 装配入口
-
-### 5. 并行系统不该和普通系统混成一种抽象
-
-FrameSync 将：
-
-- 主线程系统
-- 线程化 Filter 系统
-
-明确区分开来。
-
-这个拆分对 Lattice 也非常重要，因为：
-
-- 当前 `Query` 默认是普通路径
-- `OwningGroup` 是热点路径
-- `JobSystem / ParallelFilter` 已经存在
-
-如果未来要支持并行系统，必须从抽象层面把“主线程系统”和“并行系统”分开。
-
----
-
-## Lattice 不应直接照搬的部分
-
-虽然 FrameSync 的方向值得参考，但 Lattice 不应该原样复制。
-
-### 1. 不要先做过重的配置资产体系
-
-FrameSync 有 Unity 资产化的 `SystemsConfig`，这是它生态的一部分。
-
-Lattice 当前更适合：
-
-- 先以纯 C# 代码方式注册系统
-- 等 System 主线稳定后，再补配置驱动层
-
-### 2. 不要先做过多派生类
-
-FrameSync 的系统基类很多，是因为它已经成熟。
-
-Lattice 当前阶段如果直接引入：
-
-- `SystemMainThread`
-- `SystemThreadedFilter<T>`
-- `SystemSignalsOnly`
-- `SystemGroup`
-- `SystemArrayComponent<T>`
-
-会导致在真正闭环前就过度设计。
-
-### 3. 不要让 Session 先于 Scheduler 落地
-
-FrameSync 的会话层建立在成熟系统层之上。
-
-Lattice 当前更合理的顺序应该反过来：
-
-1. 先做 `ISystem`
-2. 再做 `SystemScheduler`
-3. 再把 Session 接回去
-
-而不是继续在旧 `Session.cs` 上堆功能。
-
----
-
-## Lattice 的目标设计
-
-## 设计原则
-
-Lattice 的 System 设计应遵循下面 6 条原则。
-
-### 1. System 无状态
-
-系统对象不持有可变模拟状态。
-
-所有游戏状态都应存于：
+根据当前底座设计，游戏状态应保存在：
 
 - `Frame`
-- 组件
-- 全局组件 / 单例组件
+- 组件数据
+- 单例组件或其他 frame 内状态
 
-这样做的好处：
+而不是系统对象本身。
 
-- 天然适配回滚
-- 适配快照恢复
-- 更容易支持热重载
+因此 `System` 当前正式设计必须保持：
 
-### 2. 第二阶段默认入口是 `frame.Filter<T...>()`
+- 系统是行为承载者
+- `Frame` 才是状态承载者
 
-普通系统应以：
+### 3. 先稳定单线程固定顺序，再谈并行与更复杂调度
 
-- `frame.Filter<T...>()`
-- `frame.GetComponentBlockIterator<T>()`
-
-作为默认数据访问入口。
-
-其中：
-
-- `frame.Filter<T...>()` 用于大多数普通系统
-- `GetComponentBlockIterator<T>()` 仍作为热点系统的低层入口
-
-当前主线尚未提供正式 `Query<T...>` API，因此文档与示例不应把 `Query` 写成既成事实。
-
-### 3. 热点专用入口留待第二阶段评估
-
-只有极少数高频固定系统，未来才考虑使用更激进的热点路径，例如：
-
-- 更窄的专用遍历器
-- 显式 owning group / hot bundle
-- 特定系统的 block zipped fast path
-
-### 4. 调度顺序必须显式且稳定
-
-System 层首先要保证：
-
-- 顺序明确
-- 可预测
-- 可测试
-
-而不是优先追求自动推导依赖或隐式排序。
-
-### 5. 先单线程，再并行
-
-第一版 System 运行层只做：
+当前 `SystemScheduler` 已正式落地的运行模型是：
 
 - 单线程
 - 固定顺序
+- 基于元数据 `Order` 和注册顺序的稳定排序
 
-第二阶段再引入：
+这是当前底座主线，而不是未来并行 system 的过渡占位版本。
 
-- 并行系统
-- Job 化系统
+### 4. 尽早把可观测能力纳入正式边界
 
-### 6. 分组与启停要早做，但做轻量版本
+当前实现已经拥有：
 
-系统分组对后续非常重要，应该尽早设计，但不需要一开始做复杂资产配置。
+- `SystemNodeInfo`
+- `CurrentSystem`
+- `Trace`
+- `SystemSchedulerTraceEvent`
 
----
+这意味着调度器已经不是黑盒。
 
-## 建议的最小系统分层
-
-### 第一层：基础接口
-
-建议先定义一个最小接口：
-
-```csharp
-public interface ISystem
-{
-    string Name { get; }
-    bool EnabledByDefault { get; }
-
-    void OnInit(Frame frame);
-    void OnEnabled(Frame frame);
-    void OnDisabled(Frame frame);
-    void OnUpdate(Frame frame, FP deltaTime);
-    void OnDispose(Frame frame);
-}
-```
-
-说明：
-
-- `Name` 用于调试、日志、Profiler
-- `EnabledByDefault` 用于系统启动时的初始状态
-- 生命周期已经扩展到“初始化 + 启停 + 销毁”的最小正式集合
-
-### 第二层：基础基类
-
-建议提供一个轻量 `SystemBase`：
-
-```csharp
-public abstract class SystemBase : ISystem
-{
-    public virtual string Name => GetType().Name;
-    public virtual bool EnabledByDefault => true;
-
-    public virtual void OnInit(Frame frame) { }
-    public virtual void OnEnabled(Frame frame) { }
-    public virtual void OnDisabled(Frame frame) { }
-    public abstract void OnUpdate(Frame frame, FP deltaTime);
-    public virtual void OnDispose(Frame frame) { }
-}
-```
-
-这层的目标是：
-
-- 统一系统命名
-- 提供基础生命周期空实现
-- 减少样板代码
-
-### 第三层：系统组
-
-建议引入轻量 `SystemGroup`：
-
-```csharp
-public sealed class SystemGroup : ISystem
-{
-    public string Name { get; }
-    public IReadOnlyList<ISystem> Systems { get; }
-}
-```
-
-作用：
-
-- 表达顺序结构
-- 表达局部层级
-- 未来可扩展为组级启停与 profiler 域
-
-这里不要一开始就做复杂树状配置资产，先支持：
-
-- 代码组装
-- 嵌套组
-- 深度优先顺序展开
-
-### 第四层：调度器
-
-建议单独实现 `SystemScheduler`，负责：
-
-- 系统注册
-- 初始化
-- 逐帧调度
-- 销毁
-- 启停状态维护
-
-建议接口如下：
-
-```csharp
-public sealed class SystemScheduler
-{
-    public void Add(ISystem system);
-    public void AddRange(IEnumerable<ISystem> systems);
-    public void Initialize(Frame frame);
-    public void Update(Frame frame, FP deltaTime);
-    public void Dispose(Frame frame);
-
-    public void Enable<T>() where T : ISystem;
-    public void Disable<T>() where T : ISystem;
-    public bool IsEnabled<T>() where T : ISystem;
-}
-```
+因此本文件必须把“系统层可观测性”写成正式能力，而不是可有可无的附属功能。
 
 ---
 
-## 推荐的系统分类
+## 当前正式模型
 
-为了吸收 FrameSync 的优点，但不过度复杂化，Lattice 建议分三类。
+当前 Lattice 的 system 基座由下面几部分组成：
 
-### 1. MainThreadSystem
+1. `ISystem`
+2. `SystemBase`
+3. `SystemGroup`
+4. `SystemMetadata`
+5. `SystemNodeInfo`
+6. `SystemSchedulerTraceEvent`
+7. `SystemScheduler`
 
-普通主线程系统，默认类型。
+这七者共同构成当前正式主线。
 
-特点：
+更准确地说：
 
-- 能访问完整 `Frame`
-- 能使用 `Filter / BlockIterator`
-- 能发命令
-- 适合大多数游戏逻辑
-
-例如：
-
-- `MovementSystem`
-- `LifetimeSystem`
-- `CombatResolveSystem`
-
-### 2. QuerySystem
-
-不是必须一开始实现为单独基类，但设计上要承认这是一种主要模式。
-
-这类系统特点：
-
-- 主逻辑是扫描一组固定组件
-- 在当前主线中，推荐以 `Filter<T...>` 或 `BlockIterator` 编写
-- 未来可以进一步提供便捷基类
-
-未来可以考虑：
-
-```csharp
-public abstract class QuerySystem<T1, T2> : SystemBase
-```
-
-但第一阶段不必立即引入。
-
-### 3. HotPathSystem
-
-这是 Lattice 特有的重点，不是 FrameSync 原样照搬。
-
-这类系统直接使用：
-
-- `ComponentBlockIterator<T>`
-- 经过显式注册和维护的热点布局
-
-用于极少数固定高频系统。
-
-例如：
-
-- `MovementHotSystem`
-- `ProjectileHotSystem`
-
-注意：
-
-- 这不是默认系统类型
-- 只服务极少数热点系统
+- `ISystem / SystemBase` 定义系统对象本体
+- `SystemGroup` 定义层级容器
+- `SystemMetadata` 定义调度与调试元信息
+- `SystemNodeInfo / Trace` 定义可观测快照
+- `SystemScheduler` 定义实际执行语义
 
 ---
 
-## 不建议第一阶段实现的类型
+## 核心对象与职责
 
-下面这些能力很有价值，但不建议放到第一阶段：
+## 1. `ISystem`
 
-- 线程化系统基类
-- 复杂依赖图排序
-- 数据驱动 `SystemsConfig` 资产
-- 自动根据查询类型生成系统特化类
-- 信号系统专用基类
-- 完整 Session 回滚框架
+`ISystem` 是当前系统对象的正式接口。
 
-原因很简单：
-
-当前真正缺的是最小运行闭环，而不是高级装配能力。
-
----
-
-## 建议的第一阶段 API
-
-Lattice 第一阶段 System 设计建议只保留这些正式 API：
-
-- `ISystem`
-- `SystemBase`
-- `SystemGroup`
-- `SystemScheduler`
-
-系统编写方式建议如下：
-
-```csharp
-public sealed class MovementSystem : SystemBase
-{
-    public override void OnUpdate(Frame frame, FP deltaTime)
-    {
-        var filter = frame.Filter<Position, Velocity>();
-        var enumerator = filter.GetEnumerator();
-
-        while (enumerator.MoveNext())
-        {
-            enumerator.Component1.Value += enumerator.Component2.Value * deltaTime;
-        }
-    }
-}
-```
-
-更保守、完全贴合当前主线的热点遍历建议如下：
-
-```csharp
-public unsafe sealed class MovementHotSystem : SystemBase
-{
-    public override void OnUpdate(Frame frame, FP deltaTime)
-    {
-        var iterator = frame.GetComponentBlockIterator<Position>();
-
-        while (iterator.Next(out var entity, out Position* position))
-        {
-            Velocity* velocity = frame.GetPointer<Velocity>(entity);
-            if (velocity == null)
-            {
-                continue;
-            }
-
-            position->Value += velocity->Value * deltaTime;
-        }
-    }
-}
-```
-
----
-
-## 调度顺序建议
-
-第一阶段建议采用显式顺序，不做自动拓扑排序。
-
-例如：
-
-```text
-BootstrapGroup
-InputGroup
-SimulationGroup
-LateSimulationGroup
-PresentationBridgeGroup
-```
-
-每组内部顺序固定：
-
-```text
-InputCollectSystem
-MovementSystem
-LifetimeSystem
-CombatSystem
-CleanupSystem
-```
-
-这样做的优点：
-
-- 易理解
-- 易测试
-- 易调试
-- 与回滚重模拟兼容
-
----
-
-## 与 Session 的关系
-
-Lattice 后续仍然需要会话层，但应重建，而不是继续直接使用旧 `Session.cs`。
-
-正确依赖方向应为：
-
-```text
-Frame / Filter / BlockIterator / CommandBuffer
-                    ↓
-             SystemScheduler
-                    ↓
-       SimulationWorld / SimulationLoop
-                    ↓
-PredictedSession / ReplaySession / LocalSession
-```
-
-而不是：
-
-```text
-Session 先定义完
-  ↓
-再倒推需要什么 System
-```
-
-### Session 第二阶段应负责的事
-
-- 管理当前 `Frame`
-- 管理历史快照
-- 执行回滚与重模拟
-- 持有 `SystemScheduler`
-- 协调输入与校验
-
-### Session 不应负责的事
-
-- 直接定义系统接口
-- 直接承载系统生命周期语义
-- 把系统装配和网络逻辑混在一起
-
----
-
-## 分阶段落地建议
-
-## Phase S1：最小可用运行层
-
-实现：
-
-- `ISystem`
-- `SystemBase`
-- `SystemGroup`
-- `SystemScheduler`
-
-验证：
-
-- 可以跑 2 到 3 个真实系统
-- 可以验证执行顺序
-- 可以验证启停逻辑
-
-## Phase S2：和现有 ECS 基座对齐
-
-实现：
-
-- 系统级单测
-- 系统与 `Filter / BlockIterator` 的推荐写法
-- `CommandBuffer` 与系统延迟结构修改闭环
-- 热点系统与显式专用遍历路径的协作方式
-
-验证：
-
-- 普通系统默认走 `Filter / BlockIterator`
-- `CommandBuffer` 能对已注册组件执行 Create / Add / Set / Remove / Destroy 回放
-- 少量热点系统再评估是否值得引入专用布局
-
-## Phase S3：重建 Session
-
-实现：
-
-- 新版 `SimulationSession`
-- 绑定 `SystemScheduler`
-- 接入 `FrameSnapshot`
-- 回滚 / 重模拟闭环
-
-## Phase S4：并行与高级调度
-
-实现：
-
-- 主线程系统与并行系统拆分
-- JobSystem 对接
-- 组级 profiler / 调试入口
-
----
-
-## 后续优化优先级
-
-为了避免 `System` 设计再次失焦，建议把后续工作拆成 `P0 / P1 / P2` 三层。
-
-## P0：必须优先补齐的内核能力
-
-> 当前状态：本轮已完成。
-
-### 1. 生命周期语义补全
-
-- `OnEnabled`
-- `OnDisabled`
-- 组级启停传播语义
-- 重复初始化 / 重复销毁 / 已销毁后再次更新的严格约束
-
-这是最高优先级，因为它决定了 system runtime 的基本语义是否清晰。
-
-### 2. 调度器可观测能力
-
-- 导出当前系统树
-- 导出稳定执行顺序
-- 查询系统是否已初始化
-- 查询系统当前是否被层级禁用
-- 按类型 / 名称 / 实例查询系统节点
-
-这类能力是后续调试、验证和工具化的基础。
-
-### 3. 调度器状态机收紧
-
-- 未初始化前能做什么
-- 初始化后还能做什么
-- Dispose 后是否允许再次 Initialize
-- Update 过程中是否允许 Add / Enable / Disable
-- 组级结构变更的时机限制
-
-这决定了 `SystemScheduler` 能否成为可靠的基础设施。
-
-## P1：内核稳定后应推进的能力
-
-### 4. system 元数据
-
-> 当前状态：本轮已完成第一版正式落地。
-
-当前 system 元数据只有：
+它当前要求系统提供：
 
 - `Name`
+- `Metadata`
 - `EnabledByDefault`
+- `OnInit`
+- `OnEnabled`
+- `OnDisabled`
+- `OnUpdate`
+- `OnDispose`
 
-后续建议补：
+这说明当前正式生命周期不是只有“update”，而是已经明确区分为：
 
-- 阶段或分类名
-- 可选的 order / priority
-- 调试标签或 profiler 分类名
-- 是否允许热切换或动态启停的元数据
+1. 初始化
+2. 进入有效启用状态
+3. 逐帧更新
+4. 退出有效启用状态
+5. 销毁
 
-当前已经落地：
+## 2. `SystemBase`
 
-- `SystemMetadata`
-- `SystemExecutionKind`
-- `Order / Kind / Category / DebugCategory / AllowRuntimeToggle`
+`SystemBase` 是当前主线推荐的系统基类。
 
-### 5. system 分类边界
+它提供：
 
-长期看，至少应在设计层承认下面几类 system：
+- 默认 `Name = 类型名`
+- 默认 `Metadata = SystemMetadata.Default`
+- 默认 `EnabledByDefault = true`
+- 生命周期空实现
+- 强制子类实现 `OnUpdate`
 
-- 普通主线程系统
-- 热点系统
-- 未来的并行系统
-- 可能的信号 / 事件型系统
+因此它的正式定位是：
 
-当前不急着一次全部落代码，但应先把分类边界说清楚。
+- 降低普通系统样板代码
+- 统一系统默认行为
 
-### 6. 更明确的顺序表达
+而不是增加第二套调度语义。
 
-> 当前状态：本轮已完成第一版稳定 `Order` 排序。
+## 3. `SystemGroup`
 
-现在只有：
+`SystemGroup` 当前是正式的层级容器，而不是临时约定。
+
+它当前特点是：
+
+- 自身也实现 `ISystem`
+- 保存一组子系统
+- 自身 `Metadata.Kind` 会被强制收敛为 `Group`
+- 生命周期回调为空实现
+
+这说明当前正式语义是：
+
+- `SystemGroup` 主要用于组织层级、顺序与启停传播
+- 它不是在组自身运行一段业务逻辑的 system
+
+## 4. `SystemMetadata`
+
+`SystemMetadata` 是当前正式元数据模型。
+
+它包含：
 
 - `Order`
-- 注册顺序兜底
-- 分组深度优先
+- `Kind`
+- `Category`
+- `DebugCategory`
+- `AllowRuntimeToggle`
 
-后续可能需要：
+这意味着当前系统层已经正式支持：
 
-- 组内显式 order
-- 组间阶段顺序
-- before / after 约束
-- 受控的局部排序
+- 稳定排序
+- 执行类型标签
+- 调试分类标签
+- 运行时启停约束
 
-这里不建议直接上自动拓扑排序，应先补“显式且稳定”的顺序表达。
+## 5. `SystemExecutionKind`
 
-## P2：可以延后，但要提前留余量的能力
+当前正式执行类型包括：
 
-> 当前状态：本轮已完成第一版 trace hook 与并行边界预留；配置驱动装配仍未开始。
+- `MainThread`
+- `HotPath`
+- `ParallelReserved`
+- `Signal`
+- `Group`
 
-### 7. profiler / debug hook
+这里必须特别强调当前真实语义：
 
-后续 `System` 层需要能暴露：
+- `MainThread`、`HotPath`、`Signal` 都可以被当前调度器接纳
+- `Group` 只用于系统组
+- `ParallelReserved` 目前是保留值，当前调度器会显式拒绝非组系统以该类型注册
 
-- 当前执行中的 system 名称
-- 每帧执行顺序
-- system 层级路径
-- system 级耗时采样入口
+因此它不是“已经支持并行”的标记，而是未来扩展边界的占位。
 
-当前第一版已经落地：
+## 6. `SystemNodeInfo`
 
-- `SystemScheduler.CurrentSystem`
-- `SystemScheduler.Trace`
-- `SystemSchedulerTracePhase / SystemSchedulerTraceEvent`
-- `OnInit / OnEnabled / OnUpdate / OnDisabled / OnDispose` 的 enter / exit trace
+`SystemNodeInfo` 是系统节点的只读快照。
 
-后续仍可继续补：
+它当前提供：
 
-- 真正的 profiler 采样聚合
-- 每帧 trace 缓冲与 timeline 导出
-- 面向调试 UI 的订阅与筛选接口
+- 系统名称、类型名
+- 排序与元数据
+- 父节点名称、深度、是否组、是否根
+- `EnabledSelf`
+- `EnabledInHierarchy`
+- `Initialized`
+- `Active`
 
-### 8. 并行 system 抽象预留
+因此它的正式定位是：
 
-虽然当前明确只做单线程，但设计上要避免把未来并行支持堵死：
+- 调度器对外暴露系统树状态的标准快照结构
 
-- 主线程系统和并行系统不要共用完全相同的执行假设
-- 不要让 `SystemScheduler` 默认承担多线程调度职责
-- system 数据访问模式要区分读写约束
+## 7. `SystemSchedulerTraceEvent`
 
-当前第一版已经落地：
+trace 事件当前保存：
 
-- 保留了 `SystemExecutionKind.ParallelReserved`
-- `SystemScheduler` 在注册时显式拒绝 `ParallelReserved` 非组系统
-- 错误信息会明确提示当前调度器只支持单线程执行类型
+- `Node`
+- `Phase`
+- `SchedulerState`
 
-### 9. 配置驱动装配
+并额外把节点的常用字段投影出来。
 
-这属于较后阶段工作。
+这说明当前 trace 不是字符串日志，而是结构化调度事件。
 
-当前应避免过早引入：
+## 8. `SystemScheduler`
 
-- 资产化系统配置
-- 复杂 DI 容器
-- 编辑器驱动的 system graph
+`SystemScheduler` 是当前 system runtime 的核心执行器。
 
-但可以在 API 设计上为未来装配层预留余量。
+它当前正式负责：
+
+1. 注册系统与系统组
+2. 构建稳定系统树
+3. 初始化未初始化系统
+4. 维护系统启停状态
+5. 执行单线程逐帧更新
+6. 反向顺序销毁系统
+7. 导出节点快照、执行顺序、trace 事件
+
+它当前不负责：
+
+- 自动 playback `CommandBuffer`
+- 持有多帧状态
+- 输入推进
+- rollback / resim
+- 多线程并行调度
 
 ---
 
-## 推荐的下一步实现顺序
+## 生命周期语义
 
-如果继续只优化 `System` 本身，建议按下面顺序推进：
+当前系统生命周期已经有正式语义，顺序如下：
 
-1. 生命周期补全：`OnEnabled / OnDisabled` 与组级传播规则
-2. 调度器状态机收紧：非法调用、结构变更时机、重复初始化 / 销毁语义
-3. 可观测接口：导出系统树、执行顺序、节点状态
-4. system 元数据：阶段、顺序、调试标签
-5. system 分类边界：普通系统 / 热点系统 / 并行系统预留
-6. profiler / debug hook
+1. 注册
+2. 初始化 `OnInit`
+3. 进入有效启用状态 `OnEnabled`
+4. 若处于激活状态，则参与 `OnUpdate`
+5. 失去有效启用状态时调用 `OnDisabled`
+6. 调度器销毁时调用 `OnDispose`
 
-这个顺序的核心原因是：
+### 1. 注册不等于初始化
 
-**先补运行语义，再补观察能力，再补扩展能力。**
+调用 `scheduler.Add(system)` 只是把系统放入调度器。
+
+此时系统并不会自动触发 `OnInit`，除非：
+
+- 调度器已经处于 `Ready`
+- 且有当前 frame 可用于初始化新注册系统
+
+### 2. 初始化不等于激活
+
+一个系统即便已经完成 `OnInit`，也不一定会进入 `Active` 状态。
+
+例如：
+
+- `EnabledByDefault = false`
+- 或者父组当前被禁用
+
+在这些情况下，系统会：
+
+- 已初始化
+- 但未启用
+- 且不会参与 `OnUpdate`
+
+### 3. 激活由层级启用状态决定
+
+当前正式语义不是只看系统自身 `EnabledSelf`，而是看：
+
+- 系统自身是否启用
+- 所有父组是否都启用
+- 系统是否已经初始化
+
+只有三者同时满足，系统才会进入 `Active`。
+
+### 4. `OnEnabled` / `OnDisabled` 是层级有效启停回调
+
+当前 `OnEnabled` 与 `OnDisabled` 的语义不是“用户调用 Enable / Disable 时直接触发”，而是：
+
+- 当节点从非激活变为激活时触发 `OnEnabled`
+- 当节点从激活变为非激活时触发 `OnDisabled`
+
+因此组级启停会向下影响所有子系统。
+
+### 5. `OnDispose` 发生在反向顺序销毁中
+
+调度器 `Dispose(frame)` 时会：
+
+1. 先按逆序遍历已初始化节点
+2. 如果节点当前激活，则先触发 `OnDisabled`
+3. 再调用 `OnDispose`
+
+这意味着当前正式销毁语义是：
+
+- 先停用，再销毁
+- 且销毁顺序与执行顺序相反
 
 ---
 
-## 当前明确不做的事
+## 调度器状态机
 
-为了避免 system 设计再次失焦，下面这些内容暂时不纳入当前阶段：
+当前 `SystemSchedulerState` 包含：
 
-- 新版 `Session`
-- 回滚 / 重模拟主循环
-- 网络同步
-- 完整事件系统
-- 自动拓扑排序
-- 线程化调度器
-- 配置资产化装配
+- `Uninitialized`
+- `Initializing`
+- `Ready`
+- `Updating`
+- `Disposing`
 
-这些都重要，但都不应先于 system 内核语义稳定。
+这不是调试字段，而是当前正式状态机。
+
+## 1. `Uninitialized`
+
+此时允许：
+
+- `Add`
+- `AddRange`
+
+此时不允许：
+
+- `Update`
+- `Dispose`
+
+## 2. `Initializing`
+
+此时调度器正在调用：
+
+- `OnInit`
+- `OnEnabled`
+
+当前正式约束是：
+
+- 不允许结构性修改调度器本身
+
+## 3. `Ready`
+
+这是当前稳定运行态。
+
+此时允许：
+
+- `Update`
+- `Dispose`
+- `Enable / Disable`
+- `Add`
+
+并且如果此时新增系统，调度器会立刻对其做补初始化并应用启停状态。
+
+## 4. `Updating`
+
+此时调度器正在执行：
+
+- 非组系统的 `OnUpdate`
+
+当前正式约束是：
+
+- 不允许 `Add`
+- 不允许 `Enable / Disable`
+- 不允许其他会改动调度器结构或启停拓扑的操作
+
+测试已经把这类行为视为非法调用。
+
+## 5. `Disposing`
+
+此时调度器正在：
+
+- `OnDisabled`
+- `OnDispose`
+
+当前同样不允许对调度器做结构修改。
+
+---
+
+## 启停模型
+
+当前系统层正式区分三种状态：
+
+- `EnabledSelf`
+- `EnabledInHierarchy`
+- `Active`
+
+## 1. `EnabledSelf`
+
+表示节点自身是否被显式设置为启用。
+
+它来源于：
+
+- `EnabledByDefault`
+- 运行时 `Enable / Disable`
+
+## 2. `EnabledInHierarchy`
+
+表示从当前节点向上到根的整条链路是否都启用。
+
+这意味着：
+
+- 子系统自己启用，不代表它在层级上有效
+- 父组禁用会让所有子节点 `EnabledInHierarchy = false`
+
+## 3. `Active`
+
+表示节点是否真的处于激活运行态。
+
+当前正式条件是：
+
+- 节点已初始化
+- 且 `EnabledInHierarchy = true`
+
+## 4. 运行时启停权限
+
+并不是所有系统都允许在 `Ready` 状态下动态切换。
+
+当前正式约束来自：
+
+- `SystemMetadata.AllowRuntimeToggle`
+
+如果某系统禁用了运行时切换，调度器会在 `Enable / Disable` 时直接抛出异常。
+
+这进一步说明：
+
+- 启停权限已经是正式元数据语义
+- 不是调用方的自觉约定
+
+---
+
+## 排序与执行顺序语义
+
+当前调度器采用稳定显式排序，而不是自动依赖图求解。
+
+## 1. 根节点排序
+
+根节点先按：
+
+- `Metadata.Order`
+
+升序排序；若相同，则按：
+
+- 注册顺序
+
+作为兜底。
+
+## 2. 组内子节点排序
+
+组内子节点也使用完全相同的规则：
+
+- `Order`
+- 注册顺序
+
+## 3. 总体展开方式
+
+调度器当前会先构建系统树，再按稳定顺序做深度优先展开。
+
+因此执行序列可以概括为：
+
+- 先排序根
+- 再对每个根递归追加其子树
+
+## 4. 组节点本身不参与 `OnUpdate`
+
+虽然 `SystemGroup` 也在节点树中占一个位置，但当前执行阶段：
+
+- 组节点不会执行 `OnUpdate`
+- 只有非组系统会参与更新
+
+因此组的价值主要体现在：
+
+- 层级
+- 排序
+- 启停传播
+- 可观测性
+
+---
+
+## 可观测性模型
+
+当前 `SystemScheduler` 已经正式提供可观测接口。
+
+## 1. `GetNodes()`
+
+导出当前稳定系统树快照。
+
+它包含：
+
+- 组节点
+- 非组节点
+- 当前层级状态
+
+## 2. `GetExecutionOrder()`
+
+导出当前执行顺序快照。
+
+它只包含：
+
+- 非组系统
+
+因此它是更接近“本轮可能执行哪些系统”的对外视图。
+
+## 3. `TryGetNode / GetNodes(name) / GetNodes<T>()`
+
+这些接口提供：
+
+- 按实例
+- 按名称
+- 按类型
+
+查询节点快照的能力。
+
+这说明当前调度器不是只能整体观察，也支持局部定位系统节点。
+
+## 4. `CurrentSystem`
+
+当前正在执行生命周期或更新回调的系统，会通过 `CurrentSystem` 暴露。
+
+这让：
+
+- trace
+- profiler
+- 调试工具
+
+都可以拿到当前上下文。
+
+## 5. `Trace`
+
+`Trace` 当前是一个结构化事件回调：
+
+- 生命周期 enter / exit
+- update enter / exit
+- 当前调度器状态
+- 当前系统节点快照
+
+它的正式定位是：
+
+- system runtime 的低层观察钩子
+
+而不是已经成熟完备的 profiler 系统。
+
+---
+
+## 与 `Frame` 的关系
+
+根据 [FrameStorageDesign.md](/d:/UGit/Sideline/godot/scripts/lattice/ECS/FrameStorageDesign.md)，`Frame` 是当前单帧完整状态容器。
+
+`System` 与 `Frame` 的正式关系是：
+
+- 系统从 `Frame` 读取和修改当前帧状态
+- 调度器把 `Frame` 作为生命周期与更新回调的唯一状态入口
+- 系统不应维护第二套并行世界状态
+
+这意味着当前 system runtime 的正式工作模式是：
+
+- 调度器驱动系统
+- 系统操作 `Frame`
+- `Frame` 承载状态
+
+---
+
+## 与查询层的关系
+
+根据 [QueryDesign.md](/d:/UGit/Sideline/godot/scripts/lattice/ECS/QueryDesign.md)，当前系统层的正式读取入口是双路径：
+
+- 普通系统使用 `frame.Filter<T...>()`
+- 热点系统可退到 `frame.GetComponentBlockIterator<T>()`
+
+因此 system 文档中的正式口径必须是：
+
+- 当前并不存在统一公共 `Query<T...>` 主线 API
+- 普通系统默认写法是 `Filter<T...>()`
+- 热点系统默认低层入口是 `BlockIterator`
+
+这也是为什么 `SystemExecutionKind.HotPath` 当前只是系统角色标签，而不意味着调度器会自动为它切换到另一套查询抽象。
+
+---
+
+## 与 `CommandBuffer` 的关系
+
+根据 [CommandBufferDesign.md](/d:/UGit/Sideline/godot/scripts/lattice/ECS/CommandBufferDesign.md)，结构修改当前正式应走 `CommandBuffer`。
+
+因此当前系统层正式语义是：
+
+- 系统在 `OnUpdate` 中负责决定要不要做结构修改
+- 具体结构修改请求写入 `CommandBuffer`
+- 调度器当前不自动接管 playback
+
+这意味着：
+
+- `System` 可以依赖 `CommandBuffer`
+- `SystemScheduler` 当前不等于“系统更新 + 命令自动回放的一体机”
+
+这个边界非常重要，因为它把：
+
+- 系统调度语义
+- 结构修改落点语义
+
+保持为两层，而不是混成一层。
+
+---
+
+## 与 `SimulationSession` 的关系
+
+当前虽然 `SimulationSession` 文档尚未完成，但依赖方向已经应当明确：
+
+- `SystemScheduler` 先稳定
+- session 再在其之上组织 tick 推进
+
+因此当前正式依赖方向应为：
+
+```text
+Frame / Query / CommandBuffer
+            ↓
+      SystemScheduler
+            ↓
+   SimulationSession
+```
+
+而不是让 session 反过来定义 system 生命周期和调度细节。
+
+后续最小 session 设计应建立在下面这条链路之上：
+
+1. session 准备本 tick 的 `Frame`
+2. session 调用 `SystemScheduler.Update(frame, deltaTime)`
+3. session 在统一时机处理 `CommandBuffer`
+4. session 再决定 snapshot / checksum / rollback 行为
+
+---
+
+## 当前一致性约束
+
+后续所有实现都应遵守下面这些约束。
+
+## 1. 系统对象不应承载可变模拟状态
+
+当前系统对象可以有：
+
+- 只读配置
+- 外部服务引用
+- 命令缓冲宿主引用
+
+但不应把会随帧推进而变化的核心模拟状态长期保存在系统对象内部。
+
+否则：
+
+- 回滚难以成立
+- clone / restore 会出现状态分叉
+
+## 2. 调度顺序必须显式且稳定
+
+当前正式排序依据只有：
+
+- `Metadata.Order`
+- 注册顺序
+
+如果后续需要更复杂顺序表达，也必须建立在“显式且稳定”的原则之上，而不是退回隐式依赖推导。
+
+## 3. 更新期不得改动调度器结构
+
+当前调度器已经把下面这些行为视为非法：
+
+- `Update` 期间 `Add`
+- `Update` 期间 `Enable / Disable`
+
+后续实现不应破坏这条约束。
+
+## 4. 组节点是层级容器，不是第二种业务系统
+
+当前 `SystemGroup` 的正式作用是：
+
+- 层级组织
+- 启停传播
+- 排序容器
+
+如果未来要支持“组本身也执行逻辑”，那应是新的明确设计，而不是静默改变当前 `SystemGroup` 语义。
+
+## 5. `ParallelReserved` 当前不是已支持能力
+
+当前调度器会显式拒绝：
+
+- 非组系统声明 `ParallelReserved`
+
+因此任何文档或示例都不应把它写成当前已落地并行主线。
+
+---
+
+## 当前允许的实现方向
+
+后续围绕 `System` 层的实现，下面这些方向是允许的：
+
+- 保持 `ISystem + SystemBase + SystemGroup + SystemScheduler` 作为正式主线
+- 保持基于 `Order + 注册顺序` 的稳定排序
+- 继续加强节点快照、trace 与调试观察能力
+- 继续用 `Filter<T...>()` 和 `BlockIterator` 作为系统读取入口
+- 在保持当前边界前提下，为未来 session 接入预留更清晰的调用点
+
+---
+
+## 当前不建议的方向
+
+下面这些方向当前不建议进入主线：
+
+- 把 `SystemScheduler` 扩成 session、runner 和 network 的综合控制器
+- 在没有正式并行模型前把 `ParallelReserved` 伪装成已可用能力
+- 让系统对象长期保存关键模拟状态
+- 在没有清晰顺序语义前引入自动拓扑排序
+- 让调度器偷偷自动处理所有 `CommandBuffer` playback，而不在 session 层明确时机
+
+这些都会让 system runtime 的边界重新失焦。
+
+---
+
+## 后续收敛重点
+
+当前 D5 完成后，`System` 层后续最值得继续收敛的方向是：
+
+1. 新建 `SimulationSessionDesign.md`，明确 scheduler 与 session 的最小闭环
+2. 继续明确 session 何时接入 `CommandBuffer` playback
+3. 在 session 语义稳定后，再决定是否需要更正式的阶段化调度表达
+4. 等 session 与确定性循环收敛后，再评估 profiler 聚合、并行调度和配置驱动装配
 
 ---
 
 ## 最终结论
 
-参考 FrameSync 后，Lattice 的 System 设计不应复制它的全部复杂度，而应提取其中四个核心思想：
+Lattice 当前的 `System` 设计可以概括为：
 
-1. System 是一个分层体系，不只是一个接口
-2. 生命周期、分组和启停控制要作为正式概念存在
-3. 调度器要独立于 Session
-4. 并行系统必须和普通系统在抽象层面分离
+**`System` 层当前已经形成正式主线：`ISystem` 定义生命周期接口，`SystemBase` 提供默认基类，`SystemGroup` 提供层级容器，`SystemScheduler` 以单线程固定顺序模型执行系统，并通过 `SystemMetadata`、`SystemNodeInfo` 与 `Trace` 暴露稳定的调度语义和观察能力。**
 
-结合 Lattice 当前阶段，最合理的 System 设计路线是：
-
-**先落一个轻量但正式的 `ISystem + SystemBase + SystemGroup + SystemScheduler` 主线闭环，再逐步向 Session、并行调度和配置驱动扩展。**
+这一定义把系统执行从 `Frame / Query / CommandBuffer` 之上正式收敛出来，也为后续 `SimulationSession` 文档提供了稳定下游入口。
