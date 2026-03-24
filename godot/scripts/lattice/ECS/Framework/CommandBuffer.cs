@@ -3,6 +3,7 @@
 
 using System;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Lattice.Core;
 using Lattice.ECS.Core;
 
@@ -23,11 +24,12 @@ namespace Lattice.ECS.Framework
     /// <summary>
     /// 命令头（变长命令的前4字节）
     /// </summary>
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public unsafe struct CommandHeader
     {
         public CommandType Type;
-        public byte ComponentTypeId;  // 255 = 无组件
-        public ushort EntityIndex;    // 65535 = 新实体（CreateEntity）
+        public ushort ComponentTypeId; // ushort.MaxValue = 无组件
+        public EntityRef Entity;
     }
 
     /// <summary>
@@ -63,8 +65,22 @@ namespace Lattice.ECS.Framework
         /// <summary>
         /// 初始化命令缓冲
         /// </summary>
+        public void Initialize(Frame frame, int capacity = 4096)
+        {
+            ArgumentNullException.ThrowIfNull(frame);
+            Initialize(frame.GetAllocatorPointer(), capacity);
+        }
+
+        /// <summary>
+        /// 初始化命令缓冲
+        /// </summary>
         public void Initialize(Allocator* allocator, int capacity = 4096)
         {
+            if (allocator == null)
+            {
+                throw new ArgumentNullException(nameof(allocator));
+            }
+
             _allocator = allocator;
             _capacity = capacity;
             _writePosition = 0;
@@ -107,8 +123,8 @@ namespace Lattice.ECS.Framework
             var header = new CommandHeader
             {
                 Type = CommandType.CreateEntity,
-                ComponentTypeId = 255,
-                EntityIndex = 0xFFFF  // 标记为新实体
+                ComponentTypeId = ushort.MaxValue,
+                Entity = EntityRef.None
             };
 
             WriteHeader(&header);
@@ -140,8 +156,8 @@ namespace Lattice.ECS.Framework
             var header = new CommandHeader
             {
                 Type = CommandType.DestroyEntity,
-                ComponentTypeId = 255,
-                EntityIndex = (ushort)entity.Index
+                ComponentTypeId = ushort.MaxValue,
+                Entity = entity
             };
 
             WriteHeader(&header);
@@ -158,8 +174,8 @@ namespace Lattice.ECS.Framework
             var header = new CommandHeader
             {
                 Type = CommandType.AddComponent,
-                ComponentTypeId = (byte)ComponentTypeId<T>.Id,
-                EntityIndex = (ushort)entity.Index
+                ComponentTypeId = checked((ushort)ComponentTypeId<T>.Id),
+                Entity = entity
             };
 
             WriteHeader(&header);
@@ -176,8 +192,8 @@ namespace Lattice.ECS.Framework
             var header = new CommandHeader
             {
                 Type = CommandType.RemoveComponent,
-                ComponentTypeId = (byte)ComponentTypeId<T>.Id,
-                EntityIndex = (ushort)entity.Index
+                ComponentTypeId = checked((ushort)ComponentTypeId<T>.Id),
+                Entity = entity
             };
 
             WriteHeader(&header);
@@ -194,8 +210,8 @@ namespace Lattice.ECS.Framework
             var header = new CommandHeader
             {
                 Type = CommandType.SetComponent,
-                ComponentTypeId = (byte)ComponentTypeId<T>.Id,
-                EntityIndex = (ushort)entity.Index
+                ComponentTypeId = checked((ushort)ComponentTypeId<T>.Id),
+                Entity = entity
             };
 
             WriteHeader(&header);
@@ -236,33 +252,33 @@ namespace Lattice.ECS.Framework
 
                     case CommandType.DestroyEntity:
                         {
-                            var entity = new EntityRef(header.EntityIndex, 1);  // 版本需要正确处理
+                            EntityRef entity = ResolveEntity(header.Entity);
                             frame.DestroyEntity(entity);
                             break;
                         }
 
                     case CommandType.AddComponent:
                         {
-                            var entity = new EntityRef(header.EntityIndex, 1);
-                            // 需要类型分发来正确添加组件
-                            // 这里简化处理，实际使用代码生成
+                            EntityRef entity = ResolveEntity(header.Entity);
+                            int componentSize = ComponentCommandRegistry.GetComponentSize(header.ComponentTypeId);
                             PlaybackAddComponent(frame, entity, header.ComponentTypeId, ptr);
-                            ptr += sizeof(int);  // 简化：假设组件大小为 int
+                            ptr += componentSize;
                             break;
                         }
 
                     case CommandType.RemoveComponent:
                         {
-                            var entity = new EntityRef(header.EntityIndex, 1);
+                            EntityRef entity = ResolveEntity(header.Entity);
                             PlaybackRemoveComponent(frame, entity, header.ComponentTypeId);
                             break;
                         }
 
                     case CommandType.SetComponent:
                         {
-                            var entity = new EntityRef(header.EntityIndex, 1);
+                            EntityRef entity = ResolveEntity(header.Entity);
+                            int componentSize = ComponentCommandRegistry.GetComponentSize(header.ComponentTypeId);
                             PlaybackSetComponent(frame, entity, header.ComponentTypeId, ptr);
-                            ptr += sizeof(int);  // 简化：假设组件大小为 int
+                            ptr += componentSize;
                             break;
                         }
                 }
@@ -300,6 +316,7 @@ namespace Lattice.ECS.Framework
                 EnsureSpace(size);
                 Buffer.MemoryCopy(ptr + sizeof(int), _buffer, size, size);
                 _writePosition = size;
+                RecountCreatedEntities();
             }
         }
 
@@ -324,6 +341,33 @@ namespace Lattice.ECS.Framework
             }
         }
 
+        private void EnsureCreatedCapacity(int requiredCapacity)
+        {
+            if (requiredCapacity <= _createdCapacity)
+            {
+                return;
+            }
+
+            int newCapacity = _createdCapacity;
+            while (newCapacity < requiredCapacity)
+            {
+                newCapacity *= 2;
+            }
+
+            var newArray = (EntityRef*)_allocator->Alloc(sizeof(EntityRef) * newCapacity);
+            if (_createdCount > 0)
+            {
+                Buffer.MemoryCopy(
+                    _createdEntities,
+                    newArray,
+                    sizeof(EntityRef) * newCapacity,
+                    sizeof(EntityRef) * _createdCount);
+            }
+
+            _createdEntities = newArray;
+            _createdCapacity = newCapacity;
+        }
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void WriteHeader(CommandHeader* header)
         {
@@ -338,20 +382,60 @@ namespace Lattice.ECS.Framework
             _writePosition += size;
         }
 
-        private void PlaybackAddComponent(Frame frame, EntityRef entity, byte typeId, byte* ptr)
+        private void PlaybackAddComponent(Frame frame, EntityRef entity, ushort typeId, byte* ptr)
         {
-            // 这里需要类型分发
-            // 实际实现使用代码生成或反射缓存
+            ComponentCommandRegistry.PlaybackAdd(frame, entity, typeId, ptr);
         }
 
-        private void PlaybackRemoveComponent(Frame frame, EntityRef entity, byte typeId)
+        private void PlaybackRemoveComponent(Frame frame, EntityRef entity, ushort typeId)
         {
-            // 类型分发
+            ComponentCommandRegistry.PlaybackRemove(frame, entity, typeId);
         }
 
-        private void PlaybackSetComponent(Frame frame, EntityRef entity, byte typeId, byte* ptr)
+        private void PlaybackSetComponent(Frame frame, EntityRef entity, ushort typeId, byte* ptr)
         {
-            // 类型分发
+            ComponentCommandRegistry.PlaybackSet(frame, entity, typeId, ptr);
+        }
+
+        private EntityRef ResolveEntity(EntityRef entity)
+        {
+            if (entity.Index >= 0)
+            {
+                return entity;
+            }
+
+            int createdOrdinal = -entity.Index - 1;
+            if ((uint)createdOrdinal >= (uint)_createdCount)
+            {
+                throw new InvalidOperationException($"未找到临时实体映射：{entity}。");
+            }
+
+            return _createdEntities[createdOrdinal];
+        }
+
+        private void RecountCreatedEntities()
+        {
+            _createdCount = 0;
+
+            byte* ptr = _buffer;
+            byte* end = _buffer + _writePosition;
+            while (ptr < end)
+            {
+                CommandHeader header = *(CommandHeader*)ptr;
+                ptr += sizeof(CommandHeader);
+
+                if (header.Type == CommandType.CreateEntity)
+                {
+                    EnsureCreatedCapacity(_createdCount + 1);
+                    _createdEntities[_createdCount++] = new EntityRef(-_createdCount, 0);
+                    continue;
+                }
+
+                if (header.Type == CommandType.AddComponent || header.Type == CommandType.SetComponent)
+                {
+                    ptr += ComponentCommandRegistry.GetComponentSize(header.ComponentTypeId);
+                }
+            }
         }
 
         #endregion

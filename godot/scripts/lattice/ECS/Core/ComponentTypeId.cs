@@ -50,7 +50,20 @@ namespace Lattice.ECS.Core
         /// <summary>注册组件类型（自动分配 ID）</summary>
         public static void Register<T>() where T : unmanaged
         {
-            ComponentTypeId<T>.Register(_nextId++);
+            int typeId = _nextId++;
+            ComponentTypeId<T>.Register(typeId);
+            ComponentCommandRegistry.Register<T>(typeId);
+        }
+
+        /// <summary>确保组件类型已注册。</summary>
+        public static void EnsureRegistered<T>() where T : unmanaged
+        {
+            if (ComponentTypeId<T>.IsRegistered)
+            {
+                return;
+            }
+
+            Register<T>();
         }
     }
 }

@@ -146,9 +146,11 @@ lattice/
 │   ├── Frame.cs            # 单帧数据容器（组件存储）
 │   └── World.cs            # 世界管理器，多帧支持
 │
-├── Systems/                # 系统调度
+├── ECS/Framework/          # 系统调度骨架
+│   ├── ISystem.cs          # 系统接口
 │   ├── SystemBase.cs       # 系统基类
-│   └── SystemGroup.cs      # 系统组（按顺序执行）
+│   ├── SystemGroup.cs      # 系统组（层级容器）
+│   └── SystemScheduler.cs  # 单线程固定顺序调度器
 │
 ├── Math/                   # 定点数与确定性数学 ⭐ 生产就绪
 │   ├── FP.cs               # 定点数 (Q48.16) - 四舍五入乘法
@@ -203,18 +205,21 @@ lattice/
 - 包含游戏逻辑，按特定顺序处理组件
 - 每帧对所有匹配的 Entity-Component 组合执行逻辑
 - 支持多线程（后期），初期单线程顺序执行
+- 当前主线状态：已接入 `ISystem / SystemBase / SystemGroup / SystemScheduler`，普通系统推荐使用 `frame.Filter<T...>()`，热点系统可退回 `GetComponentBlockIterator<T>()`
 
 ```csharp
-public class MovementSystem : SystemBase
+public sealed class MovementSystem : SystemBase
 {
-	public override void Update(Frame frame)
-	{
-		var query = frame.Query<Position, Velocity>();
-		foreach (var (entity, pos, vel) in query)
-		{
-			pos.Value += vel.Value * frame.DeltaTime;
-		}
-	}
+    public override void OnUpdate(Frame frame, FP deltaTime)
+    {
+        var filter = frame.Filter<Position, Velocity>();
+        var enumerator = filter.GetEnumerator();
+
+        while (enumerator.MoveNext())
+        {
+            enumerator.Component1.Value += enumerator.Component2.Value * deltaTime;
+        }
+    }
 }
 ```
 
@@ -494,7 +499,7 @@ FPLutCacheOptimized.DistanceSquaredBatch(points);   // 6.6x 加速
 - [x] 项目结构搭建
 - [x] 设计文档编写
 - [x] 确定性验证：694 测试通过，跨平台 CI 验证
-- [ ] 最小 ECS 跑通：Entity + Component + System
+- [x] 最小 ECS 跑通：Entity + Component + 第一阶段 System 调度骨架
 
 ### Phase 1 - 定点数与数学 ✅ 已完成
 - [x] `FP` 定点数实现（Q48.16，四舍五入乘法）
@@ -507,7 +512,10 @@ FPLutCacheOptimized.DistanceSquaredBatch(points);   // 6.6x 加速
 ### Phase 2 - 核心 ECS
 - [ ] `Frame` 单帧数据容器
 - [ ] `World` 多帧管理（Verified / Predicted）
-- [ ] `SystemGroup` 系统调度
+- [x] `ISystem / SystemBase / SystemGroup / SystemScheduler` 第一阶段调度骨架
+- [x] `frame.Filter<T...>()` 安全入口与系统级集成测试
+- [x] `CommandBuffer` 已支持已注册组件的 Create / Add / Set / Remove / Destroy 回放
+- [ ] 热点路径与更高级的专用布局继续收口
 - [ ] 确定性集合 `FSList` / `FSDictionary`
 
 ### Phase 3 - 游戏集成
@@ -551,7 +559,7 @@ FPLutCacheOptimized.DistanceSquaredBatch(points);   // 6.6x 加速
 
 ---
 
-**状态**: 🚧 开发中（定点数库生产就绪，ECS 待实现）  
+**状态**: 🚧 开发中（定点数库生产就绪，ECS 数据层可用，System 第一阶段骨架已接入）  
 **目标框架**: .NET 8  
 **测试状态**: 694 测试通过，跨平台 CI（Linux/Win/macOS/ARM64）  
-**最后更新**: 2026-03-13
+**最后更新**: 2026-03-24

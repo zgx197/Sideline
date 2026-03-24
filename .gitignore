@@ -111,3 +111,7 @@ TestResults/
 
 # Codex 本地临时 .NET SDK 工作区
 .codex-temp-dotnet8/
+.dotnet-cli/
+
+# BenchmarkDotNet 输出
+godot/Lattice.Benchmarks/benchmark-results/results/

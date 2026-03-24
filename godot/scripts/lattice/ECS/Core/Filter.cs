@@ -17,13 +17,14 @@ namespace Lattice.ECS.Core
     /// </summary>
     public unsafe class Filter<T1> where T1 : unmanaged
     {
-        private readonly Frame* _frame;
+        private readonly Frame _frame;
         private readonly Storage<T1>* _storage1;
 
-        public Filter(Frame* frame)
+        public Filter(Frame frame)
         {
+            ArgumentNullException.ThrowIfNull(frame);
             _frame = frame;
-            _storage1 = frame->GetStoragePointer<T1>();
+            _storage1 = frame.GetStoragePointer<T1>();
         }
 
         public Enumerator GetEnumerator() => new Enumerator(_frame, _storage1);
@@ -39,11 +40,11 @@ namespace Lattice.ECS.Core
 
         public ref struct Enumerator
         {
-            private readonly Frame* _frame;
+            private readonly Frame _frame;
             private readonly Storage<T1>* _storage1;
             private ComponentBlockIterator<T1> _iterator;
 
-            public Enumerator(Frame* frame, Storage<T1>* storage1)
+            public Enumerator(Frame frame, Storage<T1>* storage1)
             {
                 _frame = frame;
                 _storage1 = storage1;
@@ -55,7 +56,7 @@ namespace Lattice.ECS.Core
                 if (_storage1 == null) return false;
                 while (_iterator.Next(out var entity, out var ptr))
                 {
-                    if (!_frame->IsValid(entity)) continue;
+                    if (!_frame.IsValid(entity)) continue;
                     CurrentEntity = entity;
                     CurrentPtr = ptr;
                     return true;
@@ -76,16 +77,17 @@ namespace Lattice.ECS.Core
         where T1 : unmanaged
         where T2 : unmanaged
     {
-        private readonly Frame* _frame;
+        private readonly Frame _frame;
         private readonly Storage<T1>* _storage1;
         private readonly Storage<T2>* _storage2;
         private readonly bool _useStorage2AsPrimary;
 
-        public Filter(Frame* frame)
+        public Filter(Frame frame)
         {
+            ArgumentNullException.ThrowIfNull(frame);
             _frame = frame;
-            _storage1 = frame->GetStoragePointer<T1>();
-            _storage2 = frame->GetStoragePointer<T2>();
+            _storage1 = frame.GetStoragePointer<T1>();
+            _storage2 = frame.GetStoragePointer<T2>();
 
             // 自动选择组件数最少的存储作为主遍历源
             int count1 = _storage1 != null ? _storage1->Count : int.MaxValue;
@@ -97,7 +99,7 @@ namespace Lattice.ECS.Core
 
         public ref struct Enumerator
         {
-            private readonly Frame* _frame;
+            private readonly Frame _frame;
             private readonly Storage<T1>* _storage1;
             private readonly Storage<T2>* _storage2;
             private readonly bool _useStorage2AsPrimary;
@@ -107,7 +109,7 @@ namespace Lattice.ECS.Core
             private T1* _currentPtr1;
             private T2* _currentPtr2;
 
-            public Enumerator(Frame* frame, Storage<T1>* s1, Storage<T2>* s2, bool useS2)
+            public Enumerator(Frame frame, Storage<T1>* s1, Storage<T2>* s2, bool useS2)
             {
                 _frame = frame;
                 _storage1 = s1;
@@ -130,7 +132,7 @@ namespace Lattice.ECS.Core
                     if (_storage2 == null) return false;
                     while (_iterator2.Next(out var entity, out _currentPtr2))
                     {
-                        if (!_frame->IsValid(entity)) continue;
+                        if (!_frame.IsValid(entity)) continue;
                         if (_storage1 != null && !_storage1->Has(entity)) continue;
 
                         _currentEntity = entity;
@@ -143,7 +145,7 @@ namespace Lattice.ECS.Core
                     if (_storage1 == null) return false;
                     while (_iterator1.Next(out var entity, out _currentPtr1))
                     {
-                        if (!_frame->IsValid(entity)) continue;
+                        if (!_frame.IsValid(entity)) continue;
                         if (_storage2 != null && !_storage2->Has(entity)) continue;
 
                         _currentEntity = entity;
@@ -168,18 +170,19 @@ namespace Lattice.ECS.Core
         where T2 : unmanaged
         where T3 : unmanaged
     {
-        private readonly Frame* _frame;
+        private readonly Frame _frame;
         private readonly Storage<T1>* _storage1;
         private readonly Storage<T2>* _storage2;
         private readonly Storage<T3>* _storage3;
         private readonly int _primaryIndex; // 0=T1, 1=T2, 2=T3
 
-        public Filter(Frame* frame)
+        public Filter(Frame frame)
         {
+            ArgumentNullException.ThrowIfNull(frame);
             _frame = frame;
-            _storage1 = frame->GetStoragePointer<T1>();
-            _storage2 = frame->GetStoragePointer<T2>();
-            _storage3 = frame->GetStoragePointer<T3>();
+            _storage1 = frame.GetStoragePointer<T1>();
+            _storage2 = frame.GetStoragePointer<T2>();
+            _storage3 = frame.GetStoragePointer<T3>();
 
             // 自动选择组件数最少的存储作为主遍历源
             int count1 = _storage1 != null ? _storage1->Count : int.MaxValue;
@@ -195,7 +198,7 @@ namespace Lattice.ECS.Core
 
         public ref struct Enumerator
         {
-            private readonly Frame* _frame;
+            private readonly Frame _frame;
             private readonly Storage<T1>* _storage1;
             private readonly Storage<T2>* _storage2;
             private readonly Storage<T3>* _storage3;
@@ -208,7 +211,7 @@ namespace Lattice.ECS.Core
             private T2* _currentPtr2;
             private T3* _currentPtr3;
 
-            public Enumerator(Frame* frame, Storage<T1>* s1, Storage<T2>* s2, Storage<T3>* s3, int primary)
+            public Enumerator(Frame frame, Storage<T1>* s1, Storage<T2>* s2, Storage<T3>* s3, int primary)
             {
                 _frame = frame;
                 _storage1 = s1;
@@ -239,7 +242,7 @@ namespace Lattice.ECS.Core
                     case 0 when s1 != null:
                         while (_iterator1.Next(out var entity, out _currentPtr1))
                         {
-                            if (!_frame->IsValid(entity)) continue;
+                            if (!_frame.IsValid(entity)) continue;
                             if ((s2 == null || s2->Has(entity)) && (s3 == null || s3->Has(entity)))
                             {
                                 _currentEntity = entity;
@@ -253,7 +256,7 @@ namespace Lattice.ECS.Core
                     case 1 when s2 != null:
                         while (_iterator2.Next(out var entity, out _currentPtr2))
                         {
-                            if (!_frame->IsValid(entity)) continue;
+                            if (!_frame.IsValid(entity)) continue;
                             if ((s1 == null || s1->Has(entity)) && (s3 == null || s3->Has(entity)))
                             {
                                 _currentEntity = entity;
@@ -267,7 +270,7 @@ namespace Lattice.ECS.Core
                     case 2 when s3 != null:
                         while (_iterator3.Next(out var entity, out _currentPtr3))
                         {
-                            if (!_frame->IsValid(entity)) continue;
+                            if (!_frame.IsValid(entity)) continue;
                             if ((s1 == null || s1->Has(entity)) && (s2 == null || s2->Has(entity)))
                             {
                                 _currentEntity = entity;
