@@ -97,6 +97,9 @@ namespace Lattice.ECS.Core
         /// <summary>实体数量</summary>
         public int EntityCount => _entityCount;
 
+        /// <summary>实体容量。</summary>
+        public int EntityCapacity => _entityCapacity;
+
         /// <summary>待提交的延迟删除数量。</summary>
         public int PendingDeferredRemovalCount => _pendingRemovalCount;
 
@@ -524,6 +527,37 @@ namespace Lattice.ECS.Core
             return storage != null && storage->Has(entity);
         }
 
+        /// <summary>
+        /// 获取单组件过滤器。
+        /// </summary>
+#pragma warning disable CS0618
+        public Filter<T> Filter<T>() where T : unmanaged, IComponent
+        {
+            return new Filter<T>(this);
+        }
+
+        /// <summary>
+        /// 获取双组件过滤器。
+        /// </summary>
+        public Filter<T1, T2> Filter<T1, T2>()
+            where T1 : unmanaged, IComponent
+            where T2 : unmanaged, IComponent
+        {
+            return new Filter<T1, T2>(this);
+        }
+
+        /// <summary>
+        /// 获取三组件过滤器。
+        /// </summary>
+        public Filter<T1, T2, T3> Filter<T1, T2, T3>()
+            where T1 : unmanaged, IComponent
+            where T2 : unmanaged, IComponent
+            where T3 : unmanaged, IComponent
+        {
+            return new Filter<T1, T2, T3>(this);
+        }
+#pragma warning restore CS0618
+
         #endregion
 
         #region 查询支持
@@ -821,6 +855,14 @@ namespace Lattice.ECS.Core
         {
             int typeId = ComponentTypeId<T>.Id;
             return GetStorage<T>(typeId);
+        }
+
+        /// <summary>
+        /// 获取帧内部使用的分配器。
+        /// </summary>
+        internal Allocator* GetAllocatorPointer()
+        {
+            return _allocator;
         }
 
         #endregion

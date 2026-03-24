@@ -118,6 +118,7 @@ namespace Lattice.ECS.Core
                 SnapshotRestorers[id] = ComponentRuntimeDispatch<T>.RestoreSnapshot;
                 PendingRemovalMarkers[id] = ComponentRuntimeDispatch<T>.MarkPendingRemoval;
                 PendingQueueIndexSetters[id] = ComponentRuntimeDispatch<T>.SetPendingQueueIndex;
+                ComponentCommandRegistry.Register<T>(id);
 
                 ReverseLookup.Add(typeof(T), id);
                 ReverseNameLookup[typeof(T).Name] = id;
@@ -125,6 +126,19 @@ namespace Lattice.ECS.Core
                 ComponentTypeId<T>.SetRegistration(id, sizeof(T), flags, resolvedStorageFlags, callbacks);
                 return id;
             }
+        }
+
+        /// <summary>
+        /// 确保组件类型已注册。
+        /// </summary>
+        public static void EnsureRegistered<T>() where T : unmanaged, IComponent
+        {
+            if (ComponentTypeId<T>.IsRegistered)
+            {
+                return;
+            }
+
+            Register<T>();
         }
 
         public static int GetComponentIndex(Type type)

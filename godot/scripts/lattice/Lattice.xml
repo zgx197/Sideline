@@ -570,6 +570,12 @@
         <member name="P:Lattice.ECS.Core.ComponentCallbacks.OnRemoved">
             <summary>组件移除回调。</summary>
         </member>
+        <member name="T:Lattice.ECS.Core.ComponentCommandRegistry">
+            <summary>
+            组件命令回放注册表。
+            为 CommandBuffer 提供按组件类型 ID 分发的 Add/Set/Remove 入口。
+            </summary>
+        </member>
         <member name="T:Lattice.ECS.Core.ComponentFilter">
             <summary>
             组件过滤器 - 描述查询条件
@@ -683,6 +689,11 @@
         <member name="T:Lattice.ECS.Core.ComponentRegistry">
             <summary>
             组件类型注册中心，负责维护运行期组件元数据。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.ComponentRegistry.EnsureRegistered``1">
+            <summary>
+            确保组件类型已注册。
             </summary>
         </member>
         <member name="T:Lattice.ECS.Core.ComponentRegistry.Builder">
@@ -917,6 +928,9 @@
         <member name="P:Lattice.ECS.Core.Frame.EntityCount">
             <summary>实体数量</summary>
         </member>
+        <member name="P:Lattice.ECS.Core.Frame.EntityCapacity">
+            <summary>实体容量。</summary>
+        </member>
         <member name="P:Lattice.ECS.Core.Frame.PendingDeferredRemovalCount">
             <summary>待提交的延迟删除数量。</summary>
         </member>
@@ -988,6 +1002,21 @@
         <member name="M:Lattice.ECS.Core.Frame.Has``1(Lattice.Core.EntityRef)">
             <summary>
             检查是否有组件 - O(1)
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.Frame.Filter``1">
+            <summary>
+            获取单组件过滤器。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.Frame.Filter``2">
+            <summary>
+            获取双组件过滤器。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.Frame.Filter``3">
+            <summary>
+            获取三组件过滤器。
             </summary>
         </member>
         <member name="M:Lattice.ECS.Core.Frame.GetStorage``1(System.Int32)">
@@ -1076,6 +1105,11 @@
         <member name="M:Lattice.ECS.Core.Frame.GetStoragePointer``1">
             <summary>
             获取组件存储的原始指针（高级用法）
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.Frame.GetAllocatorPointer">
+            <summary>
+            获取帧内部使用的分配器。
             </summary>
         </member>
         <member name="T:Lattice.ECS.Core.ComponentEntrySnapshot">
@@ -1988,6 +2022,11 @@
             初始化命令缓冲
             </summary>
         </member>
+        <member name="M:Lattice.ECS.Framework.CommandBuffer.Initialize(Lattice.ECS.Core.Frame,System.Int32)">
+            <summary>
+            初始化命令缓冲
+            </summary>
+        </member>
         <member name="M:Lattice.ECS.Framework.CommandBuffer.Initialize(Lattice.ECS.Core.Allocator*,System.Int32)">
             <summary>
             初始化命令缓冲
@@ -2108,6 +2147,242 @@
             新代码建议直接使用 <see cref="M:Lattice.ECS.Core.Frame.Query``2" /> 并在循环中叠加裁剪判断。
             </summary>
         </member>
+        <member name="T:Lattice.ECS.Framework.ISystem">
+            <summary>
+            ECS 系统接口。
+            </summary>
+        </member>
+        <member name="P:Lattice.ECS.Framework.ISystem.Name">
+            <summary>系统名称，用于日志与调试。</summary>
+        </member>
+        <member name="P:Lattice.ECS.Framework.ISystem.Metadata">
+            <summary>系统元数据。</summary>
+        </member>
+        <member name="P:Lattice.ECS.Framework.ISystem.EnabledByDefault">
+            <summary>系统默认是否启用。</summary>
+        </member>
+        <member name="M:Lattice.ECS.Framework.ISystem.OnInit(Lattice.ECS.Core.Frame)">
+            <summary>系统初始化。</summary>
+        </member>
+        <member name="M:Lattice.ECS.Framework.ISystem.OnEnabled(Lattice.ECS.Core.Frame)">
+            <summary>系统变为有效启用状态时触发。</summary>
+        </member>
+        <member name="M:Lattice.ECS.Framework.ISystem.OnDisabled(Lattice.ECS.Core.Frame)">
+            <summary>系统失去有效启用状态时触发。</summary>
+        </member>
+        <member name="M:Lattice.ECS.Framework.ISystem.OnUpdate(Lattice.ECS.Core.Frame,Lattice.Math.FP)">
+            <summary>系统逐帧更新。</summary>
+        </member>
+        <member name="M:Lattice.ECS.Framework.ISystem.OnDispose(Lattice.ECS.Core.Frame)">
+            <summary>系统销毁。</summary>
+        </member>
+        <member name="T:Lattice.ECS.Framework.SystemBase">
+            <summary>
+            系统基础基类。
+            </summary>
+        </member>
+        <member name="P:Lattice.ECS.Framework.SystemBase.Name">
+            <summary>系统名称默认使用类型名。</summary>
+        </member>
+        <member name="P:Lattice.ECS.Framework.SystemBase.Metadata">
+            <summary>系统元数据默认使用主线程系统配置。</summary>
+        </member>
+        <member name="P:Lattice.ECS.Framework.SystemBase.EnabledByDefault">
+            <summary>系统默认启用。</summary>
+        </member>
+        <member name="M:Lattice.ECS.Framework.SystemBase.OnInit(Lattice.ECS.Core.Frame)">
+            <summary>
+            系统初始化。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Framework.SystemBase.OnEnabled(Lattice.ECS.Core.Frame)">
+            <summary>
+            系统进入有效启用状态。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Framework.SystemBase.OnDisabled(Lattice.ECS.Core.Frame)">
+            <summary>
+            系统退出有效启用状态。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Framework.SystemBase.OnUpdate(Lattice.ECS.Core.Frame,Lattice.Math.FP)">
+            <summary>
+            系统逐帧更新。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Framework.SystemBase.OnDispose(Lattice.ECS.Core.Frame)">
+            <summary>
+            系统销毁。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Framework.SystemGroup">
+            <summary>
+            系统分组，仅作为系统层级容器。
+            </summary>
+        </member>
+        <member name="P:Lattice.ECS.Framework.SystemGroup.Name">
+            <summary>组名称。</summary>
+        </member>
+        <member name="P:Lattice.ECS.Framework.SystemGroup.Metadata">
+            <summary>组元数据。</summary>
+        </member>
+        <member name="P:Lattice.ECS.Framework.SystemGroup.EnabledByDefault">
+            <summary>组默认是否启用。</summary>
+        </member>
+        <member name="P:Lattice.ECS.Framework.SystemGroup.Systems">
+            <summary>子系统列表。</summary>
+        </member>
+        <member name="T:Lattice.ECS.Framework.SystemExecutionKind">
+            <summary>
+            系统执行类型。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Framework.SystemMetadata">
+            <summary>
+            系统元数据。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Framework.SystemMetadata.#ctor(System.Int32,Lattice.ECS.Framework.SystemExecutionKind,System.String,System.String,System.Boolean)">
+            <summary>
+            系统元数据。
+            </summary>
+        </member>
+        <member name="P:Lattice.ECS.Framework.SystemMetadata.Default">
+            <summary>默认普通主线程系统元数据。</summary>
+        </member>
+        <member name="P:Lattice.ECS.Framework.SystemMetadata.GroupDefault">
+            <summary>默认系统组元数据。</summary>
+        </member>
+        <member name="T:Lattice.ECS.Framework.SystemNodeInfo">
+            <summary>
+            系统节点只读快照。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Framework.SystemNodeInfo.#ctor(Lattice.ECS.Framework.ISystem,System.String,System.String,System.Int32,Lattice.ECS.Framework.SystemExecutionKind,System.String,System.String,System.Boolean,System.String,System.Int32,System.Boolean,System.Boolean,System.Boolean,System.Boolean,System.Boolean,System.Boolean)">
+            <summary>
+            系统节点只读快照。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Framework.SystemSchedulerState">
+            <summary>
+            调度器运行状态。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Framework.SystemScheduler">
+            <summary>
+            单线程 ECS 系统调度器。
+            </summary>
+        </member>
+        <member name="P:Lattice.ECS.Framework.SystemScheduler.IsInitialized">
+            <summary>当前是否已初始化。</summary>
+        </member>
+        <member name="P:Lattice.ECS.Framework.SystemScheduler.State">
+            <summary>当前调度器状态。</summary>
+        </member>
+        <member name="P:Lattice.ECS.Framework.SystemScheduler.CurrentSystem">
+            <summary>当前正在执行生命周期或更新回调的系统。</summary>
+        </member>
+        <member name="P:Lattice.ECS.Framework.SystemScheduler.Trace">
+            <summary>调度 trace 钩子，可用于 profiler 或调试观察。</summary>
+        </member>
+        <member name="P:Lattice.ECS.Framework.SystemScheduler.Count">
+            <summary>已注册系统数量（包含组）。</summary>
+        </member>
+        <member name="M:Lattice.ECS.Framework.SystemScheduler.Add(Lattice.ECS.Framework.ISystem)">
+            <summary>
+            添加系统。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Framework.SystemScheduler.AddRange(System.Collections.Generic.IEnumerable{Lattice.ECS.Framework.ISystem})">
+            <summary>
+            批量添加系统。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Framework.SystemScheduler.Initialize(Lattice.ECS.Core.Frame)">
+            <summary>
+            初始化已注册系统。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Framework.SystemScheduler.Update(Lattice.ECS.Core.Frame,Lattice.Math.FP)">
+            <summary>
+            执行一次系统更新。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Framework.SystemScheduler.Dispose(Lattice.ECS.Core.Frame)">
+            <summary>
+            销毁所有已初始化系统。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Framework.SystemScheduler.Enable(Lattice.ECS.Framework.ISystem)">
+            <summary>
+            启用指定系统实例。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Framework.SystemScheduler.Disable(Lattice.ECS.Framework.ISystem)">
+            <summary>
+            禁用指定系统实例。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Framework.SystemScheduler.IsEnabled(Lattice.ECS.Framework.ISystem)">
+            <summary>
+            判断指定系统实例当前是否在层级内启用。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Framework.SystemScheduler.GetNodes">
+            <summary>
+            导出当前系统树的稳定快照（注册顺序）。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Framework.SystemScheduler.GetExecutionOrder">
+            <summary>
+            导出当前系统执行序列快照（仅非组系统）。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Framework.SystemScheduler.TryGetNode(Lattice.ECS.Framework.ISystem,Lattice.ECS.Framework.SystemNodeInfo@)">
+            <summary>
+            按实例查询系统节点。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Framework.SystemScheduler.GetNodes(System.String)">
+            <summary>
+            按名称查询系统节点。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Framework.SystemScheduler.GetNodes``1">
+            <summary>
+            按类型查询系统节点。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Framework.SystemScheduler.Enable``1">
+            <summary>
+            启用所有指定类型系统。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Framework.SystemScheduler.Disable``1">
+            <summary>
+            禁用所有指定类型系统。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Framework.SystemScheduler.IsEnabled``1">
+            <summary>
+            判断指定类型系统是否全部处于层级启用状态。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Framework.SystemSchedulerTracePhase">
+            <summary>
+            调度器 trace 事件阶段。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Framework.SystemSchedulerTraceEvent">
+            <summary>
+            调度器 trace 只读事件。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Framework.SystemSchedulerTraceEvent.#ctor(Lattice.ECS.Framework.SystemNodeInfo,Lattice.ECS.Framework.SystemSchedulerTracePhase,Lattice.ECS.Framework.SystemSchedulerState)">
+            <summary>
+            调度器 trace 只读事件。
+            </summary>
+        </member>
         <member name="T:Lattice.ECS.Serialization.IFrameSerializer">
             <summary>
             帧序列化器接口（对齐 FrameSync IDeterministicFrameSerializer）
@@ -2220,6 +2495,62 @@
             <summary>
             序列化后的字节大小
             </summary>
+        </member>
+        <member name="T:Lattice.ECS.Session.SimulationCommandBufferHost">
+            <summary>
+            为系统暴露当前模拟 tick 使用的命令缓冲。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Session.SimulationInputApplier`1">
+            <summary>
+            将输入写入帧状态的最小入口。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Session.SimulationSession`1">
+            <summary>
+            最小确定性模拟会话。
+            </summary>
+        </member>
+        <member name="P:Lattice.ECS.Session.SimulationSession`1.Scheduler">
+            <summary>当前系统调度器。</summary>
+        </member>
+        <member name="P:Lattice.ECS.Session.SimulationSession`1.Commands">
+            <summary>当前 tick 命令缓冲宿主。</summary>
+        </member>
+        <member name="P:Lattice.ECS.Session.SimulationSession`1.VerifiedFrame">
+            <summary>当前权威帧。</summary>
+        </member>
+        <member name="P:Lattice.ECS.Session.SimulationSession`1.PredictedFrame">
+            <summary>当前预测帧。</summary>
+        </member>
+        <member name="P:Lattice.ECS.Session.SimulationSession`1.VerifiedTick">
+            <summary>当前权威 tick。</summary>
+        </member>
+        <member name="P:Lattice.ECS.Session.SimulationSession`1.PredictedTick">
+            <summary>当前预测 tick。</summary>
+        </member>
+        <member name="P:Lattice.ECS.Session.SimulationSession`1.IsRunning">
+            <summary>会话是否已启动。</summary>
+        </member>
+        <member name="T:Lattice.ECS.Session.SimulationSessionOptions">
+            <summary>
+            最小模拟会话配置。
+            </summary>
+        </member>
+        <member name="P:Lattice.ECS.Session.SimulationSessionOptions.InitialTick">
+            <summary>初始 tick。</summary>
+        </member>
+        <member name="P:Lattice.ECS.Session.SimulationSessionOptions.DeltaTime">
+            <summary>固定时间步长。</summary>
+        </member>
+        <member name="P:Lattice.ECS.Session.SimulationSessionOptions.MaxEntities">
+            <summary>实体容量。</summary>
+        </member>
+        <member name="P:Lattice.ECS.Session.SimulationSessionOptions.InputCapacity">
+            <summary>输入缓冲容量。</summary>
+        </member>
+        <member name="P:Lattice.ECS.Session.SimulationSessionOptions.CommandBufferCapacity">
+            <summary>命令缓冲初始容量。</summary>
         </member>
         <member name="T:Lattice.Math.FP">
             <summary>

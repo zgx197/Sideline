@@ -349,10 +349,19 @@ namespace Lattice.ECS.Core
         /// </summary>
         public int GetSnapshotSize()
         {
-            return (sizeof(int) * 2) + (sizeof(ushort) * 2) +
-                   (sizeof(EntityRef) * Count) +
-                   (sizeof(T) * Count) +
-                   Count;
+            int denseCount = Count;
+            int size =
+                sizeof(int) * 6 +    // _count, _version, _blockCount, _blockItemCapacity, _componentTypeId, _sparseCapacity
+                sizeof(ushort) * 4 + // _singletonSparse, _pendingRemoval, _flags, reserved
+                sizeof(EntityRef) * denseCount +
+                sizeof(T) * denseCount;
+
+            if (_entryStates != null)
+            {
+                size += denseCount;
+            }
+
+            return size;
         }
 
         /// <summary>
@@ -365,29 +374,28 @@ namespace Lattice.ECS.Core
             // 写入元数据
             *(int*)ptr = _count; ptr += sizeof(int);
             *(int*)ptr = _version; ptr += sizeof(int);
+            *(int*)ptr = _blockCount; ptr += sizeof(int);
+            *(int*)ptr = _blockItemCapacity; ptr += sizeof(int);
+            *(int*)ptr = _componentTypeId; ptr += sizeof(int);
+            *(int*)ptr = _sparseCapacity; ptr += sizeof(int);
             *(ushort*)ptr = _singletonSparse; ptr += sizeof(ushort);
             *(ushort*)ptr = (ushort)_pendingRemoval; ptr += sizeof(ushort);
+            *(ushort*)ptr = (ushort)_flags; ptr += sizeof(ushort);
+            *(ushort*)ptr = 0; ptr += sizeof(ushort);
 
             int denseCount = Count;
             int handlesBytes = sizeof(EntityRef) * denseCount;
             int dataBytes = sizeof(T) * denseCount;
 
-            CopyDenseEntities((EntityRef*)ptr, bufferSize >= handlesBytes ? denseCount : 0);
+            CopyDenseEntities((EntityRef*)ptr, denseCount);
             ptr += handlesBytes;
 
-            CopyDenseComponentBytes(ptr, bufferSize >= handlesBytes + dataBytes ? denseCount : 0);
+            CopyDenseComponentBytes(ptr, denseCount);
             ptr += dataBytes;
 
-            if (_entryStates != null)
+            if (_entryStates != null && denseCount > 0)
             {
                 Buffer.MemoryCopy(_entryStates + 1, ptr, denseCount, denseCount);
-            }
-            else
-            {
-                for (int i = 0; i < denseCount; i++)
-                {
-                    ptr[i] = EntryStateActive;
-                }
             }
         }
 
@@ -401,20 +409,39 @@ namespace Lattice.ECS.Core
             // 读取元数据
             int savedCount = *(int*)ptr; ptr += sizeof(int);
             int savedVersion = *(int*)ptr; ptr += sizeof(int);
+            int savedBlockCount = *(int*)ptr; ptr += sizeof(int);
+            int savedBlockItemCapacity = *(int*)ptr; ptr += sizeof(int);
+            int savedComponentTypeId = *(int*)ptr; ptr += sizeof(int);
+            int savedSparseCapacity = *(int*)ptr; ptr += sizeof(int);
             ushort savedSingletonSparse = *(ushort*)ptr; ptr += sizeof(ushort);
             ushort savedPendingRemoval = *(ushort*)ptr; ptr += sizeof(ushort);
+            StorageFlags savedFlags = (StorageFlags)(*(ushort*)ptr); ptr += sizeof(ushort);
+            ptr += sizeof(ushort); // reserved
 
-            int denseCount = savedCount - 1;
+            if (savedSparseCapacity != _sparseCapacity)
+            {
+                throw new InvalidOperationException(
+                    $"Storage<{typeof(T).Name}> 快照容量不匹配。 Snapshot={savedSparseCapacity}, Current={_sparseCapacity}。");
+            }
+
+            _blockItemCapacity = savedBlockItemCapacity;
+            _componentTypeId = savedComponentTypeId;
+            _flags = savedFlags;
+
+            // 确保容量足够
+            EnsureEntityCapacity(savedBlockCount * savedBlockItemCapacity);
 
             // 恢复元数据
             _count = savedCount;
             _version = savedVersion;
+            _blockCount = savedBlockCount;
             _singletonSparse = savedSingletonSparse;
             _pendingRemoval = 0;
 
             ClearSparseAndStates();
             EnsureEntityCapacity(savedCount);
 
+            int denseCount = System.Math.Max(savedCount - 1, 0);
             RestoreDenseEntities((EntityRef*)ptr, denseCount);
             ptr += sizeof(EntityRef) * denseCount;
 
@@ -426,18 +453,21 @@ namespace Lattice.ECS.Core
                 if (_entryStates != null)
                 {
                     Buffer.MemoryCopy(ptr, _entryStates + 1, denseCount, denseCount);
+                    ptr += denseCount;
                 }
-
-                for (int i = 1; i <= denseCount; i++)
+                else
                 {
-                    EntityRef entity = GetEntityRefByGlobalIndex(i);
-                    _sparse[entity.Index] = (ushort)i;
-
-                    if (IsSingleton && GetEntryStateByIndex(i) == EntryStateActive)
+                    for (int i = 1; i <= denseCount; i++)
                     {
-                        _singletonSparse = (ushort)i;
+                        SetEntryStateByIndex(i, EntryStateActive);
                     }
                 }
+            }
+
+            for (int globalIndex = 1; globalIndex <= denseCount; globalIndex++)
+            {
+                EntityRef entity = GetEntityRefByIndex(globalIndex);
+                _sparse[entity.Index] = (ushort)globalIndex;
             }
 
             _pendingRemoval = savedPendingRemoval;

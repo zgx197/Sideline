@@ -183,6 +183,7 @@ namespace Lattice.ECS.Core
                     {
                         stream.Write(storage.DenseData, 0, storage.DenseData.Length);
                     }
+
                     continue;
                 }
 
