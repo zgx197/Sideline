@@ -317,10 +317,24 @@ namespace Lattice.ECS.Core
         /// </summary>
         public int GetSnapshotSize()
         {
-            // 稀疏数组 + 组件数据 + 元数据
-            return sizeof(ushort) * _sparseCapacity +  // 稀疏数组
-                   sizeof(T) * _count +              // 组件数据（已使用部分）
-                   sizeof(int) * 4;                   // _count, _version, _singletonSparse, _pendingRemoval
+            int size =
+                sizeof(int) * 6 +    // _count, _version, _blockCount, _blockItemCapacity, _componentTypeId, _sparseCapacity
+                sizeof(ushort) * 4 + // _singletonSparse, _pendingRemoval, _flags, reserved
+                sizeof(ushort) * _sparseCapacity;
+
+            for (int i = 0; i < _blockCount; i++)
+            {
+                int blockItems = System.Math.Min(_blockItemCapacity, _count - i * _blockItemCapacity);
+                if (blockItems <= 0)
+                {
+                    break;
+                }
+
+                size += EntityRef.Size * blockItems;
+                size += sizeof(T) * blockItems;
+            }
+
+            return size;
         }
 
         /// <summary>
@@ -333,8 +347,14 @@ namespace Lattice.ECS.Core
             // 写入元数据
             *(int*)ptr = _count; ptr += sizeof(int);
             *(int*)ptr = _version; ptr += sizeof(int);
+            *(int*)ptr = _blockCount; ptr += sizeof(int);
+            *(int*)ptr = _blockItemCapacity; ptr += sizeof(int);
+            *(int*)ptr = _componentTypeId; ptr += sizeof(int);
+            *(int*)ptr = _sparseCapacity; ptr += sizeof(int);
             *(ushort*)ptr = _singletonSparse; ptr += sizeof(ushort);
             *(ushort*)ptr = (ushort)_pendingRemoval; ptr += sizeof(ushort);
+            *(ushort*)ptr = (ushort)_flags; ptr += sizeof(ushort);
+            *(ushort*)ptr = 0; ptr += sizeof(ushort);
 
             // 写入稀疏数组（只写入有效部分）
             int sparseBytes = sizeof(ushort) * _sparseCapacity;
@@ -346,6 +366,10 @@ namespace Lattice.ECS.Core
             {
                 int blockItems = System.Math.Min(_blockItemCapacity, _count - i * _blockItemCapacity);
                 if (blockItems <= 0) break;
+
+                int handleBytes = EntityRef.Size * blockItems;
+                Buffer.MemoryCopy(_blocks[i].PackedHandles, ptr, handleBytes, handleBytes);
+                ptr += handleBytes;
 
                 int dataBytes = sizeof(T) * blockItems;
                 Buffer.MemoryCopy(_blocks[i].PackedData, ptr, dataBytes, dataBytes);
@@ -363,15 +387,32 @@ namespace Lattice.ECS.Core
             // 读取元数据
             int savedCount = *(int*)ptr; ptr += sizeof(int);
             int savedVersion = *(int*)ptr; ptr += sizeof(int);
+            int savedBlockCount = *(int*)ptr; ptr += sizeof(int);
+            int savedBlockItemCapacity = *(int*)ptr; ptr += sizeof(int);
+            int savedComponentTypeId = *(int*)ptr; ptr += sizeof(int);
+            int savedSparseCapacity = *(int*)ptr; ptr += sizeof(int);
             ushort savedSingletonSparse = *(ushort*)ptr; ptr += sizeof(ushort);
             ushort savedPendingRemoval = *(ushort*)ptr; ptr += sizeof(ushort);
+            StorageFlags savedFlags = (StorageFlags)(*(ushort*)ptr); ptr += sizeof(ushort);
+            ptr += sizeof(ushort); // reserved
+
+            if (savedSparseCapacity != _sparseCapacity)
+            {
+                throw new InvalidOperationException(
+                    $"Storage<{typeof(T).Name}> 快照容量不匹配。 Snapshot={savedSparseCapacity}, Current={_sparseCapacity}。");
+            }
+
+            _blockItemCapacity = savedBlockItemCapacity;
+            _componentTypeId = savedComponentTypeId;
+            _flags = savedFlags;
 
             // 确保容量足够
-            EnsureEntityCapacity(savedCount);
+            EnsureEntityCapacity(savedBlockCount * savedBlockItemCapacity);
 
             // 恢复元数据
             _count = savedCount;
             _version = savedVersion;
+            _blockCount = savedBlockCount;
             _singletonSparse = savedSingletonSparse;
             _pendingRemoval = savedPendingRemoval;
 
@@ -385,6 +426,10 @@ namespace Lattice.ECS.Core
             {
                 int blockItems = System.Math.Min(_blockItemCapacity, _count - i * _blockItemCapacity);
                 if (blockItems <= 0) break;
+
+                int handleBytes = EntityRef.Size * blockItems;
+                Buffer.MemoryCopy(ptr, _blocks[i].PackedHandles, handleBytes, handleBytes);
+                ptr += handleBytes;
 
                 int dataBytes = sizeof(T) * blockItems;
                 Buffer.MemoryCopy(ptr, _blocks[i].PackedData, dataBytes, dataBytes);

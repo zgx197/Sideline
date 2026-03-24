@@ -19,6 +19,8 @@ namespace Lattice.ECS.Core
     /// </summary>
     public unsafe class Frame : IDisposable
     {
+        private const int SnapshotFormatVersion = 1;
+
         #region 常量
 
         /// <summary>最大组件类型数</summary>
@@ -77,6 +79,9 @@ namespace Lattice.ECS.Core
 
         /// <summary>实体数量</summary>
         public int EntityCount => _entityCount;
+
+        /// <summary>实体容量。</summary>
+        public int EntityCapacity => _entityCapacity;
 
         #endregion
 
@@ -275,6 +280,243 @@ namespace Lattice.ECS.Core
             return HasComponentMask(entity.Index, typeId);
         }
 
+        /// <summary>
+        /// 获取单组件过滤器。
+        /// </summary>
+        public Filter<T> Filter<T>() where T : unmanaged
+        {
+            return new Filter<T>(this);
+        }
+
+        /// <summary>
+        /// 获取双组件过滤器。
+        /// </summary>
+        public Filter<T1, T2> Filter<T1, T2>()
+            where T1 : unmanaged
+            where T2 : unmanaged
+        {
+            return new Filter<T1, T2>(this);
+        }
+
+        /// <summary>
+        /// 获取三组件过滤器。
+        /// </summary>
+        public Filter<T1, T2, T3> Filter<T1, T2, T3>()
+            where T1 : unmanaged
+            where T2 : unmanaged
+            where T3 : unmanaged
+        {
+            return new Filter<T1, T2, T3>(this);
+        }
+
+        #endregion
+
+        #region 快照 / 恢复 / 校验
+
+        /// <summary>
+        /// 创建当前帧快照。
+        /// </summary>
+        public FrameSnapshot CreateSnapshot()
+        {
+            byte[] data = SerializeSnapshotData();
+            ulong checksum = unchecked((ulong)DeterministicHash.Fnv1a64(data));
+            return new FrameSnapshot(Tick, DeltaTime, _entityCapacity, data, checksum);
+        }
+
+        /// <summary>
+        /// 从快照恢复当前帧。
+        /// </summary>
+        public void RestoreFromSnapshot(FrameSnapshot snapshot)
+        {
+            ArgumentNullException.ThrowIfNull(snapshot);
+
+            if (snapshot.EntityCapacity != _entityCapacity)
+            {
+                throw new InvalidOperationException(
+                    $"Frame 快照容量不匹配。 Snapshot={snapshot.EntityCapacity}, Current={_entityCapacity}。");
+            }
+
+            fixed (byte* buffer = snapshot.Data)
+            {
+                RestoreSnapshotData(buffer, snapshot.Data.Length);
+            }
+        }
+
+        /// <summary>
+        /// 克隆当前帧。
+        /// </summary>
+        public Frame Clone()
+        {
+            FrameSnapshot snapshot = CreateSnapshot();
+            var clone = new Frame(snapshot.EntityCapacity);
+            clone.RestoreFromSnapshot(snapshot);
+            return clone;
+        }
+
+        /// <summary>
+        /// 计算当前帧确定性校验和。
+        /// </summary>
+        public ulong CalculateChecksum()
+        {
+            byte[] data = SerializeSnapshotData();
+            return unchecked((ulong)DeterministicHash.Fnv1a64(data));
+        }
+
+        private byte[] SerializeSnapshotData()
+        {
+            int storageCount = GetInitializedStorageCount();
+            int totalSize =
+                sizeof(int) * 6 +
+                sizeof(long) +
+                EntityRef.Size * _entityCount +
+                sizeof(ushort) * _entityCount +
+                sizeof(int) * _entityCount +
+                sizeof(ulong) * _entityCount * ComponentMaskBlockCount +
+                sizeof(int);
+
+            for (int typeId = 0; typeId < MaxComponentTypes; typeId++)
+            {
+                if (!_storageInitialized[typeId] || _componentStorages[typeId] == null)
+                {
+                    continue;
+                }
+
+                totalSize += sizeof(int) * 2;
+                totalSize += ComponentCommandRegistry.GetStorageSnapshotSize(typeId, _componentStorages[typeId]);
+            }
+
+            byte[] data = new byte[totalSize];
+            fixed (byte* buffer = data)
+            {
+                byte* ptr = buffer;
+
+                *(int*)ptr = SnapshotFormatVersion; ptr += sizeof(int);
+                *(int*)ptr = Tick; ptr += sizeof(int);
+                *(long*)ptr = DeltaTime.RawValue; ptr += sizeof(long);
+                *(int*)ptr = _entityCapacity; ptr += sizeof(int);
+                *(int*)ptr = _entityCount; ptr += sizeof(int);
+                *(int*)ptr = _freeListHead; ptr += sizeof(int);
+
+                int entityBytes = EntityRef.Size * _entityCount;
+                Buffer.MemoryCopy(_entities, ptr, entityBytes, entityBytes);
+                ptr += entityBytes;
+
+                int versionBytes = sizeof(ushort) * _entityCount;
+                Buffer.MemoryCopy(_entityVersions, ptr, versionBytes, versionBytes);
+                ptr += versionBytes;
+
+                int nextFreeBytes = sizeof(int) * _entityCount;
+                Buffer.MemoryCopy(_entityNextFree, ptr, nextFreeBytes, nextFreeBytes);
+                ptr += nextFreeBytes;
+
+                int maskBytes = sizeof(ulong) * _entityCount * ComponentMaskBlockCount;
+                Buffer.MemoryCopy(_entityComponentMasks, ptr, maskBytes, maskBytes);
+                ptr += maskBytes;
+
+                *(int*)ptr = storageCount; ptr += sizeof(int);
+
+                for (int typeId = 0; typeId < MaxComponentTypes; typeId++)
+                {
+                    if (!_storageInitialized[typeId] || _componentStorages[typeId] == null)
+                    {
+                        continue;
+                    }
+
+                    int storageSize = ComponentCommandRegistry.GetStorageSnapshotSize(typeId, _componentStorages[typeId]);
+                    *(int*)ptr = typeId; ptr += sizeof(int);
+                    *(int*)ptr = storageSize; ptr += sizeof(int);
+                    ComponentCommandRegistry.WriteStorageSnapshot(typeId, _componentStorages[typeId], ptr, storageSize);
+                    ptr += storageSize;
+                }
+            }
+
+            return data;
+        }
+
+        private void RestoreSnapshotData(byte* buffer, int bufferSize)
+        {
+            byte* ptr = buffer;
+
+            int formatVersion = *(int*)ptr; ptr += sizeof(int);
+            if (formatVersion != SnapshotFormatVersion)
+            {
+                throw new InvalidOperationException(
+                    $"不支持的 Frame 快照格式版本：{formatVersion}。");
+            }
+
+            Tick = *(int*)ptr; ptr += sizeof(int);
+            DeltaTime = FP.FromRaw(*(long*)ptr); ptr += sizeof(long);
+
+            int entityCapacity = *(int*)ptr; ptr += sizeof(int);
+            if (entityCapacity != _entityCapacity)
+            {
+                throw new InvalidOperationException(
+                    $"Frame 快照容量不匹配。 Snapshot={entityCapacity}, Current={_entityCapacity}。");
+            }
+
+            _entityCount = *(int*)ptr; ptr += sizeof(int);
+            _freeListHead = *(int*)ptr; ptr += sizeof(int);
+
+            int entityBytes = EntityRef.Size * _entityCount;
+            Buffer.MemoryCopy(ptr, _entities, entityBytes, entityBytes);
+            ptr += entityBytes;
+
+            int versionBytes = sizeof(ushort) * _entityCount;
+            Buffer.MemoryCopy(ptr, _entityVersions, versionBytes, versionBytes);
+            ptr += versionBytes;
+
+            int nextFreeBytes = sizeof(int) * _entityCount;
+            Buffer.MemoryCopy(ptr, _entityNextFree, nextFreeBytes, nextFreeBytes);
+            ptr += nextFreeBytes;
+
+            int maskBytes = sizeof(ulong) * _entityCount * ComponentMaskBlockCount;
+            Buffer.MemoryCopy(ptr, _entityComponentMasks, maskBytes, maskBytes);
+            ptr += maskBytes;
+
+            ResetStorageTable();
+
+            int storageCount = *(int*)ptr; ptr += sizeof(int);
+            for (int i = 0; i < storageCount; i++)
+            {
+                int typeId = *(int*)ptr; ptr += sizeof(int);
+                int storageSize = *(int*)ptr; ptr += sizeof(int);
+
+                void* storage = _componentStorages[typeId];
+                if (storage == null)
+                {
+                    storage = ComponentCommandRegistry.CreateStorage(typeId, _allocator, _entityCapacity);
+                    _componentStorages[typeId] = storage;
+                }
+
+                _storageInitialized[typeId] = true;
+                ComponentCommandRegistry.ReadStorageSnapshot(typeId, storage, ptr, storageSize);
+                ptr += storageSize;
+            }
+        }
+
+        private int GetInitializedStorageCount()
+        {
+            int count = 0;
+            for (int i = 0; i < MaxComponentTypes; i++)
+            {
+                if (_storageInitialized[i] && _componentStorages[i] != null)
+                {
+                    count++;
+                }
+            }
+
+            return count;
+        }
+
+        private void ResetStorageTable()
+        {
+            for (int i = 0; i < MaxComponentTypes; i++)
+            {
+                _componentStorages[i] = null;
+                _storageInitialized[i] = false;
+            }
+        }
+
         #endregion
 
         #region 查询支持
@@ -368,6 +610,14 @@ namespace Lattice.ECS.Core
         {
             int typeId = ComponentTypeId<T>.Id;
             return GetStorage<T>(typeId);
+        }
+
+        /// <summary>
+        /// 获取帧内部使用的分配器。
+        /// </summary>
+        internal Allocator* GetAllocatorPointer()
+        {
+            return _allocator;
         }
 
         #endregion

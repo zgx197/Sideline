@@ -28,7 +28,6 @@
     <Compile Remove="Tools\**" />
     <Compile Remove="Tests\**" />
     <Compile Remove="Test*.cs" />
-    <Compile Remove="ECS\Session\**" />
     <EmbeddedResource Remove="Tools\**" />
     <EmbeddedResource Remove="Tests\**" />
     <None Remove="Tools\**" />
