@@ -1,4 +1,4 @@
-# Lattice ECS 底座架构总览
+# Lattice ECS 底座架构总览（Phase D0 已完成）
 
 ## 文档目的
 
