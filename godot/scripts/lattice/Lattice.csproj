@@ -25,12 +25,14 @@
     <!-- 排除工具目录和测试目录 -->
     <Compile Remove="ECS\Abstractions\**" />
     <Compile Remove="ECS\Future\**" />
+    <Compile Remove="Benchmarks\**" />
     <Compile Remove="Tools\**" />
     <Compile Remove="Tests\**" />
     <Compile Remove="Test*.cs" />
-    <Compile Remove="ECS\Session\**" />
+    <EmbeddedResource Remove="Benchmarks\**" />
     <EmbeddedResource Remove="Tools\**" />
     <EmbeddedResource Remove="Tests\**" />
+    <None Remove="Benchmarks\**" />
     <None Remove="Tools\**" />
     <None Remove="Tests\**" />
     <None Remove="Test*.cs" />

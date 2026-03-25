@@ -115,3 +115,4 @@ TestResults/
 
 # BenchmarkDotNet 本地产物
 godot/Lattice.Benchmarks/benchmark-results/
+BenchmarkDotNet.Artifacts/
