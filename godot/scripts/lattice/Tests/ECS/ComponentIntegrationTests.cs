@@ -21,6 +21,7 @@ namespace Lattice.Tests.ECS
         private static int _lastLifecycleValue;
         private static int _queryValueAccumulator;
         private static int _queryPairAccumulator;
+        private static int _packedSerializeCount;
 
         private struct MetadataComponent : IComponent
         {
@@ -90,6 +91,11 @@ namespace Lattice.Tests.ECS
         }
 
         private struct DenseIndexComponent : IComponent
+        {
+            public int Value;
+        }
+
+        private struct PackedCountedSerializedComponent : IComponent
         {
             public int Value;
         }
@@ -251,6 +257,55 @@ namespace Lattice.Tests.ECS
         }
 
         [Fact]
+        public void CapturePackedSnapshot_CustomSerializedComponent_DoesNotSerializeTwiceDuringStorageCount()
+        {
+            _packedSerializeCount = 0;
+
+            var builder = ComponentRegistry.CreateBuilder();
+            builder.Add<PackedCountedSerializedComponent>(SerializePackedCountedComponent);
+            builder.Finish();
+
+            using var frame = new Frame(4);
+            EntityRef first = frame.CreateEntity();
+            EntityRef second = frame.CreateEntity();
+
+            frame.Add(first, new PackedCountedSerializedComponent { Value = 10 });
+            frame.Add(second, new PackedCountedSerializedComponent { Value = 20 });
+
+            PackedFrameSnapshot snapshot = frame.CapturePackedSnapshot(ComponentSerializationMode.Checkpoint);
+
+            Assert.NotNull(snapshot);
+            Assert.Equal(2, _packedSerializeCount);
+        }
+
+        [Fact]
+        public void PackedSnapshot_CustomSerializedComponent_RoundTripsThroughFixedPayloadLayout()
+        {
+            var builder = ComponentRegistry.CreateBuilder();
+            builder.Add<PackedCountedSerializedComponent>(SerializePackedCountedComponent);
+            builder.Finish();
+
+            using var frame = new Frame(4);
+            EntityRef first = frame.CreateEntity();
+            EntityRef second = frame.CreateEntity();
+
+            frame.Add(first, new PackedCountedSerializedComponent { Value = 10 });
+            frame.Add(second, new PackedCountedSerializedComponent { Value = 20 });
+
+            PackedFrameSnapshot snapshot = frame.CapturePackedSnapshot(ComponentSerializationMode.Checkpoint);
+
+            using var restored = new Frame(4);
+            restored.RestoreFromPackedSnapshot(snapshot, ComponentSerializationMode.Checkpoint);
+
+            Assert.True(restored.Has<PackedCountedSerializedComponent>(first));
+            Assert.True(restored.Has<PackedCountedSerializedComponent>(second));
+            Assert.Equal(10, restored.Get<PackedCountedSerializedComponent>(first).Value);
+            Assert.Equal(20, restored.Get<PackedCountedSerializedComponent>(second).Value);
+            Assert.Equal(frame.CalculateChecksum(ComponentSerializationMode.Checkpoint), restored.CalculateChecksum(ComponentSerializationMode.Checkpoint));
+            Assert.True(snapshot.Data.Length >= snapshot.Length);
+        }
+
+        [Fact]
         public void FrameSnapshot_RestoresStateAndRespectsCheckpointFlags()
         {
             ComponentRegistry.Register<CommandBufferComponent>();
@@ -266,10 +321,12 @@ namespace Lattice.Tests.ECS
             frame.Add(entity, new CommandBufferComponent { Value = 77 });
             frame.Add(entity, new CheckpointExcludedComponent { Value = 31 });
 
+#pragma warning disable CS0618
             FrameSnapshot checkpointSnapshot = frame.CreateSnapshot(ComponentSerializationMode.Checkpoint);
 
             using var restored = new Frame(8);
             restored.RestoreFromSnapshot(checkpointSnapshot, ComponentSerializationMode.Checkpoint);
+#pragma warning restore CS0618
 
             Assert.Equal(frame.Tick, restored.Tick);
             Assert.Equal(frame.DeltaTime, restored.DeltaTime);
@@ -291,6 +348,7 @@ namespace Lattice.Tests.ECS
             frame.Add(first, new RawSnapshotComponent { Value = 10, Bonus = 20 });
             frame.Add(second, new RawSnapshotComponent { Value = 30, Bonus = 40 });
 
+#pragma warning disable CS0618
             FrameSnapshot snapshot = frame.CreateSnapshot();
             ComponentStorageSnapshot storageSnapshot = Assert.Single(snapshot.ComponentStorages);
 
@@ -301,6 +359,7 @@ namespace Lattice.Tests.ECS
 
             using var restored = new Frame(8);
             restored.RestoreFromSnapshot(snapshot);
+#pragma warning restore CS0618
 
             Assert.True(restored.Has<RawSnapshotComponent>(first));
             Assert.True(restored.Has<RawSnapshotComponent>(second));
@@ -643,14 +702,18 @@ namespace Lattice.Tests.ECS
             OwningGroup<QueryPrimaryComponent, QuerySecondaryComponent> group =
                 frame.RegisterOwningGroup<QueryPrimaryComponent, QuerySecondaryComponent>();
 
+#pragma warning disable CS0618
             FrameSnapshot snapshot = frame.CreateSnapshot();
+#pragma warning restore CS0618
 
             EntityRef second = frame.CreateEntity();
             frame.Add(second, new QueryPrimaryComponent { Value = 30 });
             frame.Add(second, new QuerySecondaryComponent { Value = 40 });
             Assert.Equal(100, SumOwningPairValues(group));
 
+#pragma warning disable CS0618
             frame.RestoreFromSnapshot(snapshot);
+#pragma warning restore CS0618
 
             Assert.Same(group, frame.GetOwningGroup<QueryPrimaryComponent, QuerySecondaryComponent>());
             Assert.Equal(1, group.Count);
@@ -757,6 +820,14 @@ namespace Lattice.Tests.ECS
         private static void SerializePredictionExcludedComponent(void* component, IFrameSerializer serializer)
         {
             var typed = (PredictionExcludedComponent*)component;
+            serializer.Serialize(ref typed->Value);
+        }
+
+        private static void SerializePackedCountedComponent(void* component, IFrameSerializer serializer)
+        {
+            _packedSerializeCount++;
+
+            var typed = (PackedCountedSerializedComponent*)component;
             serializer.Serialize(ref typed->Value);
         }
 

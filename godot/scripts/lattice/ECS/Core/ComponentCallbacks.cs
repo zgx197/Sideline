@@ -56,4 +56,14 @@ namespace Lattice.ECS.Core
     internal unsafe delegate void ComponentPendingRemovalDelegate(void* storage, EntityRef entity);
 
     internal unsafe delegate void ComponentPendingQueueIndexSetterDelegate(void* storage, EntityRef entity, int queueIndex);
+
+    internal unsafe delegate void ComponentStorageCopyDelegate(Frame destinationFrame, void* sourceStorage);
+
+    internal unsafe delegate void ComponentStorageResetDelegate(void* storage);
+
+    internal unsafe delegate bool ComponentPackedStatePresenceDelegate(void* storage, ComponentSerializationMode mode);
+
+    internal unsafe delegate bool ComponentPackedStateWriteDelegate(void* storage, FrameStateWriter writer, ComponentSerializationMode mode);
+
+    internal delegate void ComponentPackedStateRestoreDelegate(Frame frame, FrameStateReader reader, ComponentSerializationMode mode);
 }

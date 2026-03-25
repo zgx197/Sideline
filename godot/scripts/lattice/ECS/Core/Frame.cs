@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using Lattice.Core;
 using Lattice.Math;
@@ -97,6 +98,9 @@ namespace Lattice.ECS.Core
         /// <summary>实体数量</summary>
         public int EntityCount => _entityCount;
 
+        /// <summary>实体容量。</summary>
+        internal int EntityCapacity => _entityCapacity;
+
         /// <summary>待提交的延迟删除数量。</summary>
         public int PendingDeferredRemovalCount => _pendingRemovalCount;
 
@@ -114,23 +118,23 @@ namespace Lattice.ECS.Core
         #region 快照与复制
 
         /// <summary>
-        /// 创建帧快照。
+        /// 创建帧状态对象图快照。
+        /// 该接口主要保留给兼容、调试和显式恢复测试，不用于 Session 热路径。
         /// </summary>
+        [Obsolete("请优先改用 CapturePackedSnapshot()。CreateSnapshot() 仅保留给兼容、调试和显式恢复测试。", false)]
+        [EditorBrowsable(EditorBrowsableState.Never)]
         public FrameSnapshot CreateSnapshot(ComponentSerializationMode mode = ComponentSerializationMode.Default)
         {
-            var entityVersions = new ushort[_entityCapacity];
-            var entityNextFree = new int[_entityCapacity];
-            var entityComponentMasks = new ulong[_entityCapacity * ComponentMaskBlockCount];
+            int metadataCount = _entityCount;
+            var entityVersions = new ushort[metadataCount];
+            var entityNextFree = new int[metadataCount];
+            var entityComponentMasks = new ulong[metadataCount * ComponentMaskBlockCount];
 
-            for (int i = 0; i < _entityCapacity; i++)
+            if (metadataCount > 0)
             {
-                entityVersions[i] = _entityVersions[i];
-                entityNextFree[i] = _entityNextFree[i];
-            }
-
-            for (int i = 0; i < entityComponentMasks.Length; i++)
-            {
-                entityComponentMasks[i] = _entityComponentMasks[i];
+                new ReadOnlySpan<ushort>(_entityVersions, metadataCount).CopyTo(entityVersions);
+                new ReadOnlySpan<int>(_entityNextFree, metadataCount).CopyTo(entityNextFree);
+                new ReadOnlySpan<ulong>(_entityComponentMasks, entityComponentMasks.Length).CopyTo(entityComponentMasks);
             }
 
             var pendingEntities = new EntityRef[_pendingRemovalCount];
@@ -175,11 +179,25 @@ namespace Lattice.ECS.Core
                 snapshots);
         }
 
+        /// <summary>
+        /// 创建紧凑字节帧快照。
+        /// 主要用于 Session 的 checkpoint 与采样历史。
+        /// </summary>
+        public PackedFrameSnapshot CapturePackedSnapshot(ComponentSerializationMode mode = ComponentSerializationMode.Default)
+        {
+            var writer = new FrameStateBufferWriter();
+            WritePackedState(writer, mode);
+            return writer.ToSnapshot(Tick, _entityCapacity);
+        }
+
         #endregion
 
         /// <summary>
-        /// 从快照恢复帧状态。
+        /// 从对象图快照恢复帧状态。
+        /// 该接口主要保留给兼容 API 与测试使用。
         /// </summary>
+        [Obsolete("请优先改用 RestoreFromPackedSnapshot()。RestoreFromSnapshot() 仅保留给兼容 API 与测试使用。", false)]
+        [EditorBrowsable(EditorBrowsableState.Never)]
         public void RestoreFromSnapshot(FrameSnapshot snapshot, ComponentSerializationMode mode = ComponentSerializationMode.Default)
         {
             if (snapshot == null)
@@ -187,38 +205,43 @@ namespace Lattice.ECS.Core
                 throw new ArgumentNullException(nameof(snapshot));
             }
 
-            bool preserveOwningGroups = _owningGroupBindings != null && _owningGroupBindings.Count > 0;
-
-            ReleaseState(preserveOwningGroups);
-            InitializeState(snapshot.EntityCapacity, preserveOwningGroups);
-
-            if (preserveOwningGroups)
-            {
-                ReinitializeOwningGroups();
-            }
+            PrepareForSnapshotRestore(snapshot.EntityCapacity, reuseExistingState: false);
 
             Tick = snapshot.Tick;
             DeltaTime = snapshot.DeltaTime;
             _entityCount = snapshot.EntityCount;
             _freeListHead = snapshot.FreeListHead;
+            int metadataCount = snapshot.EntityVersions.Length;
 
-            if (snapshot.EntityVersions.Length != _entityCapacity ||
-                snapshot.EntityNextFree.Length != _entityCapacity ||
-                snapshot.EntityComponentMasks.Length != _entityCapacity * ComponentMaskBlockCount)
+            if (metadataCount < snapshot.EntityCount ||
+                snapshot.EntityNextFree.Length != metadataCount ||
+                snapshot.EntityComponentMasks.Length != metadataCount * ComponentMaskBlockCount)
             {
                 throw new InvalidOperationException("Snapshot entity metadata size does not match frame capacity.");
             }
 
-            for (int i = 0; i < _entityCapacity; i++)
+            for (int i = 0; i < metadataCount; i++)
             {
                 _entityVersions[i] = snapshot.EntityVersions[i];
                 _entityNextFree[i] = snapshot.EntityNextFree[i];
                 _entities[i] = i < _entityCount ? new EntityRef(i, _entityVersions[i]) : EntityRef.None;
             }
 
+            for (int i = metadataCount; i < _entityCapacity; i++)
+            {
+                _entityVersions[i] = 1;
+                _entityNextFree[i] = -1;
+                _entities[i] = EntityRef.None;
+            }
+
             for (int i = 0; i < snapshot.EntityComponentMasks.Length; i++)
             {
                 _entityComponentMasks[i] = snapshot.EntityComponentMasks[i];
+            }
+
+            for (int i = snapshot.EntityComponentMasks.Length; i < _entityCapacity * ComponentMaskBlockCount; i++)
+            {
+                _entityComponentMasks[i] = 0;
             }
 
             for (int i = 0; i < snapshot.ComponentStorages.Length; i++)
@@ -233,15 +256,117 @@ namespace Lattice.ECS.Core
             {
                 _pendingRemovalEntities[i] = snapshot.PendingRemovalEntities[i];
                 _pendingRemovalTypeIds[i] = snapshot.PendingRemovalTypeIds[i];
-
-                int typeId = _pendingRemovalTypeIds[i];
-                if (_storageInitialized[typeId] && _componentStorages[typeId] != null)
-                {
-                    ComponentRegistry.GetPendingRemovalMarker(typeId)(_componentStorages[typeId], _pendingRemovalEntities[i]);
-                }
             }
 
-            RebuildOwningGroups();
+            FinalizeSnapshotRestore();
+        }
+
+        /// <summary>
+        /// 从紧凑字节帧快照恢复状态。
+        /// </summary>
+        public void RestoreFromPackedSnapshot(PackedFrameSnapshot snapshot, ComponentSerializationMode mode = ComponentSerializationMode.Default)
+        {
+            if (snapshot == null)
+            {
+                throw new ArgumentNullException(nameof(snapshot));
+            }
+
+            var reader = new FrameStateReader(snapshot.Data, snapshot.Length);
+
+            int tick = reader.ReadInt32();
+            long deltaTimeRaw = reader.ReadInt64();
+            int entityCapacity = reader.ReadInt32();
+            int entityCount = reader.ReadInt32();
+            int freeListHead = reader.ReadInt32();
+
+            PrepareForSnapshotRestore(entityCapacity, reuseExistingState: true);
+
+            Tick = tick;
+            DeltaTime = FP.FromRaw(deltaTimeRaw);
+            _entityCount = entityCount;
+            _freeListHead = freeListHead;
+
+            int metadataCount = reader.ReadInt32();
+            if (metadataCount < entityCount)
+            {
+                throw new InvalidOperationException("Packed snapshot entity metadata size does not match frame capacity.");
+            }
+
+            for (int i = 0; i < metadataCount; i++)
+            {
+                _entityVersions[i] = reader.ReadUInt16();
+            }
+
+            for (int i = metadataCount; i < _entityCapacity; i++)
+            {
+                _entityVersions[i] = 1;
+            }
+
+            int nextFreeCount = reader.ReadInt32();
+            if (nextFreeCount != metadataCount)
+            {
+                throw new InvalidOperationException("Packed snapshot next-free metadata size does not match entity metadata.");
+            }
+
+            for (int i = 0; i < metadataCount; i++)
+            {
+                _entityNextFree[i] = reader.ReadInt32();
+                _entities[i] = i < _entityCount ? new EntityRef(i, _entityVersions[i]) : EntityRef.None;
+            }
+
+            for (int i = metadataCount; i < _entityCapacity; i++)
+            {
+                _entityNextFree[i] = -1;
+                _entities[i] = EntityRef.None;
+            }
+
+            int maskCount = reader.ReadInt32();
+            if (maskCount != metadataCount * ComponentMaskBlockCount)
+            {
+                throw new InvalidOperationException("Packed snapshot component mask size does not match entity metadata.");
+            }
+
+            ReadOnlySpan<byte> maskBytes = reader.ReadBytes(maskCount * sizeof(ulong));
+            fixed (byte* maskPtr = maskBytes)
+            {
+                Buffer.MemoryCopy(maskPtr, _entityComponentMasks, sizeof(ulong) * _entityCapacity * ComponentMaskBlockCount, maskBytes.Length);
+            }
+
+            for (int i = maskCount; i < _entityCapacity * ComponentMaskBlockCount; i++)
+            {
+                _entityComponentMasks[i] = 0;
+            }
+
+            int pendingEntityCount = reader.ReadInt32();
+            EnsurePendingRemovalCapacity(pendingEntityCount);
+            _pendingRemovalCount = pendingEntityCount;
+            for (int i = 0; i < pendingEntityCount; i++)
+            {
+                _pendingRemovalEntities[i] = EntityRef.FromRaw(reader.ReadUInt64());
+            }
+
+            int pendingTypeCount = reader.ReadInt32();
+            if (pendingTypeCount != pendingEntityCount)
+            {
+                throw new InvalidOperationException("Packed snapshot pending removal metadata size does not match.");
+            }
+
+            for (int i = 0; i < pendingTypeCount; i++)
+            {
+                _pendingRemovalTypeIds[i] = reader.ReadUInt16();
+            }
+
+            int storageCount = reader.ReadInt32();
+            ResetInitializedStorages();
+
+            for (int i = 0; i < storageCount; i++)
+            {
+                int typeId = reader.ReadInt32();
+                ComponentRegistry.GetPackedStateRestorer(typeId)(this, reader, mode);
+                _storageInitialized[typeId] = true;
+            }
+
+            FinalizeSnapshotRestore();
         }
 
         /// <summary>
@@ -250,8 +375,86 @@ namespace Lattice.ECS.Core
         public Frame Clone(ComponentSerializationMode mode = ComponentSerializationMode.Default)
         {
             var clone = new Frame(_entityCapacity);
-            clone.RestoreFromSnapshot(CreateSnapshot(mode), mode);
+            clone.RestoreFromPackedSnapshot(CapturePackedSnapshot(mode), mode);
             return clone;
+        }
+
+        /// <summary>
+        /// 克隆当前帧的完整运行时状态。
+        /// 该路径保留所有组件状态，供预测推进、回滚和历史补帧复用。
+        /// </summary>
+        public Frame CloneState()
+        {
+            var clone = new Frame(_entityCapacity);
+            clone.CopyStateFrom(this);
+            return clone;
+        }
+
+        /// <summary>
+        /// 从另一个帧复制状态到当前帧。
+        /// </summary>
+        public void CopyFrom(Frame source, ComponentSerializationMode mode = ComponentSerializationMode.Default)
+        {
+            ArgumentNullException.ThrowIfNull(source);
+            RestoreFromPackedSnapshot(source.CapturePackedSnapshot(mode), mode);
+        }
+
+        /// <summary>
+        /// 从另一个帧直接复制完整运行时状态，避免热路径走托管快照分配。
+        /// </summary>
+        public void CopyStateFrom(Frame source)
+        {
+            ArgumentNullException.ThrowIfNull(source);
+
+            if (ReferenceEquals(this, source))
+            {
+                return;
+            }
+
+            bool preserveOwningGroups = _owningGroupBindings != null && _owningGroupBindings.Count > 0;
+            EnsureCompatibleStateForCopy(source._entityCapacity, preserveOwningGroups);
+
+            Tick = source.Tick;
+            DeltaTime = source.DeltaTime;
+            _entityCount = source._entityCount;
+            _freeListHead = source._freeListHead;
+
+            int entityBytes = sizeof(EntityRef) * source._entityCapacity;
+            int versionBytes = sizeof(ushort) * source._entityCapacity;
+            int nextFreeBytes = sizeof(int) * source._entityCapacity;
+            int maskBytes = sizeof(ulong) * source._entityCapacity * ComponentMaskBlockCount;
+
+            Buffer.MemoryCopy(source._entities, _entities, entityBytes, entityBytes);
+            Buffer.MemoryCopy(source._entityVersions, _entityVersions, versionBytes, versionBytes);
+            Buffer.MemoryCopy(source._entityNextFree, _entityNextFree, nextFreeBytes, nextFreeBytes);
+            Buffer.MemoryCopy(source._entityComponentMasks, _entityComponentMasks, maskBytes, maskBytes);
+
+            EnsurePendingRemovalCapacity(source._pendingRemovalCount);
+            _pendingRemovalCount = source._pendingRemovalCount;
+            if (_pendingRemovalCount > 0)
+            {
+                int pendingEntityBytes = sizeof(EntityRef) * _pendingRemovalCount;
+                int pendingTypeBytes = sizeof(ushort) * _pendingRemovalCount;
+                Buffer.MemoryCopy(source._pendingRemovalEntities, _pendingRemovalEntities, pendingEntityBytes, pendingEntityBytes);
+                Buffer.MemoryCopy(source._pendingRemovalTypeIds, _pendingRemovalTypeIds, pendingTypeBytes, pendingTypeBytes);
+            }
+
+            for (int typeId = 1; typeId <= ComponentRegistry.Count; typeId++)
+            {
+                if (source._storageInitialized[typeId] && source._componentStorages[typeId] != null)
+                {
+                    ComponentRegistry.GetStorageCopier(typeId)(this, source._componentStorages[typeId]);
+                    _storageInitialized[typeId] = true;
+                    continue;
+                }
+
+                if (_storageInitialized[typeId] && _componentStorages[typeId] != null)
+                {
+                    ComponentRegistry.GetStorageResetter(typeId)(_componentStorages[typeId]);
+                }
+            }
+
+            RebuildOwningGroups();
         }
 
         /// <summary>
@@ -259,7 +462,9 @@ namespace Lattice.ECS.Core
         /// </summary>
         public ulong CalculateChecksum(ComponentSerializationMode mode = ComponentSerializationMode.Checkpoint)
         {
-            return CreateSnapshot(mode).Checksum;
+            var writer = new FrameStateChecksumWriter();
+            WritePackedState(writer, mode);
+            return writer.Checksum;
         }
 
         #region 实体操作
@@ -1001,6 +1206,76 @@ namespace Lattice.ECS.Core
             }
         }
 
+        private void WritePackedState(FrameStateWriter writer, ComponentSerializationMode mode)
+        {
+            writer.WriteInt32(Tick);
+            writer.WriteInt64(DeltaTime.RawValue);
+            writer.WriteInt32(_entityCapacity);
+            writer.WriteInt32(_entityCount);
+            writer.WriteInt32(_freeListHead);
+
+            int metadataCount = _entityCount;
+            writer.WriteInt32(metadataCount);
+            for (int i = 0; i < metadataCount; i++)
+            {
+                writer.WriteUInt16(_entityVersions[i]);
+            }
+
+            writer.WriteInt32(metadataCount);
+            for (int i = 0; i < metadataCount; i++)
+            {
+                writer.WriteInt32(_entityNextFree[i]);
+            }
+
+            int maskCount = metadataCount * ComponentMaskBlockCount;
+            writer.WriteInt32(maskCount);
+            if (maskCount > 0)
+            {
+                writer.WriteBytes(_entityComponentMasks, maskCount * sizeof(ulong));
+            }
+
+            writer.WriteInt32(_pendingRemovalCount);
+            for (int i = 0; i < _pendingRemovalCount; i++)
+            {
+                writer.WriteUInt64(_pendingRemovalEntities[i].Raw);
+            }
+
+            writer.WriteInt32(_pendingRemovalCount);
+            for (int i = 0; i < _pendingRemovalCount; i++)
+            {
+                writer.WriteUInt16(_pendingRemovalTypeIds[i]);
+            }
+
+            Span<int> serializableTypeIds = stackalloc int[MaxComponentTypes];
+            int storageCount = 0;
+            for (int typeId = 1; typeId <= ComponentRegistry.Count; typeId++)
+            {
+                if (!_storageInitialized[typeId] || _componentStorages[typeId] == null)
+                {
+                    continue;
+                }
+
+                if (!ComponentRegistry.CanSerializeComponent(typeId, mode))
+                {
+                    continue;
+                }
+
+                if (!ComponentRegistry.GetPackedStatePresenceChecker(typeId)(_componentStorages[typeId], mode))
+                {
+                    continue;
+                }
+
+                serializableTypeIds[storageCount++] = typeId;
+            }
+
+            writer.WriteInt32(storageCount);
+            for (int i = 0; i < storageCount; i++)
+            {
+                int typeId = serializableTypeIds[i];
+                ComponentRegistry.GetPackedStateWriter(typeId)(_componentStorages[typeId], writer, mode);
+            }
+        }
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static ulong ComposeOwningGroupKey(int arity, int typeId1, int typeId2, int typeId3)
         {
@@ -1049,6 +1324,65 @@ namespace Lattice.ECS.Core
             {
                 _owningGroups = new Dictionary<ulong, object>();
                 _owningGroupBindings = new List<IFrameOwningGroup>();
+            }
+        }
+
+        private void PrepareForSnapshotRestore(int entityCapacity, bool reuseExistingState)
+        {
+            bool preserveOwningGroups = _owningGroupBindings != null && _owningGroupBindings.Count > 0;
+            if (reuseExistingState)
+            {
+                EnsureCompatibleStateForCopy(entityCapacity, preserveOwningGroups);
+                return;
+            }
+
+            ReleaseState(preserveOwningGroups);
+            InitializeState(entityCapacity, preserveOwningGroups);
+
+            if (preserveOwningGroups)
+            {
+                ReinitializeOwningGroups();
+            }
+        }
+
+        private void ResetInitializedStorages()
+        {
+            for (int typeId = 1; typeId <= ComponentRegistry.Count; typeId++)
+            {
+                if (_storageInitialized[typeId] && _componentStorages[typeId] != null)
+                {
+                    ComponentRegistry.GetStorageResetter(typeId)(_componentStorages[typeId]);
+                }
+            }
+        }
+
+        private void FinalizeSnapshotRestore()
+        {
+            for (int i = 0; i < _pendingRemovalCount; i++)
+            {
+                int typeId = _pendingRemovalTypeIds[i];
+                if (_storageInitialized[typeId] && _componentStorages[typeId] != null)
+                {
+                    ComponentRegistry.GetPendingRemovalMarker(typeId)(_componentStorages[typeId], _pendingRemovalEntities[i]);
+                }
+            }
+
+            RebuildOwningGroups();
+        }
+
+        private void EnsureCompatibleStateForCopy(int sourceEntityCapacity, bool preserveOwningGroups)
+        {
+            if (_allocator != null && _entityCapacity == sourceEntityCapacity)
+            {
+                return;
+            }
+
+            ReleaseState(preserveOwningGroups);
+            InitializeState(sourceEntityCapacity, preserveOwningGroups);
+
+            if (preserveOwningGroups)
+            {
+                ReinitializeOwningGroups();
             }
         }
 

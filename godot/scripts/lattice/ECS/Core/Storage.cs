@@ -444,6 +444,92 @@ namespace Lattice.ECS.Core
         }
 
         /// <summary>
+        /// 重置存储内容但保留已分配容量，供热路径复用。
+        /// </summary>
+        internal void Reset()
+        {
+            _count = 1;
+            _version = 0;
+            _singletonSparse = 0;
+            _pendingRemoval = 0;
+            ClearSparseAndStates();
+        }
+
+        /// <summary>
+        /// 从同类型存储直接复制状态，避免走托管快照分配。
+        /// </summary>
+        internal void CopyFrom(Storage<T>* source)
+        {
+            if (source == null)
+            {
+                throw new ArgumentNullException(nameof(source));
+            }
+
+            if (_componentTypeId != source->_componentTypeId)
+            {
+                throw new InvalidOperationException("Cannot copy storage state from a different component type.");
+            }
+
+            if (_flags != source->_flags)
+            {
+                throw new InvalidOperationException("Cannot copy storage state from a storage with different flags.");
+            }
+
+            if (_blockItemCapacity != source->_blockItemCapacity)
+            {
+                throw new InvalidOperationException("Cannot copy storage state from a storage with different block layout.");
+            }
+
+            _count = source->_count;
+            _version = source->_version;
+            _singletonSparse = source->_singletonSparse;
+            _pendingRemoval = source->_pendingRemoval;
+
+            ClearSparseAndStates();
+            EnsureEntityCapacity(source->_count);
+
+            int denseCount = source->Count;
+            if (denseCount <= 0)
+            {
+                return;
+            }
+
+            CopyDenseEntitiesFrom(source, denseCount);
+            CopyDenseComponentBytesFrom(source, denseCount);
+
+            if (_entryStates != null)
+            {
+                if (source->_entryStates != null)
+                {
+                    Buffer.MemoryCopy(source->_entryStates + 1, _entryStates + 1, denseCount, denseCount);
+                }
+                else
+                {
+                    Unsafe.InitBlockUnaligned(_entryStates + 1, EntryStateActive, (uint)denseCount);
+                }
+            }
+
+            int pendingQueueIndex = 0;
+            for (int i = 1; i <= denseCount; i++)
+            {
+                EntityRef entity = GetEntityRefByGlobalIndex(i);
+                _sparse[entity.Index] = (ushort)i;
+
+                if (_pendingQueueIndices != null)
+                {
+                    if (GetEntryStateByIndex(i) == EntryStatePendingRemoval)
+                    {
+                        _pendingQueueIndices[i] = (ushort)pendingQueueIndex++;
+                    }
+                    else
+                    {
+                        _pendingQueueIndices[i] = PendingQueueIndexNone;
+                    }
+                }
+            }
+        }
+
+        /// <summary>
         /// 确保有足够的实体容量
         /// </summary>
         private void EnsureEntityCapacity(int requiredCount)
@@ -1026,6 +1112,31 @@ namespace Lattice.ECS.Core
         }
 
         /// <summary>
+        /// 将密集实体数组直接写入状态写入器。
+        /// </summary>
+        internal void WriteDenseEntities(FrameStateWriter writer)
+        {
+            if (writer == null)
+            {
+                throw new ArgumentNullException(nameof(writer));
+            }
+
+            int copied = 0;
+            for (int blockIndex = 0; blockIndex < _blockCount && copied < Count; blockIndex++)
+            {
+                int blockCount = GetDenseBlockCopyCount(blockIndex, Count - copied);
+                if (blockCount <= 0)
+                {
+                    continue;
+                }
+
+                int sourceOffset = blockIndex == 0 ? 1 : 0;
+                writer.WriteBytes(_blocks[blockIndex].PackedHandles + sourceOffset, sizeof(EntityRef) * blockCount);
+                copied += blockCount;
+            }
+        }
+
+        /// <summary>
         /// 将密集组件数据复制到字节缓冲区。
         /// </summary>
         internal void CopyDenseComponentBytes(byte[] destination)
@@ -1044,6 +1155,31 @@ namespace Lattice.ECS.Core
             fixed (byte* dest = destination)
             {
                 CopyDenseComponentBytes(dest, Count);
+            }
+        }
+
+        /// <summary>
+        /// 将密集组件数据直接写入状态写入器。
+        /// </summary>
+        internal void WriteDenseComponentBytes(FrameStateWriter writer)
+        {
+            if (writer == null)
+            {
+                throw new ArgumentNullException(nameof(writer));
+            }
+
+            int copied = 0;
+            for (int blockIndex = 0; blockIndex < _blockCount && copied < Count; blockIndex++)
+            {
+                int blockCount = GetDenseBlockCopyCount(blockIndex, Count - copied);
+                if (blockCount <= 0)
+                {
+                    continue;
+                }
+
+                int sourceOffset = blockIndex == 0 ? 1 : 0;
+                writer.WriteBytes(_blocks[blockIndex].PackedData + sourceOffset, sizeof(T) * blockCount);
+                copied += blockCount;
             }
         }
 
@@ -1068,36 +1204,37 @@ namespace Lattice.ECS.Core
                 throw new ArgumentException("Component snapshot data size does not match entity count.", nameof(componentData));
             }
 
-            ClearSparseAndStates();
-            _count = denseCount + 1;
-            _pendingRemoval = 0;
-            _singletonSparse = 0;
-
-            EnsureEntityCapacity(_count);
-
-            if (denseCount == 0)
-            {
-                _version++;
-                return;
-            }
-
             fixed (EntityRef* entityPtr = entities)
             fixed (byte* dataPtr = componentData)
             {
-                RestoreDenseEntities(entityPtr, denseCount);
-                RestoreDenseComponentBytes(dataPtr, denseCount);
+                RestoreDenseSnapshot(entityPtr, dataPtr, denseCount);
+            }
 
-                for (int i = 0; i < denseCount; i++)
+            _version++;
+        }
+
+        /// <summary>
+        /// 使用连续字节片段恢复组件存储。
+        /// </summary>
+        internal void RestoreDenseSnapshot(ReadOnlySpan<byte> entityBytes, ReadOnlySpan<byte> componentBytes)
+        {
+            if ((entityBytes.Length % sizeof(EntityRef)) != 0)
+            {
+                throw new ArgumentException("Entity snapshot byte length is invalid.", nameof(entityBytes));
+            }
+
+            int denseCount = entityBytes.Length / sizeof(EntityRef);
+            if (componentBytes.Length != denseCount * sizeof(T))
+            {
+                throw new ArgumentException("Component snapshot byte length does not match entity count.", nameof(componentBytes));
+            }
+
+            unsafe
+            {
+                fixed (byte* entityPtrRaw = entityBytes)
+                fixed (byte* componentPtr = componentBytes)
                 {
-                    EntityRef entity = entityPtr[i];
-                    int globalIndex = i + 1;
-                    _sparse[entity.Index] = (ushort)globalIndex;
-                    SetEntryStateByIndex(globalIndex, EntryStateActive);
-
-                    if (IsSingleton)
-                    {
-                        _singletonSparse = (ushort)globalIndex;
-                    }
+                    RestoreDenseSnapshot((EntityRef*)entityPtrRaw, componentPtr, denseCount);
                 }
             }
 
@@ -1260,6 +1397,48 @@ namespace Lattice.ECS.Core
             return System.Math.Min(blockCapacity, remainingCount);
         }
 
+        private void CopyDenseEntitiesFrom(Storage<T>* source, int denseCount)
+        {
+            int copied = 0;
+            for (int blockIndex = 0; blockIndex < _blockCount && copied < denseCount; blockIndex++)
+            {
+                int blockCount = GetDenseBlockCopyCount(blockIndex, denseCount - copied);
+                if (blockCount <= 0)
+                {
+                    continue;
+                }
+
+                int offset = blockIndex == 0 ? 1 : 0;
+                Buffer.MemoryCopy(
+                    source->_blocks[blockIndex].PackedHandles + offset,
+                    _blocks[blockIndex].PackedHandles + offset,
+                    sizeof(EntityRef) * blockCount,
+                    sizeof(EntityRef) * blockCount);
+                copied += blockCount;
+            }
+        }
+
+        private void CopyDenseComponentBytesFrom(Storage<T>* source, int denseCount)
+        {
+            int copied = 0;
+            for (int blockIndex = 0; blockIndex < _blockCount && copied < denseCount; blockIndex++)
+            {
+                int blockCount = GetDenseBlockCopyCount(blockIndex, denseCount - copied);
+                if (blockCount <= 0)
+                {
+                    continue;
+                }
+
+                int offset = blockIndex == 0 ? 1 : 0;
+                Buffer.MemoryCopy(
+                    source->_blocks[blockIndex].PackedData + offset,
+                    _blocks[blockIndex].PackedData + offset,
+                    sizeof(T) * blockCount,
+                    sizeof(T) * blockCount);
+                copied += blockCount;
+            }
+        }
+
         private void ClearSparseAndStates()
         {
             Unsafe.InitBlockUnaligned(_sparse, 0, checked((uint)(sizeof(ushort) * _sparseCapacity)));
@@ -1273,6 +1452,37 @@ namespace Lattice.ECS.Core
                 for (int i = 0; i <= _sparseCapacity; i++)
                 {
                     _pendingQueueIndices[i] = PendingQueueIndexNone;
+                }
+            }
+        }
+
+        private void RestoreDenseSnapshot(EntityRef* entityPtr, byte* dataPtr, int denseCount)
+        {
+            ClearSparseAndStates();
+            _count = denseCount + 1;
+            _pendingRemoval = 0;
+            _singletonSparse = 0;
+
+            EnsureEntityCapacity(_count);
+
+            if (denseCount == 0)
+            {
+                return;
+            }
+
+            RestoreDenseEntities(entityPtr, denseCount);
+            RestoreDenseComponentBytes(dataPtr, denseCount);
+
+            for (int i = 0; i < denseCount; i++)
+            {
+                EntityRef entity = entityPtr[i];
+                int globalIndex = i + 1;
+                _sparse[entity.Index] = (ushort)globalIndex;
+                SetEntryStateByIndex(globalIndex, EntryStateActive);
+
+                if (IsSingleton)
+                {
+                    _singletonSparse = (ushort)globalIndex;
                 }
             }
         }

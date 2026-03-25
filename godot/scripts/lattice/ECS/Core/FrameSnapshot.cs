@@ -2,8 +2,7 @@
 // Licensed under GPL-3.0.
 
 using System;
-using System.Buffers.Binary;
-using System.IO;
+using System.ComponentModel;
 using Lattice.Core;
 using Lattice.Math;
 
@@ -31,7 +30,8 @@ namespace Lattice.ECS.Core
     public enum ComponentSnapshotDataKind : byte
     {
         EntryPayloads = 0,
-        RawDense = 1
+        RawDense = 1,
+        FixedSizeEntryPayloads = 2
     }
 
     /// <summary>
@@ -69,8 +69,11 @@ namespace Lattice.ECS.Core
     }
 
     /// <summary>
-    /// 帧状态快照。
+    /// 帧状态对象图快照。
+    /// 主要用于兼容 API、调试断言和显式恢复测试，不作为 Session 热路径 checkpoint 格式。
     /// </summary>
+    [Obsolete("请优先改用 PackedFrameSnapshot 及 Frame.CapturePackedSnapshot()/RestoreFromPackedSnapshot()。FrameSnapshot 仅保留为兼容、调试和显式恢复测试。", false)]
+    [EditorBrowsable(EditorBrowsableState.Never)]
     public sealed class FrameSnapshot
     {
         public FrameSnapshot(
@@ -121,124 +124,109 @@ namespace Lattice.ECS.Core
 
         public ComponentStorageSnapshot[] ComponentStorages { get; }
 
-        public ulong Checksum => CalculateChecksum(ToByteArray());
+        /// <summary>
+        /// 基于当前对象图布局计算的校验和。
+        /// </summary>
+        public ulong Checksum
+        {
+            get
+            {
+                var writer = new FrameStateChecksumWriter();
+                WriteTo(writer);
+                return writer.Checksum;
+            }
+        }
 
+        /// <summary>
+        /// 将对象图快照编码为稳定字节布局。
+        /// </summary>
         public byte[] ToByteArray()
         {
-            using var stream = new MemoryStream();
+            var writer = new FrameStateBufferWriter();
+            WriteTo(writer);
+            return writer.ToArray();
+        }
 
-            WriteInt32(stream, Tick);
-            WriteInt64(stream, DeltaTime.RawValue);
-            WriteInt32(stream, EntityCapacity);
-            WriteInt32(stream, EntityCount);
-            WriteInt32(stream, FreeListHead);
+        /// <summary>
+        /// 对已有快照字节布局计算校验和。
+        /// </summary>
+        public static ulong CalculateChecksum(byte[] data)
+        {
+            ArgumentNullException.ThrowIfNull(data);
 
-            WriteInt32(stream, EntityVersions.Length);
+            var writer = new FrameStateChecksumWriter();
+            writer.WriteBytes(data);
+            return writer.Checksum;
+        }
+
+        private void WriteTo(FrameStateWriter writer)
+        {
+            writer.WriteInt32(Tick);
+            writer.WriteInt64(DeltaTime.RawValue);
+            writer.WriteInt32(EntityCapacity);
+            writer.WriteInt32(EntityCount);
+            writer.WriteInt32(FreeListHead);
+
+            writer.WriteInt32(EntityVersions.Length);
             for (int i = 0; i < EntityVersions.Length; i++)
             {
-                WriteUInt16(stream, EntityVersions[i]);
+                writer.WriteUInt16(EntityVersions[i]);
             }
 
-            WriteInt32(stream, EntityNextFree.Length);
+            writer.WriteInt32(EntityNextFree.Length);
             for (int i = 0; i < EntityNextFree.Length; i++)
             {
-                WriteInt32(stream, EntityNextFree[i]);
+                writer.WriteInt32(EntityNextFree[i]);
             }
 
-            WriteInt32(stream, EntityComponentMasks.Length);
+            writer.WriteInt32(EntityComponentMasks.Length);
             for (int i = 0; i < EntityComponentMasks.Length; i++)
             {
-                WriteUInt64(stream, EntityComponentMasks[i]);
+                writer.WriteUInt64(EntityComponentMasks[i]);
             }
 
-            WriteInt32(stream, PendingRemovalEntities.Length);
+            writer.WriteInt32(PendingRemovalEntities.Length);
             for (int i = 0; i < PendingRemovalEntities.Length; i++)
             {
-                WriteUInt64(stream, PendingRemovalEntities[i].Raw);
+                writer.WriteUInt64(PendingRemovalEntities[i].Raw);
             }
 
-            WriteInt32(stream, PendingRemovalTypeIds.Length);
+            writer.WriteInt32(PendingRemovalTypeIds.Length);
             for (int i = 0; i < PendingRemovalTypeIds.Length; i++)
             {
-                WriteUInt16(stream, PendingRemovalTypeIds[i]);
+                writer.WriteUInt16(PendingRemovalTypeIds[i]);
             }
 
-            WriteInt32(stream, ComponentStorages.Length);
+            writer.WriteInt32(ComponentStorages.Length);
             for (int i = 0; i < ComponentStorages.Length; i++)
             {
                 ComponentStorageSnapshot storage = ComponentStorages[i];
-                WriteInt32(stream, storage.TypeId);
-                WriteByte(stream, (byte)storage.Kind);
+                writer.WriteInt32(storage.TypeId);
+                writer.WriteByte((byte)storage.Kind);
 
                 if (storage.Kind == ComponentSnapshotDataKind.RawDense)
                 {
-                    WriteInt32(stream, storage.DenseEntities.Length);
+                    writer.WriteInt32(storage.DenseEntities.Length);
                     for (int j = 0; j < storage.DenseEntities.Length; j++)
                     {
-                        WriteUInt64(stream, storage.DenseEntities[j].Raw);
+                        writer.WriteUInt64(storage.DenseEntities[j].Raw);
                     }
 
-                    WriteInt32(stream, storage.DenseData.Length);
-                    if (storage.DenseData.Length > 0)
-                    {
-                        stream.Write(storage.DenseData, 0, storage.DenseData.Length);
-                    }
+                    writer.WriteInt32(storage.DenseData.Length);
+                    writer.WriteBytes(storage.DenseData);
                     continue;
                 }
 
-                WriteInt32(stream, storage.Entries.Length);
+                writer.WriteInt32(storage.Entries.Length);
 
                 for (int j = 0; j < storage.Entries.Length; j++)
                 {
                     ComponentEntrySnapshot entry = storage.Entries[j];
-                    WriteUInt64(stream, entry.Entity.Raw);
-                    WriteInt32(stream, entry.Payload.Length);
-                    if (entry.Payload.Length > 0)
-                    {
-                        stream.Write(entry.Payload, 0, entry.Payload.Length);
-                    }
+                    writer.WriteUInt64(entry.Entity.Raw);
+                    writer.WriteInt32(entry.Payload.Length);
+                    writer.WriteBytes(entry.Payload);
                 }
             }
-
-            return stream.ToArray();
-        }
-
-        public static ulong CalculateChecksum(byte[] data)
-        {
-            return unchecked((ulong)DeterministicHash.Fnv1a64(data));
-        }
-
-        private static void WriteUInt16(Stream stream, ushort value)
-        {
-            Span<byte> buffer = stackalloc byte[sizeof(ushort)];
-            BinaryPrimitives.WriteUInt16LittleEndian(buffer, value);
-            stream.Write(buffer);
-        }
-
-        private static void WriteByte(Stream stream, byte value)
-        {
-            stream.WriteByte(value);
-        }
-
-        private static void WriteInt32(Stream stream, int value)
-        {
-            Span<byte> buffer = stackalloc byte[sizeof(int)];
-            BinaryPrimitives.WriteInt32LittleEndian(buffer, value);
-            stream.Write(buffer);
-        }
-
-        private static void WriteInt64(Stream stream, long value)
-        {
-            Span<byte> buffer = stackalloc byte[sizeof(long)];
-            BinaryPrimitives.WriteInt64LittleEndian(buffer, value);
-            stream.Write(buffer);
-        }
-
-        private static void WriteUInt64(Stream stream, ulong value)
-        {
-            Span<byte> buffer = stackalloc byte[sizeof(ulong)];
-            BinaryPrimitives.WriteUInt64LittleEndian(buffer, value);
-            stream.Write(buffer);
         }
     }
 }
