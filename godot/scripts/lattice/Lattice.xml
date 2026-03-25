@@ -224,6 +224,9 @@
         <member name="F:Lattice.ECS.Core.BitStream._buffer">
             <summary>数据缓冲区</summary>
         </member>
+        <member name="F:Lattice.ECS.Core.BitStream._byteLimit">
+            <summary>当前逻辑终点（读取模式下可能小于缓冲区长度）。</summary>
+        </member>
         <member name="F:Lattice.ECS.Core.BitStream._bytePosition">
             <summary>当前字节位置</summary>
         </member>
@@ -398,6 +401,11 @@
         <member name="M:Lattice.ECS.Core.BitStream.ToArray">
             <summary>
             获取写入的数据
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.BitStream.GetWrittenSpan">
+            <summary>
+            获取当前已写入数据的只读视图，不发生额外分配。
             </summary>
         </member>
         <member name="M:Lattice.ECS.Core.BitStream.Reset">
@@ -917,22 +925,54 @@
         <member name="P:Lattice.ECS.Core.Frame.EntityCount">
             <summary>实体数量</summary>
         </member>
+        <member name="P:Lattice.ECS.Core.Frame.EntityCapacity">
+            <summary>实体容量。</summary>
+        </member>
         <member name="P:Lattice.ECS.Core.Frame.PendingDeferredRemovalCount">
             <summary>待提交的延迟删除数量。</summary>
         </member>
         <member name="M:Lattice.ECS.Core.Frame.CreateSnapshot(Lattice.ECS.Core.ComponentSerializationMode)">
             <summary>
-            创建帧快照。
+            创建帧状态对象图快照。
+            该接口主要保留给兼容、调试和显式恢复测试，不用于 Session 热路径。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.Frame.CapturePackedSnapshot(Lattice.ECS.Core.ComponentSerializationMode)">
+            <summary>
+            创建紧凑字节帧快照。
+            主要用于 Session 的 checkpoint 与采样历史。
             </summary>
         </member>
         <member name="M:Lattice.ECS.Core.Frame.RestoreFromSnapshot(Lattice.ECS.Core.FrameSnapshot,Lattice.ECS.Core.ComponentSerializationMode)">
             <summary>
-            从快照恢复帧状态。
+            从对象图快照恢复帧状态。
+            该接口主要保留给兼容 API 与测试使用。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.Frame.RestoreFromPackedSnapshot(Lattice.ECS.Core.PackedFrameSnapshot,Lattice.ECS.Core.ComponentSerializationMode)">
+            <summary>
+            从紧凑字节帧快照恢复状态。
             </summary>
         </member>
         <member name="M:Lattice.ECS.Core.Frame.Clone(Lattice.ECS.Core.ComponentSerializationMode)">
             <summary>
             克隆当前帧。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.Frame.CloneState">
+            <summary>
+            克隆当前帧的完整运行时状态。
+            该路径保留所有组件状态，供预测推进、回滚和历史补帧复用。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.Frame.CopyFrom(Lattice.ECS.Core.Frame,Lattice.ECS.Core.ComponentSerializationMode)">
+            <summary>
+            从另一个帧复制状态到当前帧。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.Frame.CopyStateFrom(Lattice.ECS.Core.Frame)">
+            <summary>
+            从另一个帧直接复制完整运行时状态，避免热路径走托管快照分配。
             </summary>
         </member>
         <member name="M:Lattice.ECS.Core.Frame.CalculateChecksum(Lattice.ECS.Core.ComponentSerializationMode)">
@@ -1095,7 +1135,64 @@
         </member>
         <member name="T:Lattice.ECS.Core.FrameSnapshot">
             <summary>
-            帧状态快照。
+            帧状态对象图快照。
+            主要用于兼容 API、调试断言和显式恢复测试，不作为 Session 热路径 checkpoint 格式。
+            </summary>
+        </member>
+        <member name="P:Lattice.ECS.Core.FrameSnapshot.Checksum">
+            <summary>
+            基于当前对象图布局计算的校验和。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.FrameSnapshot.ToByteArray">
+            <summary>
+            将对象图快照编码为稳定字节布局。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.FrameSnapshot.CalculateChecksum(System.Byte[])">
+            <summary>
+            对已有快照字节布局计算校验和。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Core.FrameStateWriter">
+            <summary>
+            帧状态写入器基类。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Core.FrameStateBufferWriter">
+            <summary>
+            直接写入连续字节缓冲区的状态写入器。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Core.FrameStateSizingWriter">
+            <summary>
+            仅统计写入字节数的状态写入器。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Core.FrameStateChecksumWriter">
+            <summary>
+            仅计算校验和的状态写入器，不保留实际缓冲区。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Core.FrameStateReader">
+            <summary>
+            帧状态读取器。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Core.PackedFrameSnapshot">
+            <summary>
+            连续字节表示的帧快照。
+            主要供 Session 的 checkpoint、采样历史和其他运行时热路径使用。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Core.FrameStateBitStreamWriter">
+            <summary>
+            直接把位级序列化结果写入状态写入器，避免额外的 BitStream 中转缓冲区。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Core.FrameStateBitStreamReader">
+            <summary>
+            直接从状态读取器消费固定位长 payload，避免每个条目构造一个 BitStream 实例。
             </summary>
         </member>
         <member name="T:Lattice.ECS.Core.FullOwningGroup`2">
@@ -1806,6 +1903,16 @@
             从快照恢复（用于回滚）
             </summary>
         </member>
+        <member name="M:Lattice.ECS.Core.Storage`1.Reset">
+            <summary>
+            重置存储内容但保留已分配容量，供热路径复用。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.Storage`1.CopyFrom(Lattice.ECS.Core.Storage{`0}*)">
+            <summary>
+            从同类型存储直接复制状态，避免走托管快照分配。
+            </summary>
+        </member>
         <member name="M:Lattice.ECS.Core.Storage`1.EnsureEntityCapacity(System.Int32)">
             <summary>
             确保有足够的实体容量
@@ -1941,14 +2048,29 @@
             将密集实体数组复制到托管缓冲区。
             </summary>
         </member>
+        <member name="M:Lattice.ECS.Core.Storage`1.WriteDenseEntities(Lattice.ECS.Core.FrameStateWriter)">
+            <summary>
+            将密集实体数组直接写入状态写入器。
+            </summary>
+        </member>
         <member name="M:Lattice.ECS.Core.Storage`1.CopyDenseComponentBytes(System.Byte[])">
             <summary>
             将密集组件数据复制到字节缓冲区。
             </summary>
         </member>
+        <member name="M:Lattice.ECS.Core.Storage`1.WriteDenseComponentBytes(Lattice.ECS.Core.FrameStateWriter)">
+            <summary>
+            将密集组件数据直接写入状态写入器。
+            </summary>
+        </member>
         <member name="M:Lattice.ECS.Core.Storage`1.RestoreDenseSnapshot(Lattice.Core.EntityRef[],System.Byte[])">
             <summary>
             使用原始密集快照恢复组件存储。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.Storage`1.RestoreDenseSnapshot(System.ReadOnlySpan{System.Byte},System.ReadOnlySpan{System.Byte})">
+            <summary>
+            使用连续字节片段恢复组件存储。
             </summary>
         </member>
         <member name="M:Lattice.ECS.Core.Storage`1.GetEntityRefByGlobalIndex(System.Int32)">
@@ -2108,6 +2230,113 @@
             新代码建议直接使用 <see cref="M:Lattice.ECS.Core.Frame.Query``2" /> 并在循环中叠加裁剪判断。
             </summary>
         </member>
+        <member name="T:Lattice.ECS.Framework.ISystem">
+            <summary>
+            最小系统接口。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Framework.ISystem.OnInit(Lattice.ECS.Core.Frame)">
+            <summary>
+            系统初始化时调用。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Framework.ISystem.OnUpdate(Lattice.ECS.Core.Frame,Lattice.Math.FP)">
+            <summary>
+            每帧更新时调用。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Framework.ISystem.OnDestroy(Lattice.ECS.Core.Frame)">
+            <summary>
+            系统销毁时调用。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Framework.SystemScheduler">
+            <summary>
+            最小系统调度器。
+            </summary>
+        </member>
+        <member name="P:Lattice.ECS.Framework.SystemScheduler.Count">
+            <summary>
+            当前已注册系统数量。
+            </summary>
+        </member>
+        <member name="P:Lattice.ECS.Framework.SystemScheduler.IsInitialized">
+            <summary>
+            当前是否已完成初始化。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Framework.SystemScheduler.Add(Lattice.ECS.Framework.ISystem)">
+            <summary>
+            注册系统。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Framework.SystemScheduler.Remove(Lattice.ECS.Framework.ISystem)">
+            <summary>
+            移除系统。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Framework.SystemScheduler.Clear">
+            <summary>
+            清空系统列表。
+            必须在未初始化状态下调用；若系统已初始化，请先执行 Shutdown(frame)。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Framework.SystemScheduler.Initialize(Lattice.ECS.Core.Frame)">
+            <summary>
+            初始化所有系统。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Framework.SystemScheduler.Update(Lattice.ECS.Core.Frame,Lattice.Math.FP)">
+            <summary>
+            按注册顺序更新所有系统。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Framework.SystemScheduler.Shutdown(Lattice.ECS.Core.Frame)">
+            <summary>
+            关闭所有系统。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Framework.Systems.Position2D">
+            <summary>
+            最小联调用二维位置组件。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Framework.Systems.Velocity2D">
+            <summary>
+            最小联调用二维速度组件。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Framework.Systems.Lifetime">
+            <summary>
+            最小联调用生命周期组件。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Framework.Systems.Spawner">
+            <summary>
+            最小联调用生成器组件。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Framework.Systems.ProjectileTag">
+            <summary>
+            最小联调用投射物标记。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Framework.Systems.LifetimeSystem">
+            <summary>
+            最小样例生命周期系统。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Framework.Systems.MovementSystem">
+            <summary>
+            最小样例移动系统。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Framework.Systems.SpawnerSystem">
+            <summary>
+            最小样例生成系统。
+            用于验证“实体在系统更新中创建，再参与后续系统处理”的链路。
+            </summary>
+        </member>
         <member name="T:Lattice.ECS.Serialization.IFrameSerializer">
             <summary>
             帧序列化器接口（对齐 FrameSync IDeterministicFrameSerializer）
@@ -2219,6 +2448,345 @@
         <member name="P:Lattice.ECS.Serialization.IUnsafeFrameSerializable.SerializedSize">
             <summary>
             序列化后的字节大小
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Session.Session">
+            <summary>
+            ECS 会话管理器。
+            当前主干中的 Session 属于“纯 C#、单线程、固定顺序、可回滚”的最小模拟运行时，
+            既承载本地预测推进，也承载最小验证/回滚能力，但并不是完整网络会话产品层。
+            </summary>
+        </member>
+        <member name="F:Lattice.ECS.Session.Session.MaxPredictionFrames">
+            <summary>最大预测帧数（超过需要回滚）</summary>
+        </member>
+        <member name="F:Lattice.ECS.Session.Session.HistorySize">
+            <summary>历史帧保留数量</summary>
+        </member>
+        <member name="F:Lattice.ECS.Session.Session.LiveHistorySize">
+            <summary>保留为活帧的历史数量。</summary>
+        </member>
+        <member name="F:Lattice.ECS.Session.Session.HistorySnapshotInterval">
+            <summary>历史快照采样间隔。</summary>
+        </member>
+        <member name="P:Lattice.ECS.Session.Session.RuntimeOptions">
+            <summary>运行时配置。</summary>
+        </member>
+        <member name="P:Lattice.ECS.Session.Session.DeltaTime">
+            <summary>固定时间步长</summary>
+        </member>
+        <member name="P:Lattice.ECS.Session.Session.LocalPlayerId">
+            <summary>本地玩家 ID</summary>
+        </member>
+        <member name="P:Lattice.ECS.Session.Session.CurrentTick">
+            <summary>当前帧号（Verified 帧号）</summary>
+        </member>
+        <member name="P:Lattice.ECS.Session.Session.VerifiedFrame">
+            <summary>最新验证帧（服务器确认）</summary>
+        </member>
+        <member name="P:Lattice.ECS.Session.Session.PredictedFrame">
+            <summary>预测帧（本地模拟）</summary>
+        </member>
+        <member name="P:Lattice.ECS.Session.Session.PreviousFrame">
+            <summary>上一帧（用于插值）</summary>
+        </member>
+        <member name="F:Lattice.ECS.Session.Session._historyByTick">
+            <summary>按 Tick 索引的历史帧。</summary>
+        </member>
+        <member name="F:Lattice.ECS.Session.Session._historyOrder">
+            <summary>历史帧的插入顺序。</summary>
+        </member>
+        <member name="F:Lattice.ECS.Session.Session._historySnapshotsByTick">
+            <summary>采样保留的历史快照。</summary>
+        </member>
+        <member name="F:Lattice.ECS.Session.Session._historySnapshotTicks">
+            <summary>按 Tick 升序维护的历史快照索引。</summary>
+        </member>
+        <member name="F:Lattice.ECS.Session.Session._recycledFrames">
+            <summary>回收的帧实例，用于降低热路径分配成本。</summary>
+        </member>
+        <member name="F:Lattice.ECS.Session.Session._historicalScratchFrame">
+            <summary>按需重建历史帧时复用的临时帧。</summary>
+        </member>
+        <member name="F:Lattice.ECS.Session.Session._materializedHistoryByTick">
+            <summary>小范围 materialize cache，避免同一片历史窗口反复从 snapshot 冷启动。</summary>
+        </member>
+        <member name="F:Lattice.ECS.Session.Session._materializedHistoryOrder">
+            <summary>materialize cache 的 LRU 顺序。</summary>
+        </member>
+        <member name="P:Lattice.ECS.Session.Session.IsRollingBack">
+            <summary>是否正在回滚中</summary>
+        </member>
+        <member name="P:Lattice.ECS.Session.Session.IsRunning">
+            <summary>是否已启动</summary>
+        </member>
+        <member name="F:Lattice.ECS.Session.Session._systemScheduler">
+            <summary>系统调度器</summary>
+        </member>
+        <member name="F:Lattice.ECS.Session.Session._inputBuffers">
+            <summary>输入缓冲区</summary>
+        </member>
+        <member name="E:Lattice.ECS.Session.Session.OnFrameUpdate">
+            <summary>帧更新事件</summary>
+        </member>
+        <member name="E:Lattice.ECS.Session.Session.OnRollback">
+            <summary>发生回滚事件</summary>
+        </member>
+        <member name="E:Lattice.ECS.Session.Session.OnFrameVerified">
+            <summary>帧验证事件</summary>
+        </member>
+        <member name="M:Lattice.ECS.Session.Session.Start">
+            <summary>
+            启动会话。
+            该方法是幂等的；若会话已在运行，则直接返回。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Session.Session.Stop">
+            <summary>
+            停止会话。
+            该方法是幂等的；若会话未运行，则直接返回。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Session.Session.Update">
+            <summary>
+            单步更新（FixedUpdate）。
+            这是当前最小本地推进入口：基于已知输入推进 `PredictedFrame`，并写入历史。
+            只能在会话运行期间调用。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Session.Session.RegisterSystem(Lattice.ECS.Framework.ISystem)">
+            <summary>
+            注册系统。
+            运行中的会话不允许动态修改系统集合，避免 Verified / Predicted / History 之间出现不一致。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Session.Session.UnregisterSystem(Lattice.ECS.Framework.ISystem)">
+            <summary>
+            注销系统。
+            运行中的会话不允许动态修改系统集合，避免 Verified / Predicted / History 之间出现不一致。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Session.Session.UpdateSystems(Lattice.ECS.Core.Frame,Lattice.Math.FP)">
+            <summary>
+            执行系统更新
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Session.Session.SetPlayerInput(System.Int32,System.Int32,Lattice.ECS.Session.IInputCommand)">
+            <summary>
+            设置玩家输入
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Session.Session.GetPlayerInput(System.Int32,System.Int32)">
+            <summary>
+            获取玩家输入
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Session.Session.ApplyInputs(Lattice.ECS.Core.Frame)">
+            <summary>
+            应用输入到帧
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Session.Session.VerifyFrame(System.Int32,System.Int64,System.Byte[])">
+            <summary>
+            验证帧（服务器确认）。
+            该接口属于“预测/验证”语义：用于比较某个历史 Tick 的校验和，
+            不匹配时触发回滚与重模拟；它不是本地单机玩法推进所必需的入口。
+            只能在会话运行期间调用。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Session.Session.RollbackTo(System.Int32,System.Byte[])">
+            <summary>
+            回滚到指定帧。
+            该接口属于“预测修正”语义：它会把 `PredictedFrame` 回退到历史基线后再重模拟，
+            主要服务于校验失败后的状态修正，而不是普通本地 rewind 玩法。
+            只能在会话运行期间调用；该操作只回退帧状态，不重新初始化系统。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Session.Session.Resimulate(System.Int32,System.Int32)">
+            <summary>
+            重新模拟帧
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Session.Session.GetHistoricalFrame(System.Int32)">
+            <summary>
+            获取历史帧
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Session.Session.UpdateHistory(Lattice.ECS.Core.Frame)">
+            <summary>
+            更新历史中的帧
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Session.Session.Rewind(System.Int32)">
+            <summary>
+            回退指定帧数（单机时光倒流）。
+            该接口更偏“本地玩法语义”：直接恢复历史帧，不做额外重模拟，
+            与 `RollbackTo()` 的预测修正语义不同。
+            只能在会话运行期间调用。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Session.Session.CreateCheckpoint">
+            <summary>
+            创建检查点。
+            该接口更偏“本地工具/运行时管理”语义：保存当前 Verified / Predicted 帧状态，
+            便于显式恢复、热重载或外层玩法工具使用，不负责系统集合装配。
+            需要当前已经存在有效帧状态。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Session.Session.RestoreFromCheckpoint(Lattice.ECS.Session.SessionCheckpoint)">
+            <summary>
+            从检查点恢复。
+            该接口更偏“本地工具/运行时管理”语义：只恢复帧状态，
+            不重建系统集合，也不切换 Session 的运行模式。
+            该操作只恢复帧状态，不会重建系统集合，也不会重新初始化系统。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Session.Session.CreateFrame(System.Int32)">
+            <summary>
+            创建新帧
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Session.Session.AdvanceFrame(Lattice.ECS.Core.Frame)">
+            <summary>
+            推进到下一帧
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Session.Session.ApplyCorrectedInput(Lattice.ECS.Core.Frame,System.Byte[])">
+            <summary>
+            应用修正的输入
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Session.Session.InvalidateHistoricalMaterializeCache">
+            <summary>
+            清空按需重建历史帧使用的临时缓存。
+            仅供派生类在测试或基准场景下显式控制冷/热路径使用。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Session.SessionCheckpoint">
+            <summary>
+            会话检查点
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Session.IInputCommand">
+            <summary>
+            输入命令接口
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Session.InputBuffer">
+            <summary>
+            输入缓冲区
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Session.SessionRunner">
+            <summary>
+            会话运行器。
+            为纯 C# 环境提供统一的 Start / Step / Stop 驱动入口。
+            </summary>
+        </member>
+        <member name="P:Lattice.ECS.Session.SessionRunner.Session">
+            <summary>
+            当前绑定的会话。
+            </summary>
+        </member>
+        <member name="P:Lattice.ECS.Session.SessionRunner.IsRunning">
+            <summary>
+            运行器当前是否处于运行状态。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Session.SessionRunner.Start">
+            <summary>
+            启动运行器。
+            该方法是幂等的。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Session.SessionRunner.Step">
+            <summary>
+            推进一步固定帧。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Session.SessionRunner.Step(System.Int32)">
+            <summary>
+            推进多个固定帧。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Session.SessionRunner.Stop">
+            <summary>
+            停止运行器。
+            该方法是幂等的。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Session.SessionRunnerBuilder">
+            <summary>
+            会话运行器构建器。
+            为代码侧提供最小但正式的运行时装配入口。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Session.SessionRunnerBuilder.WithDeltaTime(Lattice.Math.FP)">
+            <summary>
+            设置固定时间步长。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Session.SessionRunnerBuilder.WithLocalPlayerId(System.Int32)">
+            <summary>
+            设置本地玩家 ID。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Session.SessionRunnerBuilder.WithRuntimeOptions(Lattice.ECS.Session.SessionRuntimeOptions)">
+            <summary>
+            设置运行时基础配置。
+            当前仅承载稳定公开的基础参数，不提前暴露历史窗口和采样策略等内部实现细节。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Session.SessionRunnerBuilder.WithSessionFactory(System.Func{Lattice.Math.FP,System.Int32,Lattice.ECS.Session.Session})">
+            <summary>
+            设置自定义会话工厂。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Session.SessionRunnerBuilder.AddSystem(Lattice.ECS.Framework.ISystem)">
+            <summary>
+            注册系统。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Session.SessionRunnerBuilder.BuildSession">
+            <summary>
+            构建会话。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Session.SessionRunnerBuilder.Build">
+            <summary>
+            构建运行器。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Session.SessionRuntimeOptions">
+            <summary>
+            Session 运行时配置。
+            该对象只承载当前已经稳定公开的基础参数，不提前暴露历史窗口和采样策略等内部实现细节。
+            </summary>
+        </member>
+        <member name="P:Lattice.ECS.Session.SessionRuntimeOptions.Default">
+            <summary>
+            默认运行配置。
+            </summary>
+        </member>
+        <member name="P:Lattice.ECS.Session.SessionRuntimeOptions.DeltaTime">
+            <summary>
+            固定时间步长。
+            </summary>
+        </member>
+        <member name="P:Lattice.ECS.Session.SessionRuntimeOptions.LocalPlayerId">
+            <summary>
+            本地玩家 ID。
+            主要用于本地输入读取和最小预测链路。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Session.SessionRuntimeOptions.WithDeltaTime(Lattice.Math.FP)">
+            <summary>
+            创建一个仅替换固定时间步长的新配置。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Session.SessionRuntimeOptions.WithLocalPlayerId(System.Int32)">
+            <summary>
+            创建一个仅替换本地玩家 ID 的新配置。
             </summary>
         </member>
         <member name="T:Lattice.Math.FP">

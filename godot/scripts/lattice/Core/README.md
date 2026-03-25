@@ -1,5 +1,9 @@
 # Lattice ECS Core 核心模块
 
+> 历史归档文档：
+> 本文包含较多早期阶段的架构草图与推进路线，不再代表当前主干实现状态。
+> 当前主干能力请优先参考 `godot/scripts/lattice/README.md` 与 `godot/scripts/lattice/ECS/Framework/SystemDesignNotes.md`。
+
 > 面向确定性、帧同步与高性能数据布局的 ECS 核心设计说明。
 >
 > 设计参考：FrameSync、Unity DOTS、Bevy ECS、enTT。

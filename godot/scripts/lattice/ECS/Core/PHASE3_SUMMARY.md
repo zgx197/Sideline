@@ -1,5 +1,9 @@
 # Phase 3 实现完成总结
 
+> 历史归档文档：
+> 本文记录的是早期 Phase 3 设计与实现总结，其中大量 `FrameSnapshot`、压缩和整体架构描述已经不再等同于当前主干。
+> 当前实现状态请以 `godot/scripts/lattice/README.md` 和 `godot/scripts/lattice/ECS/Framework/SystemDesignNotes.md` 为准。
+
 ## 新增文件
 
 ### 1. BitStream.cs

@@ -1,9 +1,13 @@
-# Lattice ECS 架构设计（完整游戏框架版）
+# Lattice ECS 架构设计（历史归档）
+
+> 历史归档文档：
+> 本文反映的是较早阶段对“完整游戏框架版 ECS”的设想，其中大量 `SystemGroup`、多线程、旧快照与完整产品层能力描述不等同于当前主干。
+> 当前实现状态请优先以 `godot/scripts/lattice/README.md` 和 `godot/scripts/lattice/ECS/Framework/SystemDesignNotes.md` 为准。
 
 ## 文档版本
-- **Version**: 1.0
+- **Version**: 1.0（历史归档）
 - **Last Updated**: 2026-03-18
-- **Status**: Phase 6-8 完成
+- **Status**: Archived / 非当前主干实现说明
 
 ---
 
