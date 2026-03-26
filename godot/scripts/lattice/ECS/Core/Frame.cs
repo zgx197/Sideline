@@ -1392,6 +1392,14 @@ namespace Lattice.ECS.Core
             return GetStorage<T>(typeId);
         }
 
+        /// <summary>
+        /// 获取帧内部使用的分配器。
+        /// </summary>
+        internal Allocator* GetAllocatorPointer()
+        {
+            return _allocator;
+        }
+
         #endregion
 
         #region IDisposable

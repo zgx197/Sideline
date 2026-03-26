@@ -20,7 +20,8 @@ namespace Lattice.ECS.Core
 
         public Filter(Frame frame)
         {
-            _frame = frame ?? throw new ArgumentNullException(nameof(frame));
+            ArgumentNullException.ThrowIfNull(frame);
+            _frame = frame;
             _query = frame.Query<T1>();
         }
 
@@ -46,7 +47,9 @@ namespace Lattice.ECS.Core
             }
 
             public EntityRef CurrentEntity;
+
             public T1* CurrentPtr;
+
             public ref T1 Component => ref *CurrentPtr;
 
             public bool MoveNext()
@@ -77,11 +80,7 @@ namespace Lattice.ECS.Core
 
         public Filter(Frame frame)
         {
-            if (frame == null)
-            {
-                throw new ArgumentNullException(nameof(frame));
-            }
-
+            ArgumentNullException.ThrowIfNull(frame);
             _query = frame.Query<T1, T2>();
         }
 
@@ -100,9 +99,13 @@ namespace Lattice.ECS.Core
             }
 
             public EntityRef Entity { get; private set; }
+
             public T1* Component1Ptr { get; private set; }
+
             public T2* Component2Ptr { get; private set; }
+
             public ref T1 Component1 => ref *Component1Ptr;
+
             public ref T2 Component2 => ref *Component2Ptr;
 
             public bool MoveNext()
@@ -135,11 +138,7 @@ namespace Lattice.ECS.Core
 
         public Filter(Frame frame)
         {
-            if (frame == null)
-            {
-                throw new ArgumentNullException(nameof(frame));
-            }
-
+            ArgumentNullException.ThrowIfNull(frame);
             _query = frame.Query<T1, T2, T3>();
         }
 
@@ -159,11 +158,17 @@ namespace Lattice.ECS.Core
             }
 
             public EntityRef Entity { get; private set; }
+
             public T1* Component1Ptr { get; private set; }
+
             public T2* Component2Ptr { get; private set; }
+
             public T3* Component3Ptr { get; private set; }
+
             public ref T1 Component1 => ref *Component1Ptr;
+
             public ref T2 Component2 => ref *Component2Ptr;
+
             public ref T3 Component3 => ref *Component3Ptr;
 
             public bool MoveNext()

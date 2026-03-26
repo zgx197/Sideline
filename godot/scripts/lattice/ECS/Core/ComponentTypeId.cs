@@ -144,6 +144,19 @@ namespace Lattice.ECS.Core
             }
         }
 
+        /// <summary>
+        /// 确保组件类型已注册。
+        /// </summary>
+        public static void EnsureRegistered<T>() where T : unmanaged, IComponent
+        {
+            if (ComponentTypeId<T>.IsRegistered)
+            {
+                return;
+            }
+
+            Register<T>();
+        }
+
         public static int GetComponentIndex(Type type)
         {
             if (ReverseLookup.TryGetValue(type, out int id))

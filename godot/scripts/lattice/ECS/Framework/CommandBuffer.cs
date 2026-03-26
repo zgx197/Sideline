@@ -28,7 +28,7 @@ namespace Lattice.ECS.Framework
     public unsafe struct CommandHeader
     {
         public CommandType Type;
-        public ushort ComponentTypeId;  // 0 = 无组件
+        public ushort ComponentTypeId; // ushort.MaxValue = 无组件
         public ushort PayloadSize;
     }
 
@@ -76,8 +76,22 @@ namespace Lattice.ECS.Framework
         /// <summary>
         /// 初始化命令缓冲
         /// </summary>
+        public void Initialize(Frame frame, int capacity = 4096)
+        {
+            ArgumentNullException.ThrowIfNull(frame);
+            Initialize(frame.GetAllocatorPointer(), capacity);
+        }
+
+        /// <summary>
+        /// 初始化命令缓冲
+        /// </summary>
         public void Initialize(Allocator* allocator, int capacity = 4096)
         {
+            if (allocator == null)
+            {
+                throw new ArgumentNullException(nameof(allocator));
+            }
+
             _allocator = allocator;
             _capacity = capacity;
             _writePosition = 0;
@@ -129,7 +143,7 @@ namespace Lattice.ECS.Framework
             var header = new CommandHeader
             {
                 Type = CommandType.CreateEntity,
-                ComponentTypeId = 0,
+                ComponentTypeId = ushort.MaxValue,
                 PayloadSize = 0
             };
 
@@ -163,7 +177,7 @@ namespace Lattice.ECS.Framework
             var header = new CommandHeader
             {
                 Type = CommandType.DestroyEntity,
-                ComponentTypeId = 0,
+                ComponentTypeId = ushort.MaxValue,
                 PayloadSize = checked((ushort)payloadSize)
             };
 
@@ -279,28 +293,28 @@ namespace Lattice.ECS.Framework
 
                     case CommandType.DestroyEntity:
                         {
-                            var entity = ResolveEntity(payload);
+                            EntityRef entity = ResolveEntity(payload);
                             frame.DestroyEntity(entity);
                             break;
                         }
 
                     case CommandType.AddComponent:
                         {
-                            var entity = ResolveEntity(payload);
+                            EntityRef entity = ResolveEntity(payload);
                             PlaybackAddComponent(frame, entity, header.ComponentTypeId, payload + sizeof(EntityRef));
                             break;
                         }
 
                     case CommandType.RemoveComponent:
                         {
-                            var entity = ResolveEntity(payload);
+                            EntityRef entity = ResolveEntity(payload);
                             PlaybackRemoveComponent(frame, entity, header.ComponentTypeId);
                             break;
                         }
 
                     case CommandType.SetComponent:
                         {
-                            var entity = ResolveEntity(payload);
+                            EntityRef entity = ResolveEntity(payload);
                             PlaybackSetComponent(frame, entity, header.ComponentTypeId, payload + sizeof(EntityRef));
                             break;
                         }
@@ -355,6 +369,7 @@ namespace Lattice.ECS.Framework
                 EnsureSpace(size);
                 Buffer.MemoryCopy(ptr + sizeof(int), _buffer, size, size);
                 _writePosition = size;
+                RecountCreatedEntities();
             }
         }
 
@@ -379,6 +394,33 @@ namespace Lattice.ECS.Framework
             }
         }
 
+        private void EnsureCreatedCapacity(int requiredCapacity)
+        {
+            if (requiredCapacity <= _createdCapacity)
+            {
+                return;
+            }
+
+            int newCapacity = _createdCapacity;
+            while (newCapacity < requiredCapacity)
+            {
+                newCapacity *= 2;
+            }
+
+            var newArray = (EntityRef*)_allocator->Alloc(sizeof(EntityRef) * newCapacity);
+            if (_createdCount > 0)
+            {
+                Buffer.MemoryCopy(
+                    _createdEntities,
+                    newArray,
+                    sizeof(EntityRef) * newCapacity,
+                    sizeof(EntityRef) * _createdCount);
+            }
+
+            _createdEntities = newArray;
+            _createdCapacity = newCapacity;
+        }
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void WriteHeader(CommandHeader* header)
         {
@@ -393,36 +435,36 @@ namespace Lattice.ECS.Framework
             _writePosition += size;
         }
 
+        private void PlaybackAddComponent(Frame frame, EntityRef entity, ushort typeId, byte* ptr)
+        {
+            ComponentCommandRegistry.PlaybackAdd(frame, entity, typeId, ptr);
+        }
+
+        private void PlaybackRemoveComponent(Frame frame, EntityRef entity, ushort typeId)
+        {
+            ComponentCommandRegistry.PlaybackRemove(frame, entity, typeId);
+        }
+
+        private void PlaybackSetComponent(Frame frame, EntityRef entity, ushort typeId, byte* ptr)
+        {
+            ComponentCommandRegistry.PlaybackSet(frame, entity, typeId, ptr);
+        }
+
         private EntityRef ResolveEntity(byte* payload)
         {
-            var entity = *(EntityRef*)payload;
+            EntityRef entity = *(EntityRef*)payload;
             if (entity.Index >= 0)
             {
                 return entity;
             }
 
-            int createdIndex = -entity.Index - 1;
-            if ((uint)createdIndex >= (uint)_createdCount)
+            int createdOrdinal = -entity.Index - 1;
+            if ((uint)createdOrdinal >= (uint)_createdCount)
             {
-                throw new InvalidOperationException($"Temporary entity reference out of range: {entity}");
+                throw new InvalidOperationException($"未找到临时实体映射：{entity}。");
             }
 
-            return _createdEntities[createdIndex];
-        }
-
-        private static void PlaybackAddComponent(Frame frame, EntityRef entity, ushort typeId, byte* ptr)
-        {
-            ComponentRegistry.GetAddApplier(typeId)(frame, entity, ptr);
-        }
-
-        private static void PlaybackRemoveComponent(Frame frame, EntityRef entity, ushort typeId)
-        {
-            ComponentRegistry.GetRemoveInvoker(typeId)(frame, entity);
-        }
-
-        private static void PlaybackSetComponent(Frame frame, EntityRef entity, ushort typeId, byte* ptr)
-        {
-            ComponentRegistry.GetSetApplier(typeId)(frame, entity, ptr);
+            return _createdEntities[createdOrdinal];
         }
 
         private static void ValidatePayloadSize(in CommandHeader header)
@@ -432,8 +474,8 @@ namespace Lattice.ECS.Framework
                 CommandType.CreateEntity => 0,
                 CommandType.DestroyEntity => sizeof(EntityRef),
                 CommandType.RemoveComponent => sizeof(EntityRef),
-                CommandType.AddComponent => sizeof(EntityRef) + ComponentRegistry.GetComponentSize(header.ComponentTypeId),
-                CommandType.SetComponent => sizeof(EntityRef) + ComponentRegistry.GetComponentSize(header.ComponentTypeId),
+                CommandType.AddComponent => sizeof(EntityRef) + ComponentCommandRegistry.GetComponentSize(header.ComponentTypeId),
+                CommandType.SetComponent => sizeof(EntityRef) + ComponentCommandRegistry.GetComponentSize(header.ComponentTypeId),
                 _ => throw new InvalidOperationException($"Unknown command type: {header.Type}")
             };
 
@@ -441,6 +483,31 @@ namespace Lattice.ECS.Framework
             {
                 throw new InvalidOperationException(
                     $"Command payload size mismatch. Type={header.Type}, ComponentTypeId={header.ComponentTypeId}, Expected={expectedSize}, Actual={header.PayloadSize}");
+            }
+        }
+
+        private void RecountCreatedEntities()
+        {
+            _createdCount = 0;
+
+            byte* ptr = _buffer;
+            byte* end = _buffer + _writePosition;
+            while (ptr < end)
+            {
+                CommandHeader header = *(CommandHeader*)ptr;
+                ptr += sizeof(CommandHeader);
+
+                if (header.Type == CommandType.CreateEntity)
+                {
+                    EnsureCreatedCapacity(_createdCount + 1);
+                    _createdEntities[_createdCount++] = new EntityRef(-_createdCount, 0);
+                }
+
+                ptr += header.PayloadSize;
+                if (ptr > end)
+                {
+                    throw new InvalidOperationException("Serialized command buffer is malformed.");
+                }
             }
         }
 

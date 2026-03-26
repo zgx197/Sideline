@@ -11,395 +11,458 @@
 
 ---
 
-## 目录
-1. [设计目标](#设计目标)
-2. [架构概览](#架构概览)
-3. [核心设计决策](#核心设计决策)
-4. [性能优化策略](#性能优化策略)
-5. [预测回滚支持](#预测回滚支持)
-6. [多线程架构](#多线程架构)
-7. [与 FrameSync 对比](#与-framesync-对比)
-8. [使用指南](#使用指南)
+## 当前定位
+
+Lattice 当前阶段的目标，不是复制一个完整版 FrameSync，也不是立刻覆盖运行时、回放、联机、调试工具的全部能力。
+
+当前真正要先稳定的是底座主链路：
+
+```text
+Math
+  ↓
+Component
+  ↓
+Frame / Storage
+  ↓
+Query
+  ↓
+CommandBuffer
+  ↓
+SystemScheduler
+  ↓
+SimulationSession
+```
+
+这条链路一旦边界清晰，后续无论是：
+
+- Godot Bridge
+- 回滚 / 重模拟
+- 本地 Runner
+- Replay
+- 调试工具
+
+都可以建立在它之上，而不需要反复推翻底层设计。
 
 ---
 
 ## 设计目标
 
-### 1. 高性能
-- **单线程性能优先**：批量处理、缓存友好、SIMD 加速
-- **可预测的性能**：无 GC、无动态分配、固定时间复杂度
+### 1. 确定性优先
 
-### 2. 预测回滚
-- **确定性**：完全可重现的行为，支持帧同步
-- **状态快照**：O(1) 快照创建，快速回滚
+相同输入必须得到相同输出。
 
-### 3. 可扩展性
-- **模块化**：Core / Framework / Game 分层
-- **渐进式**：基础功能可用，高级特性可选
+这意味着：
 
----
+- 数值计算必须走确定性数学
+- 组件必须是纯值类型
+- 系统执行顺序必须稳定
+- 结构修改必须有明确时机
+- 快照、恢复、校验和必须建立在正式状态模型上
 
-## 架构概览
+### 2. 先收敛底座，再向上扩展
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    Game Layer（游戏层）                       │
-│  - 自定义 Systems（物理、AI、渲染）                           │
-│  - 自定义 Components（Position, Health...）                   │
-├─────────────────────────────────────────────────────────────┤
-│                  Framework Layer（框架层）                    │
-│  - CommandBuffer（命令缓冲，用于预测回滚）                     │
-│  - CullingSystem（裁剪系统）                                  │
-│  - Query / Query 兼容层（强类型查询系统）                     │
-├─────────────────────────────────────────────────────────────┤
-│                    Core Layer（核心层）                       │
-│  - Storage<T>（组件存储，SOA）                                │
-│  - FullOwningGroup（终极性能 AOS）                            │
-│  - SIMDUtils（SIMD 加速）                                     │
-│  - ComponentBlockIterator（批量迭代）                         │
-├─────────────────────────────────────────────────────────────┤
-│                   Memory Layer（内存层）                      │
-│  - Allocator（自定义分配器，64KB chunks）                      │
-│  - NativeArray（非托管数组包装）                              │
-└─────────────────────────────────────────────────────────────┘
-```
+Lattice 当前不追求一次性做完所有层。
+
+当前阶段优先稳定：
+
+- 数据模型
+- 状态容器
+- 查询路径
+- 结构修改闭环
+- 系统调度
+- 最小模拟闭环
+
+### 3. 单线程主线优先
+
+当前底座以单线程确定性模拟为主线。
+
+并行、Job 化、线程化 System 目前只做边界预留，不作为当前主线设计前提。
+
+### 4. 引擎无关
+
+底座必须保持纯 C#、纯模拟层语义。
+
+Godot 只应通过桥接层接入，不应反向污染底座抽象。
 
 ---
 
-## 核心设计决策
+## 模块范围
 
-### 1. SOA vs AOS：为什么选择分离存储？
+## 属于当前底座的模块
 
-**问题背景**：ECS 中有两种主要的内存布局方式：
-- **SOA (Structure of Arrays)**：每种组件类型一个数组
-- **AOS (Array of Structures)**：每个实体一个结构，包含所有组件
+当前 Lattice ECS 底座只包含下面这些模块：
 
-**Lattice 的选择**：
+- `Math / FP`
+- `Component` 模型与类型注册
+- `EntityRef / Frame / Storage`
+- `Filter / BlockIterator`
+- `CommandBuffer`
+- `ISystem / SystemBase / SystemGroup / SystemScheduler`
+- `SimulationSession`
+- `FrameSnapshot / Checksum / 输入缓冲` 的最小闭环
 
-| 场景 | 选择 | 原因 |
-|------|------|------|
-| 通用存储 | **SOA** (`Storage<T>`) | 预测回滚友好、Delta 压缩、SIMD 友好 |
-| 性能关键 | **AOS** (`FullOwningGroup`) | 极致缓存命中率、批量更新 |
+## 明确不属于当前底座主线的模块
 
-**详细对比**：
+下面这些内容当前不属于底座主线：
 
-```
-SOA (Storage<T>):
-  Position: [P0, P1, P2, P3, ...]  ← 连续
-  Velocity: [V0, V1, V2, V3, ...]  ← 连续
-  访问 Position 时：缓存中只有 Position（无 Velocity 污染）
-  适合：随机访问、单独序列化
+- Godot Bridge
+- EntityView / Node 同步
+- 运行时面板
+- 交互式调试工具
+- Replay 文件工具链
+- 网络同步
+- 地图、物理、导航等游戏能力
+- 编辑器资产配置体系
 
-AOS (FullOwningGroup):
-  Group[0]: [P0, V0]  ← 同一缓存行
-  Group[1]: [P1, V1]
-  访问 P0 时：V0 也在缓存中（一举两得）
-  适合：批量更新 P 和 V
-```
-
-**决策依据**：
-1. **预测回滚**：SOA 可以单独快照 Position，而不需要复制 Velocity
-2. **网络同步**：只传输变化的组件（Position 变了，Velocity 没变）
-3. **缓存效率**：批量访问同类型组件时，SOA 缓存命中率更高
-4. **SIMD**：连续的同类型数据便于向量化处理
-
-### 2. ushort vs int：为什么稀疏数组用 2 字节？
-
-**问题**：`ushort` (2 字节) vs `int` (4 字节) 的稀疏数组索引
-
-**选择**：`ushort* _sparse`
-
-**原因**：
-1. **内存节省 50%**：65536 个实体的稀疏数组
-   - ushort: 128 KB
-   - int: 256 KB
-2. **足够使用**：65535 最大索引支持 64K 个组件实例
-   - 大多数游戏 < 10K 实体
-   - 如果有 100K 实体，需要特殊处理（分页）
-3. **缓存友好**：同样的缓存行可以追踪更多实体
-4. **与 FrameSync 一致**：验证过的设计
-
-**局限**：
-- 不支持超过 65535 个组件实例
--  workaround: 分页或使用多个 Storage
-
-### 3. Block 容量 128：为什么是 2 的幂？
-
-**选择**：`DefaultBlockCapacity = 128`
-
-**原因**：
-1. **位运算优化**：
-   ```csharp
-   int block = index / 128;   // 慢：除法
-   int block = index >> 7;    // 快：移位
-   int offset = index % 128;  // 慢：取模
-   int offset = index & 127;  // 快：位与
-   ```
-2. **缓存行对齐**：
-   - 假设组件大小 16 字节
-   - 128 × 16 = 2048 字节 ≈ 32 个缓存行（64 字节/行）
-   - 填满 L1 缓存（32KB）的 1/16，不会污染其他数据
-3. **SIMD 友好**：
-   - AVX2 一次处理 4 个 Vector4FP（128 位 × 4 = 512 位）
-   - 128 个组件可以分成 32 个 SIMD 批次
-4. **与 FrameSync 一致**：便于对比和迁移
-
-### 4. 版本号检测：为什么需要 _version？
-
-**机制**：
-```csharp
-int versionBefore = storage.Version;
-// 迭代...
-if (storage.Version != versionBefore)
-    throw new InvalidOperationException("Collection modified");
-```
-
-**原因**：
-1. **调试友好**：快速失败，给出清晰的错误信息
-2. **与 C# 一致**：`List<T>.Enumerator` 使用相同模式
-3. **低开销**：DEBUG 模式检查，RELEASE 模式无开销
-4. **防止崩溃**：避免迭代中删除导致的未定义行为
+这些能力后续仍然会做，但必须建立在底座稳定之后。
 
 ---
 
-## 性能优化策略
+## 分层模型
 
-### 优化层次
+当前建议把 Lattice ECS 底座理解为下面四层：
 
-```
-L1: 算法优化（大 O 复杂度）
-    └─ O(1) 添加/删除/访问
-
-L2: 数据结构优化（缓存局部性）
-    └─ Block 存储、SOA/AOS 选择
-
-L3: 微架构优化（CPU 特性）
-    ├─ 预取：PrefetchL1/PrefetchL2
-    ├─ 分支预测：Likely/Unlikely hints
-    ├─ 无分支：位运算技巧
-    └─ SIMD：AVX2/SSE2
-```
-
-### 各优化技术详解
-
-#### 1. SIMD 向量化
-
-**适用场景**：
-- 批量向量加法（位置更新）
-- 批量缩放（速度缩放）
-- 批量距离计算（碰撞检测）
-
-**实现方式**：
-```csharp
-// 自动选择最佳指令集
-if (Avx2.IsSupported)
-    // 256-bit 处理
-else if (Sse2.IsSupported)
-    // 128-bit 处理
-else
-    // 标量回退
+```text
+┌─────────────────────────────────────────────┐
+│ Session Layer                               │
+│ - SimulationSession                         │
+│ - verified / predicted 最小双帧闭环          │
+├─────────────────────────────────────────────┤
+│ System Layer                                │
+│ - ISystem / SystemBase / SystemGroup        │
+│ - SystemScheduler                           │
+│ - 生命周期、顺序、trace                     │
+├─────────────────────────────────────────────┤
+│ State Layer                                 │
+│ - Frame                                     │
+│ - Storage<T>                                │
+│ - Filter / BlockIterator                    │
+│ - CommandBuffer                             │
+│ - FrameSnapshot / Checksum                  │
+├─────────────────────────────────────────────┤
+│ Deterministic Core                          │
+│ - FP / FPMath / FPVector                    │
+│ - DeterministicHash                         │
+│ - Allocator / BitStream 等基础设施          │
+└─────────────────────────────────────────────┘
 ```
 
-**性能提升**：
-- AVX2: 4x-8x（理论）
-- 实际：1.5x-4x（受内存带宽限制）
+需要注意：
 
-#### 2. 预取优化
-
-**原理**：在 CPU 需要数据之前，提前从内存加载到缓存
-
-**实现**：
-```csharp
-// 处理 Block[i] 时，预取 Block[i+2]
-SIMDUtils.PrefetchL2(nextBlockPtr);
-```
-
-**效果**：
-- 缓存未命中率：从 10-20% 降低到 < 1%
-- 适合：顺序遍历大数据集
-
-#### 3. Full-Owning Group
-
-**最佳场景**：每帧一起更新的组件组合
-
-**性能对比**：
-```
-传统手写双组件遍历:
-  10000 实体 × 50 周期 = 500,000 周期
-
-FullOwningGroup<T1, T2>:
-  10000 实体 × 10 周期 = 100,000 周期
-
-提升：5x
-```
+- `System` 层不拥有游戏状态
+- `Session` 层不重新定义 system 语义
+- `Frame` 是单帧状态容器，不是完整运行时
+- `Runtime / Bridge` 在这四层之外
 
 ---
 
-## 预测回滚支持
+## 依赖方向
 
-### 核心机制
+底座内部只允许下面这种单向依赖：
 
-```
-┌─────────────┐     ┌─────────────┐     ┌─────────────┐
-│   Frame N   │────▶│  Command    │────▶│   Frame     │
-│  (当前状态)  │     │   Buffer    │     │  N+1 (预测) │
-└─────────────┘     └─────────────┘     └─────────────┘
-        │                                     │
-        │ Snapshot                            │
-        ▼                                     ▼
-┌─────────────┐                       ┌─────────────┐
-│  Memory     │◀────── Rollback ─────│  Snapshot   │
-│  Snapshot   │                       │  Compare    │
-└─────────────┘                       └─────────────┘
-```
-
-### 快照实现
-
-```csharp
-// 只复制实际使用的数据
-int size = storage.GetSnapshotSize();
-storage.WriteSnapshot(buffer, size);  // O(组件数量)
-
-// 对比 FrameSync：复制整个 Block（包括空洞）
+```text
+Math
+  ↓
+Component
+  ↓
+Frame / Storage
+  ↓
+Query / CommandBuffer
+  ↓
+SystemScheduler
+  ↓
+SimulationSession
 ```
 
-### 延迟删除
+这条依赖方向的含义是：
 
-**原因**：预测期间不应真正删除，避免状态不一致
+- `Component` 可以依赖 `Math`
+- `Frame` 可以依赖 `Component`
+- `Query` 和 `CommandBuffer` 建立在 `Frame` 之上
+- `SystemScheduler` 只协调 `Frame`、`Query`、`CommandBuffer`
+- `SimulationSession` 只负责组织 `Frame + Scheduler + Input`
 
-**流程**：
-1. `Remove(entity)` → 标记为待删除，实体仍可见
-2. 预测执行（可能访问该实体）
-3. 确认预测正确 → `CommitRemovals()` 真正删除
-4. 或预测错误 → 回滚到之前状态，实体恢复
+反过来不允许：
+
+- `Frame` 去依赖 `SystemScheduler`
+- `Storage<T>` 去依赖 `Session`
+- `System` 去定义新的 snapshot 规则
+- `Session` 去重新发明 system 生命周期
 
 ---
 
-## 多线程架构
+## 核心职责划分
 
-### 当前实现
+## 1. Math
 
-```csharp
-// 单线程（当前）
-foreach (var entity in filter)
-    system.Update(entity);
+职责：
 
-// 多线程（已实现）
-parallelFilter.ForEach((entity, component) =>
-    system.Update(entity, component));
-```
+- 提供确定性数值基础
+- 提供所有模拟层共用的数学类型
 
-### 线程安全保证
+当前主线：
 
-1. **只读多线程**：`FrameReadOnly` 包装器
-2. **范围分割**：每个线程处理不重叠的索引范围
-3. **原子操作**：`AtomicCounter`, `AtomicFlagArray`
-4. **无锁队列**：`JobSystem` 使用 MPMC 队列
+- `FP`
+- `FPVector2`
+- `FPVector3`
+- `FPMath`
 
-### 与 FrameSync 的对比
+不负责：
 
-| 特性 | Lattice | FrameSync |
-|------|---------|-----------|
-| 任务调度 | 中心队列（简单） | Work Stealing（复杂） |
-| 负载均衡 | 静态分片 | 动态偷取 |
-| 适用场景 | 批量组件更新 | 复杂任务图 |
+- ECS 状态管理
+- 游戏对象生命周期
+- 系统调度
 
-**建议**：当前 Lattice 的实现对于 ECS 批量更新足够，复杂任务调度可后期升级。
+## 2. Component
+
+职责：
+
+- 定义组件必须满足的约束
+- 维护组件类型身份
+- 为命令回放与快照恢复提供类型入口
+
+当前主线：
+
+- `ComponentTypeId<T>`
+- `ComponentRegistry`
+- `ComponentCommandRegistry`
+
+不负责：
+
+- 存储组件实例数据
+- 调度系统
+- 管理模拟帧
+
+## 3. Frame / Storage
+
+职责：
+
+- 表示某一时刻的完整 ECS 状态
+- 管理实体、组件、位图、存储与快照
+
+当前主线：
+
+- `Frame`
+- `Storage<T>`
+- `FrameSnapshot`
+
+不负责：
+
+- 多帧历史策略
+- 系统装配
+- 网络输入同步
+
+## 4. Query
+
+职责：
+
+- 为系统提供稳定的数据读取入口
+
+当前主线：
+
+- `frame.Filter<T...>()`
+- `frame.GetComponentBlockIterator<T>()`
+
+分层约定：
+
+- `Filter<T...>()` 是普通系统的正式入口
+- `BlockIterator` 是热点路径入口
+- 更激进的 owning group / zipped fast path 暂不属于默认主线
+
+## 5. CommandBuffer
+
+职责：
+
+- 承接系统中的结构修改请求
+- 在稳定时机回放结构变更
+
+当前主线：
+
+- `CreateEntity`
+- `AddComponent`
+- `SetComponent`
+- `RemoveComponent`
+- `DestroyEntity`
+
+不负责：
+
+- 系统调度
+- 历史输入管理
+- 网络序列化协议设计
+
+## 6. SystemScheduler
+
+职责：
+
+- 管理系统注册、初始化、启停、顺序和更新
+- 为 system runtime 提供正式生命周期
+
+当前主线：
+
+- `ISystem`
+- `SystemBase`
+- `SystemGroup`
+- `SystemMetadata`
+- `SystemScheduler`
+
+关键约束：
+
+- system 不应持有可变模拟状态
+- system 不能把具体 `Frame` 的内部指针缓存成长期状态
+- 顺序必须显式且稳定
+
+## 7. SimulationSession
+
+职责：
+
+- 组织最小模拟闭环
+- 管理 `verified / predicted` 双帧
+- 管理最小输入缓冲
+- 用 `SystemScheduler` 推进模拟
+
+当前主线：
+
+- `SimulationSession<TInput>`
+- `SimulationSessionOptions`
+- `SimulationCommandBufferHost`
+
+不负责：
+
+- 完整 replay 文件体系
+- 网络层
+- 引擎驱动主循环
 
 ---
 
-## 与 FrameSync 对比
+## 当前实现状态
 
-### 架构对比表
+## 已基本落地
 
-| 维度 | Lattice | FrameSync | 差异说明 |
-|------|---------|-----------|----------|
-| **存储策略** | 分离（SOA） | 联合（AOS） | Lattice 更适合回滚 |
-| **类型安全** | 泛型 T* | byte* | Lattice 更安全 |
-| **SIMD** | ✅ 完整支持 | ❌ 无 | Lattice 更先进 |
-| **单例/延迟删除** | ✅ 内置 | ✅ 内置 | 功能相同 |
-| **多线程** | 基础实现 | 完整实现 | FrameSync 更成熟 |
-| **序列化** | 基础 | 完整 | FrameSync 更丰富 |
-| **物理集成** | 计划中 | 完整 | FrameSync 有优势 |
+下面这些能力已经形成当前底座主线：
 
-### 性能对比（理论）
+- 确定性数学底座
+- `ComponentTypeId / ComponentRegistry`
+- `Frame / Storage<T>`
+- `Filter<T...>()`
+- `CommandBuffer`
+- `ISystem / SystemBase / SystemGroup / SystemScheduler`
+- 最小 `SimulationSession`
+- `FrameSnapshot / checksum` 的第一版能力
 
-| 场景 | Lattice | FrameSync | 胜出者 |
-|------|---------|-----------|--------|
-| 单组件批量更新 | 10 周期/实体 | 15 周期/实体 | Lattice |
-| 多组件批量更新 | 10 周期/实体 | 50 周期/实体 | Lattice (Full-Owning) |
-| 随机访问 | 5 周期/实体 | 5 周期/实体 | 平手 |
-| 快照大小 | 实际使用 | 整个 Block | Lattice |
+## 已经明确但仍需继续收紧
 
----
+下面这些点方向已经确定，但实现与文档还要继续硬化：
 
-## 使用指南
+- 组件类型注册的稳定性约束
+- `Frame` 与 `Storage<T>` 的生命周期一致性
+- 实体销毁后的真实存储清理语义
+- snapshot / restore 的长期运行边界
+- system 无状态契约
+- query 默认路径与热点路径的正式分层
 
-### 选择正确的存储方式
+## 当前明确不做
 
-```csharp
-// 场景 1: 随机访问、单组件、频繁增删
-// 选择: Storage<T>
-var storage = new Storage<Health>();
-storage.Initialize(maxEntities);
+当前阶段底座主线明确不做：
 
-// 场景 2: 批量更新、多组件一起访问、固定数量
-// 选择: FullOwningGroup
-var group = new FullOwningGroup<Position, Velocity>();
-group.Initialize(allocator);
-
-// 场景 3: 查询满足条件的实体
-// 选择: Query
-var query = frame.Query<Position, Velocity>();
-var enumerator = query.GetEnumerator();
-while (enumerator.MoveNext())
-{
-    ref var pos = ref enumerator.Component1;
-    ref var vel = ref enumerator.Component2;
-}
-```
-
-### 性能优化检查清单
-
-- [ ] 使用 `ComponentBlockIterator` 而不是 `foreach`
-- [ ] 对热点代码使用 `FullOwningGroup`
-- [ ] 启用 SIMD（检查 `Avx2.IsSupported`）
-- [ ] 使用预取迭代器处理大数据集
-- [ ] 添加 `BranchHints.Likely` 到热点分支
+- 线程化 system runtime
+- 复杂 runner 层
+- 网络同步实现
+- 上层调试 UI
+- Godot 视图同步
 
 ---
 
-## 后续规划
+## 与 FrameSync 的关系
 
-### Phase 9: System 调度器
-- 依赖管理
-- 执行顺序
-- 并行执行安全策略
+Lattice 当前的设计思路明确参考了 FrameSync，但不直接复制其完整规模。
 
-### Phase 10: 内置数据结构
-- QuadTree（四叉树空间查询）
-- FPHashSet（确定性哈希集合）
-- DeterministicSort（确定性排序）
+当前主要借鉴的是下面几类结构性经验：
 
-### Phase 11: Godot 集成
-- 物理同步（Lattice ↔ Godot Physics）
-- 渲染同步（Transform → Node2D）
-- 输入处理
+- 底层确定性数学必须先稳定
+- `Frame` 应作为正式状态容器存在
+- `System` 应有明确生命周期、层级和调度器
+- `Session / SimulationCore` 应建立在稳定 system runtime 之上
+- Runtime / Bridge / Replay / Tooling 应放在更上层
+
+Lattice 当前明确不照搬的部分包括：
+
+- 资产化系统配置体系
+- 大量派生 system 基类
+- 过早引入完整 runner / replay / network 体系
+- 引擎运行时细节先行
 
 ---
 
-## 附录
+## 当前架构约束
 
-### A. 参考文档
-- [FrameSync Documentation](https://doc.photonengine.com)
-- [Data-Oriented Design](https://www.dataorienteddesign.com)
-- [SIMD Intrinsics Guide](https://www.intel.com/content/www/us/en/docs/intrinsics-guide/index.html)
+后续所有底座演进都应遵守下面几条约束。
 
-### B. 性能测试数据
-见 `Tests/Performance/` 目录下的基准测试。
+### 1. 底层模块不能反向依赖上层模块
 
-### C. 代码规范
-- 所有公共 API 必须有 XML 文档注释
-- 使用中文注释（与项目保持一致）
-- DEBUG 模式启用边界检查
-- RELEASE 模式启用所有优化
+例如：
+
+- `Frame` 不能依赖 `SimulationSession`
+- `Storage<T>` 不能依赖 `SystemScheduler`
+
+### 2. Session 不能重新定义 System 语义
+
+`SimulationSession` 只能组织：
+
+- frame
+- scheduler
+- input
+- command buffer
+
+而不能重新发明 system 生命周期与调度规则。
+
+### 3. System 不能拥有模拟状态
+
+所有可回滚状态必须放在：
+
+- `Frame`
+- 组件
+- 全局组件或单例组件
+
+而不是放在 `ISystem` 实例字段里。
+
+### 4. 查询路径必须分层，而不是混用
+
+后续默认推荐路径应始终清晰：
+
+- 普通路径：`Filter<T...>()`
+- 热点路径：`BlockIterator`
+
+不要让所有系统直接下沉到最底层遍历 API。
+
+### 5. 上层运行时不能倒逼底座抽象
+
+如果未来 Bridge、Runner、调试工具需要额外能力，应优先评估是否能在不破坏底座职责的前提下扩展。
+
+只有在底层职责本身真的缺失时，才回到底座文档修正。
+
+---
+
+## 后续文档顺序
+
+当前底座文档化与架构收敛，统一按下面顺序推进：
+
+1. `Architecture.md`
+2. `ComponentDesign.md`
+3. `FrameStorageDesign.md`
+4. `QueryDesign.md`
+5. `CommandBufferDesign.md`
+6. `SystemDesign.md`
+7. `SimulationSessionDesign.md`
+8. `DeterministicLoopDesign.md`
+
+详细迭代顺序见 [FoundationDocumentationRoadmap.md](/d:/UGit/Sideline/godot/scripts/lattice/ECS/FoundationDocumentationRoadmap.md)。
+
+---
+
+## 最终结论
+
+Lattice 当前阶段最重要的事情，不是扩展更多运行时能力，而是先稳定下面这条底座主链路：
+
+**`Math -> Component -> Frame / Storage -> Query -> CommandBuffer -> SystemScheduler -> SimulationSession`**
+
+只要这条链路的边界和依赖方向持续保持稳定，后续无论是回滚、Runner、Bridge、Replay 还是调试工具，都可以在不推翻底座的前提下继续生长。

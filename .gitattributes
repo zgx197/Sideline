@@ -12,7 +12,7 @@
 *.md text eol=lf
 *.sh text eol=lf
 *.ps1 text eol=lf
-*.bat text eol=crlf
+*.bat text eol=lf
 
 # 二进制文件（不处理换行符）
 *.png binary
