@@ -1,4 +1,13 @@
-# Phase 1 使用指南 - FrameSync 风格组件存储
+# Phase 1 使用指南 - FrameSync 风格组件存储（历史归档）
+
+> 历史归档文档：
+>
+> 本文档面向早期 `unsafe` 组件存储预研与阶段性 API，用法与当前主干的正式查询、存储和 Session 运行时入口不再一一对应。
+>
+> 当前主干能力请优先参考：
+>
+> - `godot/scripts/lattice/README.md`
+> - `godot/scripts/lattice/ECS/Framework/SystemDesignNotes.md`
 
 ## 新增类型
 

@@ -30,7 +30,7 @@ namespace Lattice.Tools
         static string GetProjectRoot()
         {
             // 从执行路径向上查找包含 .git 或 godot 目录的根目录
-            string current = AppContext.BaseDirectory;
+            string? current = AppContext.BaseDirectory;
             while (!string.IsNullOrEmpty(current))
             {
                 if (Directory.Exists(Path.Combine(current, ".git")) || 

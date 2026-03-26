@@ -7,9 +7,11 @@ using BenchmarkDotNet.Jobs;
 using Lattice.Core;
 using Lattice.ECS.Core;
 using Lattice.ECS.Framework;
+using Lattice.ECS.Framework.Systems;
 using Lattice.ECS.Serialization;
 using Lattice.ECS.Session;
 using Lattice.Math;
+using Lattice.Tests.Support;
 
 namespace Lattice.Tests.Performance
 {
@@ -32,10 +34,15 @@ namespace Lattice.Tests.Performance
         private const int HistoricalColdMaterializeBatchSize = 32;
         private const int HistoricalSequentialReadBatchSize = 32;
         private const int HistoricalCrossAnchorReadBatchSize = 32;
+        private const int RollbackStormBatchSize = 4;
+        private const int CheckpointSaveLikeBatchSize = 16;
+        private const int HistoricalReplayScrubBatchSize = 16;
         private const int RollbackTick = 24;
         private const int HistoricalRebuildTick = 13;
         private const int HistoricalSequentialTickStart = 13;
         private const int HistoricalCrossAnchorTickStart = 11;
+        private const int HistoricalReplayTickStart = 9;
+        private const int HistoricalReplayTickEnd = 24;
 
         private static readonly object RegistrationSync = new();
         private static bool _componentsRegistered;
@@ -47,7 +54,7 @@ namespace Lattice.Tests.Performance
         [Params(64, 256, 1024)]
         public int EntityCount { get; set; }
 
-        [Params(BenchmarkPayloadProfile.RawDense, BenchmarkPayloadProfile.MixedSerialized)]
+        [Params(BenchmarkPayloadProfile.RawDense, BenchmarkPayloadProfile.MixedSerialized, BenchmarkPayloadProfile.CombatMixed)]
         public BenchmarkPayloadProfile PayloadProfile { get; set; }
 
         [GlobalSetup]
@@ -57,7 +64,20 @@ namespace Lattice.Tests.Performance
 
             _session = new BenchmarkSession(FP.One, PayloadProfile);
             _session.RegisterSystem(new BenchmarkBootstrapSystem(EntityCount, PayloadProfile));
-            _session.RegisterSystem(new BenchmarkSimulationSystem(PayloadProfile));
+
+            if (PayloadProfile == BenchmarkPayloadProfile.CombatMixed)
+            {
+                _session.RegisterSystem(new CombatSpawnerSystem());
+                _session.RegisterSystem(new MovementSystem());
+                _session.RegisterSystem(new BenchmarkSimulationSystem(PayloadProfile));
+                _session.RegisterSystem(new LifetimeSystem());
+                _session.RegisterSystem(new CombatProjectileDamageSystem());
+            }
+            else
+            {
+                _session.RegisterSystem(new BenchmarkSimulationSystem(PayloadProfile));
+            }
+
             _session.Start();
 
             SeedInputs(_session, InputSeedTickCount);
@@ -81,7 +101,9 @@ namespace Lattice.Tests.Performance
         [IterationSetup]
         public void IterationSetup()
         {
-            GetSession().RestoreFromCheckpoint(GetBaselineCheckpoint());
+            BenchmarkSession session = GetSession();
+            session.RestoreFromCheckpoint(GetBaselineCheckpoint());
+            SeedInputs(session, InputSeedTickCount);
         }
 
         [Benchmark(Baseline = true, Description = "Update x64", OperationsPerInvoke = UpdateBatchSize)]
@@ -233,6 +255,88 @@ namespace Lattice.Tests.Performance
             return tickSum;
         }
 
+        [Benchmark(Description = "Rollback Storm Window x4", OperationsPerInvoke = RollbackStormBatchSize)]
+        public int Session_RollbackStorm_Window()
+        {
+            BenchmarkSession session = GetSession();
+            int tickSum = 0;
+
+            for (int i = 0; i < RollbackStormBatchSize; i++)
+            {
+                int inputTick = RollbackTick + i;
+                session.SetPlayerInput(0, inputTick, new BenchmarkInputCommand(0, inputTick, 200 + i));
+                session.VerifyFrame(RollbackTick, _mismatchedRollbackChecksum);
+                tickSum += session.CurrentTick;
+            }
+
+            return tickSum;
+        }
+
+        [Benchmark(Description = "Checkpoint Save-Like Chain x16", OperationsPerInvoke = CheckpointSaveLikeBatchSize)]
+        public int Session_Checkpoint_SaveLike_Chain()
+        {
+            BenchmarkSession session = GetSession();
+            SessionCheckpoint latestCheckpoint = GetBaselineCheckpoint();
+            int tickSum = 0;
+
+            for (int i = 0; i < CheckpointSaveLikeBatchSize; i++)
+            {
+                session.Update();
+
+                Frame currentFrame = session.PredictedFrame
+                    ?? throw new InvalidOperationException("Predicted frame is missing during save-like benchmark.");
+                long checksum = (long)currentFrame.CalculateChecksum(ComponentSerializationMode.Checkpoint);
+                session.VerifyFrame(currentFrame.Tick, checksum);
+
+                latestCheckpoint = session.CreateCheckpoint();
+                tickSum += latestCheckpoint.Tick;
+
+                if ((i & 3) == 3)
+                {
+                    session.RestoreFromCheckpoint(latestCheckpoint);
+                    tickSum += session.CurrentTick;
+                }
+            }
+
+            return tickSum;
+        }
+
+        [Benchmark(Description = "Historical Replay Scrub 9-24 x16", OperationsPerInvoke = HistoricalReplayScrubBatchSize)]
+        public int Session_Historical_Replay_Scrub_9_24()
+        {
+            BenchmarkSession session = GetSession();
+            int tickSum = 0;
+
+            for (int i = 0; i < HistoricalReplayScrubBatchSize; i++)
+            {
+                if ((i & 1) == 0)
+                {
+                    session.ClearHistoricalMaterializeCache();
+                }
+
+                if ((i & 2) == 0)
+                {
+                    for (int tick = HistoricalReplayTickStart; tick <= HistoricalReplayTickEnd; tick++)
+                    {
+                        Frame historicalFrame = session.GetHistoricalFrame(tick)
+                            ?? throw new InvalidOperationException($"Historical frame {tick} is missing.");
+                        tickSum += historicalFrame.Tick;
+                    }
+                }
+                else
+                {
+                    for (int tick = HistoricalReplayTickEnd; tick >= HistoricalReplayTickStart; tick--)
+                    {
+                        Frame historicalFrame = session.GetHistoricalFrame(tick)
+                            ?? throw new InvalidOperationException($"Historical frame {tick} is missing.");
+                        tickSum += historicalFrame.Tick;
+                    }
+                }
+            }
+
+            return tickSum;
+        }
+
         private static void EnsureComponentsRegistered()
         {
             if (_componentsRegistered)
@@ -252,6 +356,7 @@ namespace Lattice.Tests.Performance
                 builder.Add<BenchmarkInputSumComponent>();
                 builder.Add<BenchmarkRawPayloadComponent>();
                 builder.Add<BenchmarkSerializedPayloadComponent>(SerializeBenchmarkSerializedPayloadComponent);
+                GameplayValidationRegistry.EnsureRegistered();
                 builder.Finish();
 
                 _componentsRegistered = true;
@@ -296,7 +401,8 @@ namespace Lattice.Tests.Performance
         public enum BenchmarkPayloadProfile
         {
             RawDense,
-            MixedSerialized
+            MixedSerialized,
+            CombatMixed
         }
 
         private struct BenchmarkCounterComponent : IComponent
@@ -338,6 +444,12 @@ namespace Lattice.Tests.Performance
 
             public void OnInit(Frame frame)
             {
+                if (_payloadProfile == BenchmarkPayloadProfile.CombatMixed)
+                {
+                    InitializeCombatScenario(frame);
+                    return;
+                }
+
                 for (int i = 0; i < _entityCount; i++)
                 {
                     EntityRef entity = frame.CreateEntity();
@@ -371,6 +483,78 @@ namespace Lattice.Tests.Performance
             public void OnDestroy(Frame frame)
             {
             }
+
+            private void InitializeCombatScenario(Frame frame)
+            {
+                frame.SetGlobal(new CombatDirectorState());
+                frame.SetGlobal(new CombatInputState());
+
+                int spawnerCount = System.Math.Max(1, _entityCount / 8);
+                int targetCount = System.Math.Max(1, _entityCount - spawnerCount);
+
+                for (int i = 0; i < targetCount; i++)
+                {
+                    EntityRef entity = frame.CreateEntity();
+                    int lane = i & 3;
+                    frame.Add(entity, new Position2D { X = 12 + (i & 7), Y = lane });
+                    frame.Add(entity, new CombatTargetComponent
+                    {
+                        Team = 2,
+                        Health = 6 + (i % 3) * 2,
+                        GoldBounty = 1 + (i % 5)
+                    });
+                    frame.Add(entity, new BenchmarkCounterComponent { Value = i });
+                    frame.Add(entity, new BenchmarkInputSumComponent { Value = i & 7 });
+                    frame.Add(entity, new BenchmarkRawPayloadComponent
+                    {
+                        X = i,
+                        Y = i + 1,
+                        Z = i + 2,
+                        W = i + 3
+                    });
+                    frame.Add(entity, new BenchmarkSerializedPayloadComponent
+                    {
+                        A = i,
+                        B = i * 2,
+                        C = i * 3,
+                        D = i * 4
+                    });
+                }
+
+                for (int i = 0; i < spawnerCount; i++)
+                {
+                    EntityRef entity = frame.CreateEntity();
+                    int lane = i & 3;
+                    frame.Add(entity, new Position2D { X = 10, Y = lane });
+                    frame.Add(entity, new CombatSpawnerComponent
+                    {
+                        Team = 1,
+                        RemainingShots = 96,
+                        BaseDamage = 2 + (i & 1),
+                        CooldownRemaining = FP.One,
+                        Interval = FP.One,
+                        BaseVelocityX = 2 + (i & 1),
+                        BaseVelocityY = FP.Zero,
+                        ProjectileLifetime = 6
+                    });
+                    frame.Add(entity, new BenchmarkCounterComponent { Value = targetCount + i });
+                    frame.Add(entity, new BenchmarkInputSumComponent { Value = i & 3 });
+                    frame.Add(entity, new BenchmarkRawPayloadComponent
+                    {
+                        X = i,
+                        Y = i + 3,
+                        Z = i + 5,
+                        W = i + 7
+                    });
+                    frame.Add(entity, new BenchmarkSerializedPayloadComponent
+                    {
+                        A = i,
+                        B = i * 4,
+                        C = i * 5,
+                        D = i * 6
+                    });
+                }
+            }
         }
 
         private sealed class BenchmarkSimulationSystem : ISystem
@@ -403,7 +587,17 @@ namespace Lattice.Tests.Performance
                     rawEnumerator.Component.W -= 1;
                 }
 
-                if (_payloadProfile != BenchmarkPayloadProfile.MixedSerialized)
+                if (_payloadProfile == BenchmarkPayloadProfile.CombatMixed)
+                {
+                    var combatTargetEnumerator = frame.Query<CombatTargetComponent, BenchmarkRawPayloadComponent>().GetEnumerator();
+                    while (combatTargetEnumerator.MoveNext())
+                    {
+                        combatTargetEnumerator.Component2.X += combatTargetEnumerator.Component1.Health;
+                        combatTargetEnumerator.Component2.Y ^= combatTargetEnumerator.Component1.GoldBounty;
+                    }
+                }
+
+                if (_payloadProfile == BenchmarkPayloadProfile.RawDense)
                 {
                     return;
                 }
@@ -423,7 +617,7 @@ namespace Lattice.Tests.Performance
             }
         }
 
-        private sealed class BenchmarkSession : Session
+        private sealed class BenchmarkSession : MinimalPredictionSession
         {
             private readonly BenchmarkPayloadProfile _payloadProfile;
 
@@ -433,12 +627,25 @@ namespace Lattice.Tests.Performance
                 _payloadProfile = payloadProfile;
             }
 
-            protected override void ApplyInputs(Frame frame)
+            protected override void ApplyInputSet(Frame frame, in SessionInputSet inputSet)
             {
-                if (GetPlayerInput(LocalPlayerId, frame.Tick) is not BenchmarkInputCommand input)
+                if (!inputSet.TryGetPlayerInput(LocalPlayerId, out BenchmarkInputCommand? input))
                 {
+                    if (_payloadProfile == BenchmarkPayloadProfile.CombatMixed)
+                    {
+                        frame.SetGlobal(
+                            new CombatInputState
+                            {
+                                Tick = inputSet.Tick,
+                                DamageBonus = 0,
+                                VelocityXBonus = FP.Zero
+                            });
+                    }
+
                     return;
                 }
+
+                ArgumentNullException.ThrowIfNull(input);
 
                 var inputEnumerator = frame.Query<BenchmarkInputSumComponent>().GetEnumerator();
                 while (inputEnumerator.MoveNext())
@@ -446,9 +653,20 @@ namespace Lattice.Tests.Performance
                     inputEnumerator.Component.Value += input.Value;
                 }
 
-                if (_payloadProfile != BenchmarkPayloadProfile.MixedSerialized)
+                if (_payloadProfile == BenchmarkPayloadProfile.RawDense)
                 {
                     return;
+                }
+
+                if (_payloadProfile == BenchmarkPayloadProfile.CombatMixed)
+                {
+                    frame.SetGlobal(
+                        new CombatInputState
+                        {
+                            Tick = inputSet.Tick,
+                            DamageBonus = input.Value & 0x3,
+                            VelocityXBonus = input.Value & 0x1
+                        });
                 }
 
                 var serializedEnumerator = frame.Query<BenchmarkSerializedPayloadComponent>().GetEnumerator();
@@ -464,7 +682,7 @@ namespace Lattice.Tests.Performance
             }
         }
 
-        private sealed class BenchmarkInputCommand : IInputCommand
+        private sealed class BenchmarkInputCommand : IPlayerInput
         {
             public BenchmarkInputCommand(int playerId, int tick, int value)
             {
@@ -478,15 +696,6 @@ namespace Lattice.Tests.Performance
             public int Tick { get; }
 
             public int Value { get; }
-
-            public byte[] Serialize()
-            {
-                return BitConverter.GetBytes(Value);
-            }
-
-            public void Deserialize(byte[] data)
-            {
-            }
         }
     }
 }

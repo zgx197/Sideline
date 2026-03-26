@@ -10,6 +10,11 @@ namespace Lattice.ECS.Framework.Systems
     /// </summary>
     public sealed class LifetimeSystem : ISystem
     {
+        public SystemAuthoringContract Contract => new(
+            SystemFrameAccess.ReadWrite,
+            SystemGlobalAccess.None,
+            SystemStructuralChangeAccess.Deferred);
+
         public void OnInit(Frame frame)
         {
         }

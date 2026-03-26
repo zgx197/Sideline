@@ -442,4 +442,303 @@ namespace Lattice.ECS.Core
             }
         }
     }
+
+    /// <summary>
+    /// 四组件查询。
+    /// </summary>
+    public readonly unsafe struct Query<T1, T2, T3, T4>
+        where T1 : unmanaged, IComponent
+        where T2 : unmanaged, IComponent
+        where T3 : unmanaged, IComponent
+        where T4 : unmanaged, IComponent
+    {
+        private readonly Frame _frame;
+        private readonly Storage<T1>* _storage1;
+        private readonly Storage<T2>* _storage2;
+        private readonly Storage<T3>* _storage3;
+        private readonly Storage<T4>* _storage4;
+        private readonly int _primaryIndex;
+        private readonly int _typeId1;
+        private readonly int _typeId2;
+        private readonly int _typeId3;
+        private readonly int _typeId4;
+
+        internal Query(Frame frame)
+        {
+            _frame = frame ?? throw new ArgumentNullException(nameof(frame));
+            _storage1 = frame.GetStoragePointer<T1>();
+            _storage2 = frame.GetStoragePointer<T2>();
+            _storage3 = frame.GetStoragePointer<T3>();
+            _storage4 = frame.GetStoragePointer<T4>();
+            _typeId1 = ComponentTypeId<T1>.Id;
+            _typeId2 = ComponentTypeId<T2>.Id;
+            _typeId3 = ComponentTypeId<T3>.Id;
+            _typeId4 = ComponentTypeId<T4>.Id;
+
+            int count1 = _storage1 != null ? _storage1->UsedCount : int.MaxValue;
+            int count2 = _storage2 != null ? _storage2->UsedCount : int.MaxValue;
+            int count3 = _storage3 != null ? _storage3->UsedCount : int.MaxValue;
+            int count4 = _storage4 != null ? _storage4->UsedCount : int.MaxValue;
+
+            _primaryIndex = 0;
+            int bestCount = count1;
+            if (count2 < bestCount)
+            {
+                _primaryIndex = 1;
+                bestCount = count2;
+            }
+
+            if (count3 < bestCount)
+            {
+                _primaryIndex = 2;
+                bestCount = count3;
+            }
+
+            if (count4 < bestCount)
+            {
+                _primaryIndex = 3;
+            }
+        }
+
+        public Enumerator GetEnumerator() => new Enumerator(
+            _frame,
+            _storage1,
+            _storage2,
+            _storage3,
+            _storage4,
+            _primaryIndex,
+            _typeId1,
+            _typeId2,
+            _typeId3,
+            _typeId4);
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public void ForEach(delegate* managed<EntityRef, T1*, T2*, T3*, T4*, void> action)
+        {
+            if (_storage1 == null || _storage2 == null || _storage3 == null || _storage4 == null || action == null)
+            {
+                return;
+            }
+
+            var enumerator = GetEnumerator();
+            while (enumerator.MoveNext())
+            {
+                action(
+                    enumerator.Entity,
+                    enumerator.Component1Ptr,
+                    enumerator.Component2Ptr,
+                    enumerator.Component3Ptr,
+                    enumerator.Component4Ptr);
+            }
+        }
+
+        public unsafe ref struct Enumerator
+        {
+            private readonly Frame _frame;
+            private readonly Storage<T1>* _storage1;
+            private readonly Storage<T2>* _storage2;
+            private readonly Storage<T3>* _storage3;
+            private readonly Storage<T4>* _storage4;
+            private readonly int _primaryIndex;
+            private readonly int _typeId1;
+            private readonly int _typeId2;
+            private readonly int _typeId3;
+            private readonly int _typeId4;
+            private ActiveComponentIterator<T1> _iterator1;
+            private ActiveComponentIterator<T2> _iterator2;
+            private ActiveComponentIterator<T3> _iterator3;
+            private ActiveComponentIterator<T4> _iterator4;
+
+            internal Enumerator(
+                Frame frame,
+                Storage<T1>* storage1,
+                Storage<T2>* storage2,
+                Storage<T3>* storage3,
+                Storage<T4>* storage4,
+                int primaryIndex,
+                int typeId1,
+                int typeId2,
+                int typeId3,
+                int typeId4)
+            {
+                _frame = frame;
+                _storage1 = storage1;
+                _storage2 = storage2;
+                _storage3 = storage3;
+                _storage4 = storage4;
+                _primaryIndex = primaryIndex;
+                _typeId1 = typeId1;
+                _typeId2 = typeId2;
+                _typeId3 = typeId3;
+                _typeId4 = typeId4;
+                _iterator1 = storage1 != null ? new ActiveComponentIterator<T1>(storage1) : default;
+                _iterator2 = storage2 != null ? new ActiveComponentIterator<T2>(storage2) : default;
+                _iterator3 = storage3 != null ? new ActiveComponentIterator<T3>(storage3) : default;
+                _iterator4 = storage4 != null ? new ActiveComponentIterator<T4>(storage4) : default;
+                Entity = EntityRef.None;
+                Component1Ptr = null;
+                Component2Ptr = null;
+                Component3Ptr = null;
+                Component4Ptr = null;
+            }
+
+            public EntityRef Entity { get; private set; }
+
+            public T1* Component1Ptr { get; private set; }
+
+            public T2* Component2Ptr { get; private set; }
+
+            public T3* Component3Ptr { get; private set; }
+
+            public T4* Component4Ptr { get; private set; }
+
+            public ref T1 Component1 => ref *Component1Ptr;
+
+            public ref T2 Component2 => ref *Component2Ptr;
+
+            public ref T3 Component3 => ref *Component3Ptr;
+
+            public ref T4 Component4 => ref *Component4Ptr;
+
+            public bool MoveNext()
+            {
+                if (_storage1 == null || _storage2 == null || _storage3 == null || _storage4 == null)
+                {
+                    return false;
+                }
+
+                switch (_primaryIndex)
+                {
+                    case 0:
+                        return MovePrimary1();
+                    case 1:
+                        return MovePrimary2();
+                    case 2:
+                        return MovePrimary3();
+                    default:
+                        return MovePrimary4();
+                }
+            }
+
+            private bool MovePrimary1()
+            {
+                while (_iterator1.Next(out EntityRef entity, out T1* ptr1))
+                {
+                    if (!_frame.HasComponentBit(entity.Index, _typeId2) ||
+                        !_frame.HasComponentBit(entity.Index, _typeId3) ||
+                        !_frame.HasComponentBit(entity.Index, _typeId4))
+                    {
+                        continue;
+                    }
+
+                    T2* ptr2 = _storage2->GetPointerAssumePresent(entity);
+                    T3* ptr3 = _storage3->GetPointerAssumePresent(entity);
+                    T4* ptr4 = _storage4->GetPointerAssumePresent(entity);
+                    if (ptr2 == null || ptr3 == null || ptr4 == null)
+                    {
+                        continue;
+                    }
+
+                    Entity = entity;
+                    Component1Ptr = ptr1;
+                    Component2Ptr = ptr2;
+                    Component3Ptr = ptr3;
+                    Component4Ptr = ptr4;
+                    return true;
+                }
+
+                return false;
+            }
+
+            private bool MovePrimary2()
+            {
+                while (_iterator2.Next(out EntityRef entity, out T2* ptr2))
+                {
+                    if (!_frame.HasComponentBit(entity.Index, _typeId1) ||
+                        !_frame.HasComponentBit(entity.Index, _typeId3) ||
+                        !_frame.HasComponentBit(entity.Index, _typeId4))
+                    {
+                        continue;
+                    }
+
+                    T1* ptr1 = _storage1->GetPointerAssumePresent(entity);
+                    T3* ptr3 = _storage3->GetPointerAssumePresent(entity);
+                    T4* ptr4 = _storage4->GetPointerAssumePresent(entity);
+                    if (ptr1 == null || ptr3 == null || ptr4 == null)
+                    {
+                        continue;
+                    }
+
+                    Entity = entity;
+                    Component1Ptr = ptr1;
+                    Component2Ptr = ptr2;
+                    Component3Ptr = ptr3;
+                    Component4Ptr = ptr4;
+                    return true;
+                }
+
+                return false;
+            }
+
+            private bool MovePrimary3()
+            {
+                while (_iterator3.Next(out EntityRef entity, out T3* ptr3))
+                {
+                    if (!_frame.HasComponentBit(entity.Index, _typeId1) ||
+                        !_frame.HasComponentBit(entity.Index, _typeId2) ||
+                        !_frame.HasComponentBit(entity.Index, _typeId4))
+                    {
+                        continue;
+                    }
+
+                    T1* ptr1 = _storage1->GetPointerAssumePresent(entity);
+                    T2* ptr2 = _storage2->GetPointerAssumePresent(entity);
+                    T4* ptr4 = _storage4->GetPointerAssumePresent(entity);
+                    if (ptr1 == null || ptr2 == null || ptr4 == null)
+                    {
+                        continue;
+                    }
+
+                    Entity = entity;
+                    Component1Ptr = ptr1;
+                    Component2Ptr = ptr2;
+                    Component3Ptr = ptr3;
+                    Component4Ptr = ptr4;
+                    return true;
+                }
+
+                return false;
+            }
+
+            private bool MovePrimary4()
+            {
+                while (_iterator4.Next(out EntityRef entity, out T4* ptr4))
+                {
+                    if (!_frame.HasComponentBit(entity.Index, _typeId1) ||
+                        !_frame.HasComponentBit(entity.Index, _typeId2) ||
+                        !_frame.HasComponentBit(entity.Index, _typeId3))
+                    {
+                        continue;
+                    }
+
+                    T1* ptr1 = _storage1->GetPointerAssumePresent(entity);
+                    T2* ptr2 = _storage2->GetPointerAssumePresent(entity);
+                    T3* ptr3 = _storage3->GetPointerAssumePresent(entity);
+                    if (ptr1 == null || ptr2 == null || ptr3 == null)
+                    {
+                        continue;
+                    }
+
+                    Entity = entity;
+                    Component1Ptr = ptr1;
+                    Component2Ptr = ptr2;
+                    Component3Ptr = ptr3;
+                    Component4Ptr = ptr4;
+                    return true;
+                }
+
+                return false;
+            }
+        }
+    }
 }

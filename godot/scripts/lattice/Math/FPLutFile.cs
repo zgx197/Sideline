@@ -28,6 +28,7 @@ namespace Lattice.Math
         /// <exception cref="FileNotFoundException">文件不存在</exception>
         /// <exception cref="InvalidDataException">文件格式无效</exception>
         /// <exception cref="InvalidDataException">版本不兼容</exception>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static FPLutData Load(string filePath)
         {
             if (!File.Exists(filePath))
@@ -175,6 +176,7 @@ namespace Lattice.Math
         /// </summary>
         /// <param name="filePath">文件路径</param>
         /// <returns>文件头信息</returns>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static FPLutHeader GetFileInfo(string filePath)
         {
             byte[] headerData = new byte[FPLutHeader.HeaderSize];
@@ -237,6 +239,7 @@ namespace Lattice.Math
         /// <summary>
         /// 创建 64-bit LUT 数据
         /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static FPLutData CreateLong(LutType type, long[] data)
         {
             var header = new FPLutHeader(
@@ -252,6 +255,7 @@ namespace Lattice.Math
         /// <summary>
         /// 创建 32-bit LUT 数据
         /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static FPLutData CreateInt(LutType type, int[] data)
         {
             var header = new FPLutHeader(

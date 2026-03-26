@@ -1,4 +1,8 @@
-# 性能优化指南
+# 性能优化指南（历史归档）
+
+> 历史归档文档：
+>
+> 本文档保留为专题经验总结，但不代表当前 `main` 分支已经正式承诺的 benchmark 治理门槛或主路径优化结论。当前性能治理事实请优先参考 `Benchmarks/README.md` 与 `SystemDesignNotes.md`。
 
 本文档介绍如何在使用 Lattice 时获得最佳性能。
 

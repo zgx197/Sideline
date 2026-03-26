@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Sideline Authors. All rights reserved.
 // Licensed under GPL-3.0.
 
+using System;
 using Lattice.Core;
 using Lattice.ECS.Serialization;
 
@@ -26,11 +27,18 @@ namespace Lattice.ECS.Core
         public ComponentCallbacks(
             ComponentSerializeDelegate? serialize,
             ComponentChangedDelegate? onAdded,
-            ComponentChangedDelegate? onRemoved)
+            ComponentChangedDelegate? onRemoved,
+            int serializationVersion = 1)
         {
+            if (serializationVersion <= 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(serializationVersion), "Component serialization version must be greater than zero.");
+            }
+
             Serialize = serialize;
             OnAdded = onAdded;
             OnRemoved = onRemoved;
+            SerializationVersion = serializationVersion;
         }
 
         /// <summary>组件序列化回调。</summary>
@@ -41,6 +49,13 @@ namespace Lattice.ECS.Core
 
         /// <summary>组件移除回调。</summary>
         public ComponentChangedDelegate? OnRemoved { get; }
+
+        /// <summary>
+        /// 组件序列化协议版本。
+        /// 当组件的稳定序列化布局发生兼容性变更时，应显式递增此版本，
+        /// 而不是继续依赖“调用方知道改过什么”的隐式约定。
+        /// </summary>
+        public int SerializationVersion { get; }
     }
 
     internal delegate void ComponentFrameRemoveDelegate(Frame frame, EntityRef entity);

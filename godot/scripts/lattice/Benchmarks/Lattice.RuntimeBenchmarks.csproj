@@ -8,6 +8,7 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <RootNamespace>Lattice.RuntimeBenchmarks</RootNamespace>
     <AssemblyName>Lattice.RuntimeBenchmarks</AssemblyName>
+    <NoWarn>$(NoWarn);CS0649</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
@@ -20,7 +21,9 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Include="..\Tests\ECS\GameplayValidationSupport.cs" Link="Support\GameplayValidationSupport.cs" />
     <Compile Include="..\Tests\Performance\SessionRuntimeBenchmarks.cs" Link="Performance\SessionRuntimeBenchmarks.cs" />
+    <Compile Include="..\Tests\Performance\SessionRuntimeBenchmarkGovernance.cs" Link="Performance\SessionRuntimeBenchmarkGovernance.cs" />
   </ItemGroup>
 
 </Project>

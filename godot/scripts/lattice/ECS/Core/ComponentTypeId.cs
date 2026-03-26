@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Buffers.Binary;
 using Lattice.Core;
 using Lattice.ECS.Serialization;
 
@@ -42,6 +43,8 @@ namespace Lattice.ECS.Core
         public StorageFlags StorageFlags { get; }
 
         public ComponentCallbacks Callbacks { get; }
+
+        public int SerializationVersion => Callbacks.SerializationVersion;
     }
 
     /// <summary>
@@ -165,6 +168,35 @@ namespace Lattice.ECS.Core
         {
             EnsureValidTypeId(id);
             return new ComponentTypeInfo(Types[id]!, id, Sizes[id], Flags[id], StorageFlagsByType[id], Callbacks[id]);
+        }
+
+        internal static ComponentSchemaManifest CreateSchemaManifest(ReadOnlySpan<int> serializedTypeIds, ComponentSerializationMode mode)
+        {
+            ulong hash = 0xCBF29CE484222325;
+
+            AppendInt64(ref hash, ComponentSchemaManifest.CurrentVersion);
+            AppendInt64(ref hash, (int)mode);
+            AppendInt64(ref hash, serializedTypeIds.Length);
+
+            for (int i = 0; i < serializedTypeIds.Length; i++)
+            {
+                int typeId = serializedTypeIds[i];
+                EnsureValidTypeId(typeId);
+
+                Type type = Types[typeId]!;
+                ComponentCallbacks callbacks = Callbacks[typeId];
+
+                AppendInt64(ref hash, typeId);
+                AppendString(ref hash, type.FullName ?? type.Name);
+                AppendInt64(ref hash, Sizes[typeId]);
+                AppendInt64(ref hash, (int)Flags[typeId]);
+                AppendInt64(ref hash, (int)StorageFlagsByType[typeId]);
+                AppendInt64(ref hash, callbacks.Serialize != null ? 1 : 0);
+                AppendInt64(ref hash, callbacks.SerializationVersion);
+                AppendInt64(ref hash, FixedPackedPayloadSizes[typeId]);
+            }
+
+            return new ComponentSchemaManifest(mode, hash, serializedTypeIds.Length);
         }
 
         public static Type GetComponentType(int id)
@@ -386,10 +418,41 @@ namespace Lattice.ECS.Core
             ComponentCallbacks existingCallbacks = Callbacks[id];
             if (existingCallbacks.Serialize != callbacks.Serialize ||
                 existingCallbacks.OnAdded != callbacks.OnAdded ||
-                existingCallbacks.OnRemoved != callbacks.OnRemoved)
+                existingCallbacks.OnRemoved != callbacks.OnRemoved ||
+                existingCallbacks.SerializationVersion != callbacks.SerializationVersion)
             {
                 throw new InvalidOperationException(
                     $"Component {Types[id]!.FullName} already registered with different callbacks.");
+            }
+        }
+
+        private static void AppendInt64(ref ulong hash, int value)
+        {
+            Span<byte> buffer = stackalloc byte[sizeof(int)];
+            BinaryPrimitives.WriteInt32LittleEndian(buffer, value);
+            AppendBytes(ref hash, buffer);
+        }
+
+        private static void AppendString(ref ulong hash, string value)
+        {
+            AppendInt64(ref hash, value.Length);
+            Span<byte> buffer = stackalloc byte[sizeof(char)];
+
+            for (int i = 0; i < value.Length; i++)
+            {
+                BinaryPrimitives.WriteUInt16LittleEndian(buffer, value[i]);
+                AppendBytes(ref hash, buffer);
+            }
+        }
+
+        private static void AppendBytes(ref ulong hash, ReadOnlySpan<byte> data)
+        {
+            const ulong fnvPrime = 0x00000100000001B3;
+
+            for (int i = 0; i < data.Length; i++)
+            {
+                hash ^= data[i];
+                hash *= fnvPrime;
             }
         }
 

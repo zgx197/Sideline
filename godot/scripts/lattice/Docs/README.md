@@ -1,23 +1,17 @@
-# Lattice 文档目录
+# Lattice Docs（历史归档）
 
-本目录包含 Lattice 确定性 ECS 框架的设计文档和使用指南。
+> 历史归档文档：
+>
+> 本目录中的内容主要反映 Lattice 早期“独立文档站 / 数学库 / 预研方案”阶段的写法，不代表当前 `main` 分支的正式运行时、ECS、Session 或 benchmark 治理现状。
+>
+> 当前主干文档入口请优先参考：
+>
+> - `godot/scripts/lattice/README.md`
+> - `godot/scripts/lattice/ECS/Framework/SystemDesignNotes.md`
+> - `godot/scripts/lattice/Benchmarks/README.md`
 
-## 文档列表
+当前保留本目录的原因：
 
-| 文档 | 说明 |
-|------|------|
-| [HotReloadArchitecture.md](./HotReloadArchitecture.md) | 热重载架构设计方案 - 基于 Quantum 式 Stateless ECS 的热重载技术选型与实现方案 |
-
-## 设计原则
-
-Lattice 遵循以下设计原则：
-
-1. **Stateless Systems** - System 不持有可变状态，便于热重载和确定性验证
-2. **Data in Frame** - 所有游戏状态存储在 Frame，支持 Checkpoint/Restore
-3. **Deterministic First** - 优先保证确定性，支持预测/回滚网络同步
-4. **Performance Critical** - 使用 `unsafe` 代码和稀疏集实现高性能 ECS
-
-## 相关链接
-
-- [Lattice 核心实现](../ECS/)
-- [Facet UI 框架](../facet/)
+- 保留定点数、LUT、SIMD、热重载等专题草稿，供历史追溯与知识参考
+- 避免早期技术调研内容直接丢失
+- 明确这些文档**不是**当前主干设计承诺，也不应被当成新功能开发依据

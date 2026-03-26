@@ -3,6 +3,7 @@
 
 using System;
 using System.ComponentModel;
+using System.Runtime.CompilerServices;
 using Lattice.Core;
 using Lattice.Math;
 
@@ -104,7 +105,11 @@ namespace Lattice.ECS.Core
 
         public int Tick { get; }
 
-        public FP DeltaTime { get; }
+        public FP DeltaTime
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get;
+        }
 
         public int EntityCapacity { get; }
 

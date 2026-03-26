@@ -15,7 +15,7 @@ namespace Lattice.Tests.ECS
         {
             using var runner = new SessionRunnerBuilder()
                 .WithDeltaTime(FP.One)
-                .WithSessionFactory((deltaTime, localPlayerId) => new SpawnerIntegrationSession(deltaTime, localPlayerId))
+                .WithRuntimeFactory(options => new SpawnerIntegrationSession(options.DeltaTime, options.LocalPlayerId))
                 .AddSystem(new SpawnerSystem())
                 .AddSystem(new MovementSystem())
                 .AddSystem(new LifetimeSystem())
@@ -23,7 +23,7 @@ namespace Lattice.Tests.ECS
 
             runner.Start();
 
-            var session = Assert.IsType<SpawnerIntegrationSession>(runner.Session);
+            var session = Assert.IsType<SpawnerIntegrationSession>(runner.Runtime);
             session.SpawnSpawner(
                 new Position2D { X = FP.FromRaw(FP.Raw._10), Y = FP.Zero },
                 new Spawner
@@ -39,12 +39,17 @@ namespace Lattice.Tests.ECS
             runner.Step();
 
             Assert.Equal(1, CountProjectiles(session.PredictedFrame!));
-            AssertProjectileState(session.PredictedFrame!, expectedX: FP._10 + FP._2, expectedLifetime: FP._1);
+            AssertProjectileStates(session.PredictedFrame!, (FP._10, FP._2));
+
+            runner.Step();
+
+            Assert.Equal(2, CountProjectiles(session.PredictedFrame!));
+            AssertProjectileStates(session.PredictedFrame!, (FP._10, FP._2), (FP._10 + FP._2, FP._1));
 
             runner.Step();
 
             Assert.Equal(1, CountProjectiles(session.PredictedFrame!));
-            AssertProjectileState(session.PredictedFrame!, expectedX: FP._10 + FP._2, expectedLifetime: FP._1);
+            AssertProjectileStates(session.PredictedFrame!, (FP._10 + FP._2, FP._1));
 
             runner.Step();
 
@@ -63,22 +68,30 @@ namespace Lattice.Tests.ECS
             return count;
         }
 
-        private static void AssertProjectileState(Frame frame, FP expectedX, FP expectedLifetime)
+        private static void AssertProjectileStates(Frame frame, params (FP X, FP Lifetime)[] expectedStates)
         {
             var positionEnumerator = frame.Query<Position2D, ProjectileTag>().GetEnumerator();
-            Assert.True(positionEnumerator.MoveNext());
+            var actualStates = new (FP X, FP Lifetime)[expectedStates.Length];
+            int count = 0;
 
-            EntityRef projectile = positionEnumerator.Entity;
-            ref Position2D position = ref positionEnumerator.Component1;
-            ref Lifetime lifetime = ref frame.Get<Lifetime>(projectile);
+            while (positionEnumerator.MoveNext())
+            {
+                EntityRef projectile = positionEnumerator.Entity;
+                ref Position2D position = ref positionEnumerator.Component1;
+                ref Lifetime lifetime = ref frame.Get<Lifetime>(projectile);
 
-            Assert.Equal(expectedX, position.X);
-            Assert.Equal(FP.Zero, position.Y);
-            Assert.Equal(expectedLifetime, lifetime.Remaining);
-            Assert.False(positionEnumerator.MoveNext());
+                Assert.True(count < actualStates.Length, "Unexpected extra projectile in frame.");
+                Assert.Equal(FP.Zero, position.Y);
+                actualStates[count++] = (position.X, lifetime.Remaining);
+            }
+
+            Assert.Equal(expectedStates.Length, count);
+            Array.Sort(actualStates, static (left, right) => left.X.CompareTo(right.X));
+            Array.Sort(expectedStates, static (left, right) => left.X.CompareTo(right.X));
+            Assert.Equal(expectedStates, actualStates);
         }
 
-        private sealed class SpawnerIntegrationSession : Session
+        private sealed class SpawnerIntegrationSession : MinimalPredictionSession
         {
             public SpawnerIntegrationSession(FP deltaTime, int localPlayerId)
                 : base(deltaTime, localPlayerId)

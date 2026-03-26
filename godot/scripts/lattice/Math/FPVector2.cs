@@ -176,6 +176,7 @@ namespace Lattice.Math
         /// </summary>
         /// <param name="magnitude">输出原始长度</param>
         /// <returns>归一化后的向量</returns>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public readonly FPVector2 NormalizedWithMagnitude(out FP magnitude)
         {
             return Normalize(this, out magnitude);

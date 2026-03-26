@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Reflection;
-using Lattice.Core;
+using System.Runtime.CompilerServices;
 using Lattice.ECS.Core;
 using Lattice.ECS.Framework;
 using Lattice.Math;
@@ -9,43 +9,114 @@ using Lattice.Math;
 namespace Lattice.ECS.Session
 {
     /// <summary>
-    /// ECS 会话管理器。
-    /// 当前主干中的 Session 属于“纯 C#、单线程、固定顺序、可回滚”的最小模拟运行时，
-    /// 既承载本地预测推进，也承载最小验证/回滚能力，但并不是完整网络会话产品层。
+    /// 共享 Session 运行时内核。
+    /// 该类型承载固定帧推进、系统驱动、输入缓冲、历史帧、检查点与回滚相关的通用机制，
+    /// 具体运行模式通过派生类决定，不直接假定自己就是唯一的正式 Session 形态。
     /// </summary>
-    public class Session : IDisposable
+    public abstract class SessionRuntime : IDisposable
     {
-        #region 配置
+        private static readonly SessionRuntimeDataBoundary DefaultDataBoundary = new(
+            SessionInputStorageKind.PlayerTickFixedWindow,
+            SessionHistoryStorageKind.BoundedLiveFramesWithSampledSnapshots,
+            SessionCheckpointStorageKind.PackedSnapshot,
+            SessionRuntimeDataCapability.PlayerTickInputLookup |
+            SessionRuntimeDataCapability.BoundedInputRetention |
+            SessionRuntimeDataCapability.TickAddressableHistory |
+            SessionRuntimeDataCapability.SampledHistoryMaterialization |
+            SessionRuntimeDataCapability.ExplicitCheckpointRestore |
+            SessionRuntimeDataCapability.PackedCheckpointStorage,
+            UnsupportedSessionRuntimeDataCapability.ConfigurableInputRetention |
+            UnsupportedSessionRuntimeDataCapability.ConfigurableHistoryRetention |
+            UnsupportedSessionRuntimeDataCapability.ConfigurableSnapshotSampling |
+            UnsupportedSessionRuntimeDataCapability.PluggableHistoryStore |
+            UnsupportedSessionRuntimeDataCapability.AlternativeCheckpointFormats |
+            UnsupportedSessionRuntimeDataCapability.UnboundedPerTickRetention);
 
-        /// <summary>最大预测帧数（超过需要回滚）</summary>
-        public const int MaxPredictionFrames = 8;
+        private static readonly SessionTickPipelineBoundary DefaultTickPipeline = new(
+            SessionTickPipelineKind.PhasedStructuralCommit,
+            SessionTickPipelineCapability.ExplicitStageExposure |
+            SessionTickPipelineCapability.DeferredStructuralChanges |
+            SessionTickPipelineCapability.StructuralCommitStage |
+            SessionTickPipelineCapability.CleanupAndHistoryStages |
+            SessionTickPipelineCapability.ImmediateComponentMutationDuringSimulation,
+            UnsupportedSessionTickPipelineCapability.ImmediateStructuralVisibilityDuringSimulation |
+            UnsupportedSessionTickPipelineCapability.RuntimeReorderedStages |
+            UnsupportedSessionTickPipelineCapability.PerSystemStructuralCommit);
 
-        /// <summary>历史帧保留数量</summary>
-        public const int HistorySize = 128;  // 约 2 秒 @ 60fps
-
-        /// <summary>保留为活帧的历史数量。</summary>
-        public const int LiveHistorySize = MaxPredictionFrames + 4;
-
-        /// <summary>历史快照采样间隔。</summary>
-        public const int HistorySnapshotInterval = 4;
-
-        private const int RecycledFrameLimit = LiveHistorySize + 4;
-
-        #endregion
+        private static readonly SessionRuntimeInputBoundary DefaultInputBoundary = new(
+            SessionInputContractKind.TickScopedPlayerInputSet,
+            SessionMissingInputPolicy.OmitMissingPlayers,
+            SessionInputWritePolicy.LatestWriteWins,
+            SessionInputOrder.PlayerIdAscending,
+            SessionRuntimeInputCapability.TickScopedInputAggregation |
+            SessionRuntimeInputCapability.SparsePlayerInput |
+            SessionRuntimeInputCapability.StablePlayerOrdering |
+            SessionRuntimeInputCapability.LatestWriteWins |
+            SessionRuntimeInputCapability.TransportDecoupledInputModel,
+            UnsupportedSessionRuntimeInputCapability.ImplicitPreviousInputCarryForward |
+            UnsupportedSessionRuntimeInputCapability.BuiltInDefaultInputSynthesis |
+            UnsupportedSessionRuntimeInputCapability.ConfigurableInputAggregation |
+            UnsupportedSessionRuntimeInputCapability.ConfigurableMissingInputPolicy |
+            UnsupportedSessionRuntimeInputCapability.BuiltInTransportSerialization);
 
         #region 字段
 
         /// <summary>运行时配置。</summary>
         public SessionRuntimeOptions RuntimeOptions { get; }
 
+        /// <summary>
+        /// 当前运行时上下文。
+        /// 用于承载运行期共享对象与稳定公开的运行元信息。
+        /// </summary>
+        public SessionRuntimeContext Context { get; }
+
+        /// <summary>
+        /// 当前 Session 的正式运行边界描述。
+        /// 用于明确当前主干承诺的能力面，而不是把 Session 误读为完整联机会话产品层。
+        /// </summary>
+        public abstract SessionRuntimeBoundary RuntimeBoundary { get; }
+
+        /// <summary>
+        /// 当前运行时的输入 / 历史 / checkpoint 数据策略边界。
+        /// 用于明确哪些是稳定公开契约，哪些 sizing 仍属于内部实现。
+        /// </summary>
+        public virtual SessionRuntimeDataBoundary DataBoundary => DefaultDataBoundary;
+
+        /// <summary>
+        /// 当前运行时的 Tick 管线边界。
+        /// 用于明确 Tick 阶段与结构性修改的正式语义，而不是继续依赖系统注册顺序和调用约定。
+        /// </summary>
+        public virtual SessionTickPipelineBoundary TickPipeline => DefaultTickPipeline;
+
+        /// <summary>
+        /// 当前运行时的正式输入契约边界。
+        /// 用于明确输入按什么模型聚合、缺失输入如何处理、重复写入如何收敛，以及输入模型是否与传输序列化解耦。
+        /// </summary>
+        public virtual SessionRuntimeInputBoundary InputBoundary => DefaultInputBoundary;
+
+        /// <summary>
+        /// 当前运行时类型。
+        /// </summary>
+        public SessionRuntimeKind RuntimeKind => RuntimeBoundary.RuntimeKind;
+
         /// <summary>固定时间步长</summary>
-        public FP DeltaTime { get; }
+        public FP DeltaTime
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get;
+        }
 
         /// <summary>本地玩家 ID</summary>
         public int LocalPlayerId { get; protected set; }
 
         /// <summary>当前帧号（Verified 帧号）</summary>
         public int CurrentTick { get; protected set; }
+
+        /// <summary>
+        /// 当前 Tick 正在执行的阶段。
+        /// 正常空闲态为 `Idle`；运行中的单步推进、回滚重模拟与历史 materialize 都会复用同一套阶段语义。
+        /// </summary>
+        public SessionTickStage CurrentTickStage { get; private set; }
 
         /// <summary>最新验证帧（服务器确认）</summary>
         public Frame? VerifiedFrame { get; protected set; }
@@ -56,32 +127,9 @@ namespace Lattice.ECS.Session
         /// <summary>上一帧（用于插值）</summary>
         public Frame? PreviousFrame { get; protected set; }
 
-        /// <summary>按 Tick 索引的历史帧。</summary>
-        protected readonly Dictionary<int, Frame> _historyByTick;
+        /// <summary>SessionRuntime 内部历史帧与帧池管理。</summary>
+        private readonly SessionFrameHistory _frameHistory;
 
-        /// <summary>历史帧的插入顺序。</summary>
-        private readonly Queue<int> _historyOrder;
-
-        /// <summary>采样保留的历史快照。</summary>
-        private readonly Dictionary<int, PackedFrameSnapshot> _historySnapshotsByTick;
-
-        /// <summary>按 Tick 升序维护的历史快照索引。</summary>
-        private readonly List<int> _historySnapshotTicks;
-
-        /// <summary>回收的帧实例，用于降低热路径分配成本。</summary>
-        private readonly Stack<Frame> _recycledFrames;
-
-        /// <summary>按需重建历史帧时复用的临时帧。</summary>
-        private Frame? _historicalScratchFrame;
-
-        /// <summary>小范围 materialize cache，避免同一片历史窗口反复从 snapshot 冷启动。</summary>
-        private readonly Dictionary<int, Frame> _materializedHistoryByTick;
-
-        /// <summary>materialize cache 的 LRU 顺序。</summary>
-        private readonly List<int> _materializedHistoryOrder;
-
-        private int _highestHistoryTick = -1;
-        private const int MaterializedHistoryCacheSize = 4;
         private readonly bool _canReplayHistoricalFramesInPlace;
 
         /// <summary>是否正在回滚中</summary>
@@ -93,8 +141,11 @@ namespace Lattice.ECS.Session
         /// <summary>系统调度器</summary>
         protected readonly SystemScheduler _systemScheduler = new();
 
-        /// <summary>输入缓冲区</summary>
-        protected readonly Dictionary<int, InputBuffer> _inputBuffers = new();
+        /// <summary>SessionRuntime 内部输入保留与聚合管理。</summary>
+        private readonly SessionInputStore _inputStore;
+
+        /// <summary>SessionRuntime 内部 Tick 管线执行器。</summary>
+        private readonly SessionTickProcessor _tickProcessor = new();
 
         private bool _disposed;
 
@@ -115,26 +166,23 @@ namespace Lattice.ECS.Session
 
         #region 构造函数
 
-        public Session(FP deltaTime, int localPlayerId = 0)
+        protected SessionRuntime(FP deltaTime, int localPlayerId = 0)
             : this(new SessionRuntimeOptions(deltaTime, localPlayerId))
         {
         }
 
-        public Session(SessionRuntimeOptions runtimeOptions)
+        protected SessionRuntime(SessionRuntimeOptions runtimeOptions)
         {
             RuntimeOptions = runtimeOptions ?? throw new ArgumentNullException(nameof(runtimeOptions));
             DeltaTime = runtimeOptions.DeltaTime;
             LocalPlayerId = runtimeOptions.LocalPlayerId;
-            _historyByTick = new Dictionary<int, Frame>(HistorySize);
-            _historyOrder = new Queue<int>(HistorySize);
-            _historySnapshotsByTick = new Dictionary<int, PackedFrameSnapshot>(HistorySize / HistorySnapshotInterval + 2);
-            _historySnapshotTicks = new List<int>(HistorySize / HistorySnapshotInterval + 2);
-            _recycledFrames = new Stack<Frame>(RecycledFrameLimit);
-            _materializedHistoryByTick = new Dictionary<int, Frame>(MaterializedHistoryCacheSize);
-            _materializedHistoryOrder = new List<int>(MaterializedHistoryCacheSize);
+            Context = new SessionRuntimeContext(this, GetType().Name);
+            _frameHistory = new SessionFrameHistory();
+            _inputStore = new SessionInputStore(SessionRuntimeDataDefaults.HistorySize);
             _canReplayHistoricalFramesInPlace = CanReplayHistoricalFramesInPlace();
 
             CurrentTick = 0;
+            CurrentTickStage = SessionTickStage.Idle;
         }
 
         #endregion
@@ -159,8 +207,9 @@ namespace Lattice.ECS.Session
             SetPredictedFrame(VerifiedFrame!.CloneState());
             SetPreviousFrame(null);
             CurrentTick = 0;
+            CurrentTickStage = SessionTickStage.Idle;
 
-            AddHistoryFrame(VerifiedFrame!);
+            UpdateHistory(VerifiedFrame!);
 
             IsRunning = true;
         }
@@ -182,6 +231,7 @@ namespace Lattice.ECS.Session
             }
 
             IsRunning = false;
+            CurrentTickStage = SessionTickStage.Idle;
         }
 
         /// <summary>
@@ -192,6 +242,7 @@ namespace Lattice.ECS.Session
         public virtual void Update()
         {
             ThrowIfDisposed();
+            EnsureCapability(SessionRuntimeCapability.LocalPredictionStep, nameof(Update));
             EnsureRunning(nameof(Update));
 
             if (PredictedFrame == null)
@@ -206,17 +257,7 @@ namespace Lattice.ECS.Session
             SetPredictedFrame(AdvanceFrame(PredictedFrame!));
             CurrentTick = PredictedFrame.Tick;
 
-            // 应用输入
-            ApplyInputs(PredictedFrame!);
-
-            // 执行系统更新
-            UpdateSystems(PredictedFrame!, DeltaTime);
-
-            // 触发事件
-            OnFrameUpdate?.Invoke(PredictedFrame!, DeltaTime);
-
-            // 保存到历史
-            UpdateHistory(PredictedFrame!);
+            ExecuteTickPipeline(PredictedFrame!, raiseFrameUpdateEvent: true, captureHistory: true);
         }
 
         #endregion
@@ -265,46 +306,101 @@ namespace Lattice.ECS.Session
             _systemScheduler.Update(frame, deltaTime);
         }
 
+        /// <summary>
+        /// Tick 末尾清理阶段。
+        /// 当前默认只保留显式阶段语义，不额外引入新的运行逻辑。
+        /// </summary>
+        protected virtual void CleanupFrame(Frame frame)
+        {
+        }
+
+        /// <summary>
+        /// Tick 历史写入阶段。
+        /// 默认把当前帧写入运行时历史；保留显式 hook 仅用于测试与后续边界扩展。
+        /// </summary>
+        protected virtual void CaptureHistory(Frame frame)
+        {
+            UpdateHistory(frame);
+        }
+
         #endregion
 
         #region 输入管理
 
         /// <summary>
-        /// 设置玩家输入
+        /// 设置玩家输入。
+        /// 稳定公开契约是按 `(playerId, tick)` 读写输入；
+        /// 具体窗口大小、ring buffer sizing 与淘汰细节仍属于内部策略，可通过 `DataBoundary` 了解当前承诺的能力边界。
         /// </summary>
-        public virtual void SetPlayerInput(int playerId, int tick, IInputCommand input)
+        public virtual void SetPlayerInput(int playerId, int tick, IPlayerInput input)
         {
             ThrowIfDisposed();
             ArgumentNullException.ThrowIfNull(input);
+            ValidateInputIdentity(playerId, tick, input);
 
-            if (!_inputBuffers.TryGetValue(playerId, out var buffer))
-            {
-                buffer = new InputBuffer(HistorySize);
-                _inputBuffers[playerId] = buffer;
-            }
-
-            buffer.SetInput(tick, input);
+            _inputStore.SetPlayerInput(playerId, tick, input);
         }
 
         /// <summary>
-        /// 获取玩家输入
+        /// 获取玩家输入。
+        /// 若请求 tick 已超出当前内部保留窗口，则返回 `null`；窗口大小本身不属于稳定公开 API。
         /// </summary>
-        public IInputCommand? GetPlayerInput(int playerId, int tick)
+        public IPlayerInput? GetPlayerInput(int playerId, int tick)
         {
             ThrowIfDisposed();
-
-            if (!_inputBuffers.TryGetValue(playerId, out var buffer))
-                return null;
-
-            return buffer.GetInput(tick);
+            return _inputStore.GetPlayerInput(playerId, tick);
         }
 
         /// <summary>
-        /// 应用输入到帧
+        /// 为指定 tick 聚合输入集合。
+        /// 当前正式语义为：
+        /// - 只聚合实际写入的玩家输入
+        /// - 缺失玩家不会自动生成默认输入
+        /// - 遍历顺序按玩家 ID 升序稳定排列
+        /// </summary>
+        protected virtual SessionInputSet CollectInputSet(int tick)
+        {
+            return _inputStore.CollectInputSet(tick);
+        }
+
+        /// <summary>
+        /// 将聚合后的输入集合应用到当前帧。
+        /// 这是当前正式推荐的输入扩展点，新玩法 Session 默认应优先重写该方法，而不是直接操作底层输入缓冲。
+        /// </summary>
+        protected virtual void ApplyInputSet(Frame frame, in SessionInputSet inputSet)
+        {
+        }
+
+        /// <summary>
+        /// 应用输入到帧。
+        /// 默认实现会先构建正式 `SessionInputSet`，再调用 `ApplyInputSet(frame, inputSet)`。
+        /// 保留该 hook 仅用于兼容现有派生类；新代码应优先重写 `ApplyInputSet(...)`。
         /// </summary>
         protected virtual void ApplyInputs(Frame frame)
         {
-            // 子类实现：将输入应用到游戏逻辑
+            SessionInputSet inputSet = CollectInputSet(frame.Tick);
+            ApplyInputSet(frame, inputSet);
+        }
+
+        private void ExecuteTickPipeline(Frame frame, bool raiseFrameUpdateEvent, bool captureHistory)
+        {
+            _tickProcessor.Execute(
+                frame,
+                DeltaTime,
+                EnterTickStage,
+                ApplyInputs,
+                UpdateSystems,
+                CleanupFrame,
+                CaptureHistory,
+                OnFrameUpdate,
+                raiseFrameUpdateEvent,
+                captureHistory);
+        }
+
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
+        private void EnterTickStage(SessionTickStage stage)
+        {
+            CurrentTickStage = stage;
         }
 
         #endregion
@@ -320,7 +416,14 @@ namespace Lattice.ECS.Session
         public virtual void VerifyFrame(int tick, long expectedChecksum, byte[]? inputData = null)
         {
             ThrowIfDisposed();
+            EnsureCapability(SessionRuntimeCapability.PredictionVerification, nameof(VerifyFrame));
             EnsureRunning(nameof(VerifyFrame));
+            ArgumentOutOfRangeException.ThrowIfNegative(tick);
+
+            if (tick > CurrentTick)
+            {
+                throw new ArgumentOutOfRangeException(nameof(tick), "VerifyFrame only accepts historical or current ticks.");
+            }
 
             // 获取对应历史帧
             var frame = GetHistoricalFrame(tick);
@@ -357,7 +460,14 @@ namespace Lattice.ECS.Session
         public virtual void RollbackTo(int tick, byte[]? correctedInput = null)
         {
             ThrowIfDisposed();
+            EnsureCapability(SessionRuntimeCapability.PredictionVerification, nameof(RollbackTo));
             EnsureRunning(nameof(RollbackTo));
+            ArgumentOutOfRangeException.ThrowIfNegative(tick);
+
+            if (tick > CurrentTick)
+            {
+                throw new ArgumentOutOfRangeException(nameof(tick), "RollbackTo only accepts historical or current ticks.");
+            }
 
             int targetTick = CurrentTick;
             IsRollingBack = true;
@@ -407,15 +517,7 @@ namespace Lattice.ECS.Session
                 SetPreviousFrame(PredictedFrame);
                 SetPredictedFrame(AdvanceFrame(PredictedFrame!));
                 CurrentTick = PredictedFrame!.Tick;
-
-                // 应用该帧的输入（可能是预测输入）
-                ApplyInputs(PredictedFrame!);
-
-                // 执行系统
-                UpdateSystems(PredictedFrame!, DeltaTime);
-
-                // 更新历史（替换原有预测帧）
-                UpdateHistory(PredictedFrame!);
+                ExecuteTickPipeline(PredictedFrame!, raiseFrameUpdateEvent: false, captureHistory: true);
             }
         }
 
@@ -424,26 +526,27 @@ namespace Lattice.ECS.Session
         #region 历史帧管理
 
         /// <summary>
-        /// 获取历史帧
+        /// 获取历史帧。
+        /// 返回结果可能来自 live history，也可能来自 sampled snapshot 的按需 materialize；
+        /// 具体保留数量与采样间隔属于内部策略，不作为稳定公开 API 承诺。
         /// </summary>
         public Frame? GetHistoricalFrame(int tick)
         {
             ThrowIfDisposed();
 
-            if (_historyByTick.TryGetValue(tick, out Frame? frame))
+            if (_frameHistory.TryGetLiveFrame(tick, out Frame? frame))
             {
                 return frame;
             }
 
-            if (_materializedHistoryByTick.TryGetValue(tick, out Frame? cachedFrame))
+            if (_frameHistory.TryGetMaterializedFrame(tick, out Frame? cachedFrame))
             {
-                TouchMaterializedHistoryTick(tick);
                 return cachedFrame;
             }
 
-            if (_historicalScratchFrame != null && _historicalScratchFrame.Tick == tick)
+            if (_frameHistory.TryGetScratchFrame(tick, out Frame? scratchFrame))
             {
-                return _historicalScratchFrame;
+                return scratchFrame;
             }
 
             if (TryMaterializeHistoricalFrame(tick, out Frame? materialized))
@@ -459,22 +562,7 @@ namespace Lattice.ECS.Session
         /// </summary>
         protected void UpdateHistory(Frame frame)
         {
-            InvalidateHistoricalMaterializeCache();
-            RemoveHistorySnapshot(frame.Tick);
-
-            if (_historyByTick.TryGetValue(frame.Tick, out Frame? existing))
-            {
-                if (!ReferenceEquals(existing, frame))
-                {
-                    _historyByTick[frame.Tick] = frame;
-                    DisposeFrameIfDetached(existing);
-                }
-
-                return;
-            }
-
-            // 不存在则添加
-            AddHistoryFrame(frame);
+            _frameHistory.UpdateHistory(frame, DisposeFrameIfDetached);
         }
 
         #endregion
@@ -490,7 +578,9 @@ namespace Lattice.ECS.Session
         public void Rewind(int frameCount)
         {
             ThrowIfDisposed();
+            EnsureCapability(SessionRuntimeCapability.LocalRewind, nameof(Rewind));
             EnsureRunning(nameof(Rewind));
+            ArgumentOutOfRangeException.ThrowIfNegative(frameCount);
 
             int targetTick = System.Math.Max(0, CurrentTick - frameCount);
 
@@ -508,19 +598,16 @@ namespace Lattice.ECS.Session
         /// 创建检查点。
         /// 该接口更偏“本地工具/运行时管理”语义：保存当前 Verified / Predicted 帧状态，
         /// 便于显式恢复、热重载或外层玩法工具使用，不负责系统集合装配。
+        /// 当前公开契约是“可保存并恢复运行态帧状态，并携带正式 checkpoint 协议 metadata”；
+        /// 底层 packed payload 细节仍通过显式版本号治理，而不是默认承诺永远隐式兼容。
         /// 需要当前已经存在有效帧状态。
         /// </summary>
         public SessionCheckpoint CreateCheckpoint()
         {
             ThrowIfDisposed();
+            EnsureCapability(SessionRuntimeCapability.CheckpointRestore, nameof(CreateCheckpoint));
             EnsureFrameState(nameof(CreateCheckpoint));
-
-            return new SessionCheckpoint
-            {
-                Tick = CurrentTick,
-                VerifiedSnapshot = VerifiedFrame?.CapturePackedSnapshot(ComponentSerializationMode.Checkpoint),
-                PredictedSnapshot = PredictedFrame?.CapturePackedSnapshot(ComponentSerializationMode.Checkpoint)
-            };
+            return SessionCheckpointFactory.Capture(CurrentTick, VerifiedFrame, PredictedFrame, InputBoundary, DataBoundary);
         }
 
         /// <summary>
@@ -528,24 +615,23 @@ namespace Lattice.ECS.Session
         /// 该接口更偏“本地工具/运行时管理”语义：只恢复帧状态，
         /// 不重建系统集合，也不切换 Session 的运行模式。
         /// 该操作只恢复帧状态，不会重建系统集合，也不会重新初始化系统。
+        /// 当前会先校验 checkpoint 协议、输入契约和组件 schema，再执行底层 snapshot restore。
         /// </summary>
         public void RestoreFromCheckpoint(SessionCheckpoint checkpoint)
         {
             ThrowIfDisposed();
+            EnsureCapability(SessionRuntimeCapability.CheckpointRestore, nameof(RestoreFromCheckpoint));
             ArgumentNullException.ThrowIfNull(checkpoint);
 
             ResetFrameState(disposeFrames: true);
 
             CurrentTick = checkpoint.Tick;
-            SetVerifiedFrame(checkpoint.VerifiedSnapshot != null
-                ? RestoreFrame(checkpoint.VerifiedSnapshot, ComponentSerializationMode.Checkpoint)
-                : null);
-            SetPredictedFrame(checkpoint.PredictedSnapshot != null
-                ? RestoreFrame(checkpoint.PredictedSnapshot, ComponentSerializationMode.Checkpoint)
-                : null);
+            SessionCheckpointFrames restoredFrames = SessionCheckpointFactory.RestoreFrames(checkpoint, InputBoundary, DataBoundary, RestoreFrame);
+            SetVerifiedFrame(restoredFrames.VerifiedFrame);
+            SetPredictedFrame(restoredFrames.PredictedFrame);
             SetPreviousFrame(null);
 
-            if (VerifiedFrame != null) AddHistoryFrame(VerifiedFrame);
+            if (VerifiedFrame != null) UpdateHistory(VerifiedFrame);
             if (PredictedFrame != null) UpdateHistory(PredictedFrame);
         }
 
@@ -583,20 +669,17 @@ namespace Lattice.ECS.Session
             // 子类实现
         }
 
-        private void AddHistoryFrame(Frame frame)
+        private static void ValidateInputIdentity(int playerId, int tick, IPlayerInput input)
         {
-            if (_historyByTick.ContainsKey(frame.Tick))
+            if (input.PlayerId != playerId)
             {
-                UpdateHistory(frame);
-                return;
+                throw new ArgumentException("Input PlayerId must match the playerId argument.", nameof(input));
             }
 
-            _historyByTick.Add(frame.Tick, frame);
-            _historyOrder.Enqueue(frame.Tick);
-            _highestHistoryTick = System.Math.Max(_highestHistoryTick, frame.Tick);
-
-            TrimExpiredHistory();
-            DemoteOldLiveHistory();
+            if (input.Tick != tick)
+            {
+                throw new ArgumentException("Input Tick must match the tick argument.", nameof(input));
+            }
         }
 
         private void ResetFrameState(bool disposeFrames)
@@ -608,21 +691,7 @@ namespace Lattice.ECS.Session
                 if (VerifiedFrame != null) frames.Add(VerifiedFrame);
                 if (PredictedFrame != null) frames.Add(PredictedFrame);
                 if (PreviousFrame != null) frames.Add(PreviousFrame);
-                if (_historicalScratchFrame != null) frames.Add(_historicalScratchFrame);
-                foreach (Frame materializedFrame in _materializedHistoryByTick.Values)
-                {
-                    frames.Add(materializedFrame);
-                }
-
-                foreach (Frame historicalFrame in _historyByTick.Values)
-                {
-                    frames.Add(historicalFrame);
-                }
-
-                foreach (Frame recycledFrame in _recycledFrames)
-                {
-                    frames.Add(recycledFrame);
-                }
+                _frameHistory.CopyOwnedFramesTo(frames);
 
                 foreach (Frame frame in frames)
                 {
@@ -633,17 +702,9 @@ namespace Lattice.ECS.Session
             VerifiedFrame = null;
             PredictedFrame = null;
             PreviousFrame = null;
-            _historicalScratchFrame = null;
             CurrentTick = 0;
             IsRollingBack = false;
-            _highestHistoryTick = -1;
-            _historyByTick.Clear();
-            _historyOrder.Clear();
-            _historySnapshotsByTick.Clear();
-            _historySnapshotTicks.Clear();
-            _materializedHistoryByTick.Clear();
-            _materializedHistoryOrder.Clear();
-            _recycledFrames.Clear();
+            _frameHistory.Clear();
         }
 
         #endregion
@@ -659,7 +720,8 @@ namespace Lattice.ECS.Session
 
             Stop();
             ResetFrameState(disposeFrames: true);
-            _inputBuffers.Clear();
+            _inputStore.Clear();
+            Context.Dispose();
             _disposed = true;
         }
 
@@ -681,12 +743,26 @@ namespace Lattice.ECS.Session
             }
         }
 
+        private void EnsureCapability(SessionRuntimeCapability capability, string methodName)
+        {
+            if (!RuntimeBoundary.Supports(capability))
+            {
+                throw new NotSupportedException(
+                    $"{GetType().Name} does not support {capability} required by {methodName}.");
+            }
+        }
+
         private void ThrowIfDisposed()
         {
             if (_disposed)
             {
                 throw new ObjectDisposedException(GetType().Name);
             }
+        }
+
+        internal void BindContextRunnerName(string runnerName)
+        {
+            Context.BindRunnerName(runnerName);
         }
 
         private void SetVerifiedFrame(Frame? frame)
@@ -719,87 +795,57 @@ namespace Lattice.ECS.Session
 
             if (ReferenceEquals(frame, VerifiedFrame) ||
                 ReferenceEquals(frame, PredictedFrame) ||
-                ReferenceEquals(frame, PreviousFrame) ||
-                ReferenceEquals(frame, _historicalScratchFrame))
+                ReferenceEquals(frame, PreviousFrame))
             {
                 return;
             }
 
-            if (_materializedHistoryByTick.TryGetValue(frame.Tick, out Frame? materializedFrame) &&
-                ReferenceEquals(frame, materializedFrame))
+            if (_frameHistory.Owns(frame))
             {
                 return;
             }
 
-            if (_historyByTick.TryGetValue(frame.Tick, out Frame? historicalFrame) &&
-                ReferenceEquals(frame, historicalFrame))
-            {
-                return;
-            }
-
-            RecycleFrame(frame);
+            _frameHistory.RecycleFrame(frame);
         }
 
         private bool TryMaterializeHistoricalFrame(int tick, out Frame? frame)
         {
             frame = null;
 
-            if (tick < 0 || _highestHistoryTick < 0)
+            if (!_frameHistory.IsTickWithinRetentionWindow(tick))
             {
                 return false;
             }
 
-            if (tick > _highestHistoryTick)
+            if (_frameHistory.TryGetScratchFrame(tick, out Frame? scratchFrame))
             {
-                return false;
-            }
-
-            int minTick = _highestHistoryTick - HistorySize + 1;
-            if (tick < minTick)
-            {
-                return false;
-            }
-
-            if (_historicalScratchFrame != null && _historicalScratchFrame.Tick == tick)
-            {
-                frame = _historicalScratchFrame;
+                frame = scratchFrame;
                 return true;
             }
 
-            if (_materializedHistoryByTick.TryGetValue(tick, out Frame? cachedFrame))
+            if (_frameHistory.TryGetMaterializedFrame(tick, out Frame? cachedFrame))
             {
-                TouchMaterializedHistoryTick(tick);
-                SetHistoricalScratchFrame(cachedFrame);
-                frame = cachedFrame;
+                _frameHistory.SetScratchFrame(cachedFrame!, DisposeFrameIfDetached);
+                frame = cachedFrame!;
                 return true;
             }
 
             int baseTick = -1;
             Frame? baseFrame = null;
-            foreach ((int historicalTick, Frame historicalFrame) in _historyByTick)
-            {
-                if (historicalTick <= tick && historicalTick > baseTick)
-                {
-                    baseTick = historicalTick;
-                    baseFrame = historicalFrame;
-                }
-            }
+            _frameHistory.TryFindClosestLiveFrame(tick, out baseTick, out baseFrame);
 
-            if (TryFindClosestMaterializedTick(tick, out int materializedTick) &&
-                _materializedHistoryByTick.TryGetValue(materializedTick, out Frame? materializedBase) &&
+            if (_frameHistory.TryFindClosestMaterializedFrame(tick, out int materializedTick, out Frame? materializedBase) &&
                 materializedTick > baseTick)
             {
                 baseTick = materializedTick;
                 baseFrame = materializedBase;
-                TouchMaterializedHistoryTick(materializedTick);
             }
 
-            if (_historicalScratchFrame != null &&
-                _historicalScratchFrame.Tick <= tick &&
-                _historicalScratchFrame.Tick > baseTick)
+            if (_frameHistory.TryGetScratchAsBaseFrame(tick, out int scratchTick, out Frame? scratchBase) &&
+                scratchTick > baseTick)
             {
-                baseTick = _historicalScratchFrame.Tick;
-                baseFrame = _historicalScratchFrame;
+                baseTick = scratchTick;
+                baseFrame = scratchBase;
             }
 
             Frame workingFrame;
@@ -807,10 +853,10 @@ namespace Lattice.ECS.Session
             {
                 workingFrame = CopyFrameState(baseFrame);
             }
-            else if (TryFindClosestSnapshotTick(tick, out int snapshotTick))
+            else if (_frameHistory.TryFindClosestSnapshotTick(tick, out int snapshotTick))
             {
                 baseTick = snapshotTick;
-                workingFrame = RestoreFrame(_historySnapshotsByTick[snapshotTick], ComponentSerializationMode.Prediction);
+                workingFrame = RestoreFrame(_frameHistory.GetSnapshot(snapshotTick), ComponentSerializationMode.Prediction);
             }
             else
             {
@@ -826,172 +872,30 @@ namespace Lattice.ECS.Session
                 for (int currentTick = baseTick; currentTick < tick; currentTick++)
                 {
                     Frame nextFrame = AdvanceFrame(workingFrame);
-                    RecycleFrame(workingFrame);
+                    _frameHistory.RecycleFrame(workingFrame);
                     workingFrame = nextFrame;
-                    ApplyInputs(workingFrame);
-                    UpdateSystems(workingFrame, DeltaTime);
+                    ExecuteTickPipeline(workingFrame, raiseFrameUpdateEvent: false, captureHistory: false);
                 }
             }
 
-            StoreMaterializedHistoryFrame(workingFrame);
-            SetHistoricalScratchFrame(workingFrame);
-            frame = _historicalScratchFrame;
+            _frameHistory.StoreMaterializedFrame(workingFrame, DisposeFrameIfDetached);
+            _frameHistory.SetScratchFrame(workingFrame, DisposeFrameIfDetached);
+            frame = workingFrame;
             return true;
-        }
-
-        private bool TryFindClosestSnapshotTick(int tick, out int snapshotTick)
-        {
-            snapshotTick = -1;
-            if (_historySnapshotTicks.Count == 0)
-            {
-                return false;
-            }
-
-            int index = _historySnapshotTicks.BinarySearch(tick);
-            if (index < 0)
-            {
-                index = ~index - 1;
-            }
-
-            if ((uint)index >= (uint)_historySnapshotTicks.Count)
-            {
-                return false;
-            }
-
-            snapshotTick = _historySnapshotTicks[index];
-            return snapshotTick >= 0;
-        }
-
-        private void TrimExpiredHistory()
-        {
-            int minTick = _highestHistoryTick - HistorySize + 1;
-
-            while (_historyOrder.Count > 0 && _historyOrder.Peek() < minTick)
-            {
-                int expiredTick = _historyOrder.Dequeue();
-                if (_historyByTick.Remove(expiredTick, out Frame? expiredFrame))
-                {
-                    RemoveHistorySnapshot(expiredTick);
-                    DisposeFrameIfDetached(expiredFrame);
-                }
-            }
-
-            TrimExpiredSnapshots(minTick);
-        }
-
-        private void DemoteOldLiveHistory()
-        {
-            while (_historyByTick.Count > LiveHistorySize && _historyOrder.Count > 0)
-            {
-                int demotedTick = _historyOrder.Dequeue();
-                if (!_historyByTick.Remove(demotedTick, out Frame? demotedFrame))
-                {
-                    continue;
-                }
-
-                CaptureHistorySnapshotIfNeeded(demotedTick, demotedFrame);
-                DisposeFrameIfDetached(demotedFrame);
-            }
-        }
-
-        private void CaptureHistorySnapshotIfNeeded(int tick, Frame frame)
-        {
-            if (tick != 0 && (tick % HistorySnapshotInterval) != 0)
-            {
-                return;
-            }
-
-            bool isNewSnapshot = !_historySnapshotsByTick.ContainsKey(tick);
-            _historySnapshotsByTick[tick] = frame.CapturePackedSnapshot(ComponentSerializationMode.Prediction);
-            if (isNewSnapshot)
-            {
-                InsertHistorySnapshotTick(tick);
-            }
-        }
-
-        private void RemoveHistorySnapshot(int tick)
-        {
-            if (_historySnapshotsByTick.Remove(tick))
-            {
-                RemoveHistorySnapshotTick(tick);
-            }
-        }
-
-        private void TrimExpiredSnapshots(int minTick)
-        {
-            if (_historySnapshotsByTick.Count == 0)
-            {
-                _historySnapshotTicks.Clear();
-                return;
-            }
-
-            int firstWithinRangeIndex = _historySnapshotTicks.BinarySearch(minTick);
-            if (firstWithinRangeIndex < 0)
-            {
-                firstWithinRangeIndex = ~firstWithinRangeIndex;
-            }
-
-            int anchorIndex = firstWithinRangeIndex - 1;
-            for (int i = anchorIndex - 1; i >= 0; i--)
-            {
-                _historySnapshotsByTick.Remove(_historySnapshotTicks[i]);
-                _historySnapshotTicks.RemoveAt(i);
-            }
         }
 
         private Frame CopyFrameState(Frame source)
         {
-            Frame frame = RentFrameBuffer(source.EntityCapacity);
+            Frame frame = _frameHistory.RentFrameBuffer(source.EntityCapacity);
             frame.CopyStateFrom(source);
             return frame;
         }
 
         private Frame RestoreFrame(PackedFrameSnapshot snapshot, ComponentSerializationMode mode = ComponentSerializationMode.Default)
         {
-            Frame frame = RentFrameBuffer(snapshot.EntityCapacity);
+            Frame frame = _frameHistory.RentFrameBuffer(snapshot.EntityCapacity);
             frame.RestoreFromPackedSnapshot(snapshot, mode);
             return frame;
-        }
-
-        private Frame RentFrameBuffer(int requiredEntityCapacity)
-        {
-            while (_recycledFrames.Count > 0)
-            {
-                Frame recycled = _recycledFrames.Pop();
-                if (recycled.EntityCapacity == requiredEntityCapacity)
-                {
-                    return recycled;
-                }
-
-                recycled.Dispose();
-            }
-
-            return new Frame(requiredEntityCapacity);
-        }
-
-        private void RecycleFrame(Frame? frame)
-        {
-            if (frame == null)
-            {
-                return;
-            }
-
-            if (_recycledFrames.Count < RecycledFrameLimit)
-            {
-                _recycledFrames.Push(frame);
-                return;
-            }
-
-            frame.Dispose();
-        }
-
-        private void SetHistoricalScratchFrame(Frame frame)
-        {
-            if (!ReferenceEquals(_historicalScratchFrame, frame))
-            {
-                DisposeFrameIfDetached(_historicalScratchFrame);
-                _historicalScratchFrame = frame;
-            }
         }
 
         private void ReplayHistoricalTicksInPlace(Frame frame, int baseTick, int targetTick)
@@ -1000,8 +904,7 @@ namespace Lattice.ECS.Session
             {
                 frame.Tick = currentTick + 1;
                 frame.DeltaTime = DeltaTime;
-                ApplyInputs(frame);
-                UpdateSystems(frame, DeltaTime);
+                ExecuteTickPipeline(frame, raiseFrameUpdateEvent: false, captureHistory: false);
             }
         }
 
@@ -1011,103 +914,7 @@ namespace Lattice.ECS.Session
         /// </summary>
         protected void InvalidateHistoricalMaterializeCache()
         {
-            Frame? scratchFrame = _historicalScratchFrame;
-            _historicalScratchFrame = null;
-
-            if (_materializedHistoryByTick.Count > 0)
-            {
-                for (int i = 0; i < _materializedHistoryOrder.Count; i++)
-                {
-                    int tick = _materializedHistoryOrder[i];
-                    if (_materializedHistoryByTick.Remove(tick, out Frame? cachedFrame) &&
-                        !ReferenceEquals(cachedFrame, scratchFrame))
-                    {
-                        DisposeFrameIfDetached(cachedFrame);
-                    }
-                }
-
-                _materializedHistoryOrder.Clear();
-            }
-
-            DisposeFrameIfDetached(scratchFrame);
-        }
-
-        private bool TryFindClosestMaterializedTick(int tick, out int materializedTick)
-        {
-            materializedTick = -1;
-
-            for (int i = 0; i < _materializedHistoryOrder.Count; i++)
-            {
-                int candidateTick = _materializedHistoryOrder[i];
-                if (candidateTick <= tick && candidateTick > materializedTick)
-                {
-                    materializedTick = candidateTick;
-                }
-            }
-
-            return materializedTick >= 0;
-        }
-
-        private void StoreMaterializedHistoryFrame(Frame frame)
-        {
-            int tick = frame.Tick;
-
-            if (_materializedHistoryByTick.TryGetValue(tick, out Frame? existing))
-            {
-                if (!ReferenceEquals(existing, frame))
-                {
-                    _materializedHistoryByTick[tick] = frame;
-                    DisposeFrameIfDetached(existing);
-                }
-
-                TouchMaterializedHistoryTick(tick);
-                return;
-            }
-
-            _materializedHistoryByTick[tick] = frame;
-            _materializedHistoryOrder.Add(tick);
-
-            if (_materializedHistoryOrder.Count > MaterializedHistoryCacheSize)
-            {
-                int evictedTick = _materializedHistoryOrder[0];
-                _materializedHistoryOrder.RemoveAt(0);
-                if (_materializedHistoryByTick.Remove(evictedTick, out Frame? evictedFrame))
-                {
-                    DisposeFrameIfDetached(evictedFrame);
-                }
-            }
-        }
-
-        private void TouchMaterializedHistoryTick(int tick)
-        {
-            int index = _materializedHistoryOrder.IndexOf(tick);
-            if (index < 0 || index == _materializedHistoryOrder.Count - 1)
-            {
-                return;
-            }
-
-            _materializedHistoryOrder.RemoveAt(index);
-            _materializedHistoryOrder.Add(tick);
-        }
-
-        private void InsertHistorySnapshotTick(int tick)
-        {
-            int index = _historySnapshotTicks.BinarySearch(tick);
-            if (index >= 0)
-            {
-                return;
-            }
-
-            _historySnapshotTicks.Insert(~index, tick);
-        }
-
-        private void RemoveHistorySnapshotTick(int tick)
-        {
-            int index = _historySnapshotTicks.BinarySearch(tick);
-            if (index >= 0)
-            {
-                _historySnapshotTicks.RemoveAt(index);
-            }
+            _frameHistory.InvalidateMaterializedCache(DisposeFrameIfDetached);
         }
 
         private bool CanReplayHistoricalFramesInPlace()
@@ -1116,7 +923,7 @@ namespace Lattice.ECS.Session
                 nameof(AdvanceFrame),
                 BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
 
-            return advanceFrameMethod?.DeclaringType == typeof(Session);
+            return advanceFrameMethod?.DeclaringType == typeof(SessionRuntime);
         }
     }
 
@@ -1126,85 +933,8 @@ namespace Lattice.ECS.Session
     public class SessionCheckpoint
     {
         public int Tick;
+        public SessionCheckpointProtocol Protocol;
         public PackedFrameSnapshot? VerifiedSnapshot;
         public PackedFrameSnapshot? PredictedSnapshot;
-    }
-
-    /// <summary>
-    /// 输入命令接口
-    /// </summary>
-    public interface IInputCommand
-    {
-        int PlayerId { get; }
-        int Tick { get; }
-        byte[] Serialize();
-        void Deserialize(byte[] data);
-    }
-
-    /// <summary>
-    /// 输入缓冲区
-    /// </summary>
-    public class InputBuffer
-    {
-        private readonly IInputCommand?[] _inputs;
-        private readonly int[] _ticks;
-        private readonly int _capacity;
-        private int _latestTick = int.MinValue;
-
-        public InputBuffer(int capacity)
-        {
-            _capacity = System.Math.Max(1, capacity);
-            _inputs = new IInputCommand[_capacity];
-            _ticks = new int[_capacity];
-
-            for (int i = 0; i < _ticks.Length; i++)
-            {
-                _ticks[i] = int.MinValue;
-            }
-        }
-
-        public void SetInput(int tick, IInputCommand input)
-        {
-            if (tick > _latestTick)
-            {
-                _latestTick = tick;
-            }
-
-            if (tick < GetMinTick())
-            {
-                return;
-            }
-
-            int index = ToIndex(tick);
-            _inputs[index] = input;
-            _ticks[index] = tick;
-        }
-
-        public IInputCommand? GetInput(int tick)
-        {
-            if (_latestTick == int.MinValue || tick < GetMinTick())
-            {
-                return null;
-            }
-
-            int index = ToIndex(tick);
-            return _ticks[index] == tick ? _inputs[index] : null;
-        }
-
-        private int GetMinTick()
-        {
-            if (_latestTick == int.MinValue)
-            {
-                return int.MaxValue;
-            }
-
-            return _latestTick - _capacity + 1;
-        }
-
-        private int ToIndex(int tick)
-        {
-            int index = tick % _capacity;
-            return index < 0 ? index + _capacity : index;
-        }
     }
 }

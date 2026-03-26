@@ -107,11 +107,11 @@ namespace Lattice.ECS.Core
             return data;
         }
 
-        public PackedFrameSnapshot ToSnapshot(int tick, int entityCapacity)
+        public PackedFrameSnapshot ToSnapshot(int tick, int entityCapacity, ComponentSchemaManifest schemaManifest)
         {
             byte[] data = _buffer;
             _buffer = Array.Empty<byte>();
-            return new PackedFrameSnapshot(tick, entityCapacity, data, _position);
+            return new PackedFrameSnapshot(tick, entityCapacity, data, _position, PackedFrameSnapshot.CurrentFormatVersion, schemaManifest);
         }
 
         private void EnsureCapacity(int appendLength)
@@ -315,12 +315,22 @@ namespace Lattice.ECS.Core
     /// </summary>
     public sealed class PackedFrameSnapshot
     {
-        public PackedFrameSnapshot(int tick, int entityCapacity, byte[] data, int length)
+        public const int CurrentFormatVersion = 1;
+
+        public PackedFrameSnapshot(
+            int tick,
+            int entityCapacity,
+            byte[] data,
+            int length,
+            int formatVersion,
+            ComponentSchemaManifest schemaManifest)
         {
             Tick = tick;
             EntityCapacity = entityCapacity;
             Data = data ?? Array.Empty<byte>();
             Length = length;
+            FormatVersion = formatVersion;
+            SchemaManifest = schemaManifest;
         }
 
         public int Tick { get; }
@@ -330,6 +340,10 @@ namespace Lattice.ECS.Core
         public byte[] Data { get; }
 
         public int Length { get; }
+
+        public int FormatVersion { get; }
+
+        public ComponentSchemaManifest SchemaManifest { get; }
     }
 
     /// <summary>

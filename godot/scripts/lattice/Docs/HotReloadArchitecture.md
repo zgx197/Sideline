@@ -1,6 +1,13 @@
-# Lattice 热重载架构设计
+# Lattice 热重载架构设计（历史归档）
 
-> 基于 Photon Quantum 式 Stateless ECS 的热重载方案设计文档
+> 历史归档文档：
+>
+> 本文档属于早期热重载预研方案，包含 Quantum 风格、AssemblyLoadContext、HybridCLR 等技术路线讨论；当前 `main` 分支并未把它们作为正式实现承诺。
+>
+> 当前主干能力请优先参考：
+>
+> - `godot/scripts/lattice/README.md`
+> - `godot/scripts/lattice/ECS/Framework/SystemDesignNotes.md`
 
 ---
 

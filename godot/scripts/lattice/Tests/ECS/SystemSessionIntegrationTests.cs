@@ -99,7 +99,7 @@ namespace Lattice.Tests.ECS
             Assert.Equal(expectedLifetime, lifetime.Remaining);
         }
 
-        private sealed class IntegrationSession : Session
+        private sealed class IntegrationSession : MinimalPredictionSession
         {
             public IntegrationSession(FP deltaTime)
                 : base(deltaTime)
@@ -127,12 +127,14 @@ namespace Lattice.Tests.ECS
                 return verifiedEntity;
             }
 
-            protected override void ApplyInputs(Frame frame)
+            protected override void ApplyInputSet(Frame frame, in SessionInputSet inputSet)
             {
-                if (GetPlayerInput(LocalPlayerId, frame.Tick) is not MoveInputCommand input)
+                if (!inputSet.TryGetPlayerInput(LocalPlayerId, out MoveInputCommand? input))
                 {
                     return;
                 }
+
+                Assert.NotNull(input);
 
                 var enumerator = frame.Query<Velocity2D>().GetEnumerator();
                 while (enumerator.MoveNext())
@@ -143,7 +145,7 @@ namespace Lattice.Tests.ECS
             }
         }
 
-        private sealed class MoveInputCommand : IInputCommand
+        private sealed class MoveInputCommand : IPlayerInput
         {
             public MoveInputCommand()
             {
@@ -164,20 +166,6 @@ namespace Lattice.Tests.ECS
             public FP VelocityX { get; private set; }
 
             public FP VelocityY { get; private set; }
-
-            public byte[] Serialize()
-            {
-                var data = new byte[16];
-                Buffer.BlockCopy(BitConverter.GetBytes(VelocityX.RawValue), 0, data, 0, 8);
-                Buffer.BlockCopy(BitConverter.GetBytes(VelocityY.RawValue), 0, data, 8, 8);
-                return data;
-            }
-
-            public void Deserialize(byte[] data)
-            {
-                VelocityX = FP.FromRaw(BitConverter.ToInt64(data, 0));
-                VelocityY = FP.FromRaw(BitConverter.ToInt64(data, 8));
-            }
         }
     }
 }

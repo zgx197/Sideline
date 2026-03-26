@@ -1,4 +1,5 @@
 using System;
+using System.Runtime.CompilerServices;
 using Lattice.Math;
 
 namespace Lattice.ECS.Session
@@ -23,7 +24,11 @@ namespace Lattice.ECS.Session
         /// <summary>
         /// 固定时间步长。
         /// </summary>
-        public FP DeltaTime { get; }
+        public FP DeltaTime
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get;
+        }
 
         /// <summary>
         /// 本地玩家 ID。

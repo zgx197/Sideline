@@ -120,6 +120,36 @@ namespace Lattice.ECS.Core.Parallel
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public bool HasGlobal<T>() where T : unmanaged, IComponent
+        {
+            return _frame.HasGlobal<T>();
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public T GetGlobal<T>() where T : unmanaged, IComponent
+        {
+            return _frame.GetGlobal<T>();
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public bool TryGetGlobal<T>(out T component) where T : unmanaged, IComponent
+        {
+            return _frame.TryGetGlobal(out component);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public EntityRef GetGlobalEntity<T>() where T : unmanaged, IComponent
+        {
+            return _frame.GetGlobalEntity<T>();
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public bool TryGetGlobalEntity<T>(out EntityRef entity) where T : unmanaged, IComponent
+        {
+            return _frame.TryGetGlobalEntity<T>(out entity);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public Query<T> Query<T>() where T : unmanaged, IComponent
         {
             return _frame.Query<T>();
@@ -140,6 +170,16 @@ namespace Lattice.ECS.Core.Parallel
             where T3 : unmanaged, IComponent
         {
             return _frame.Query<T1, T2, T3>();
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public Query<T1, T2, T3, T4> Query<T1, T2, T3, T4>()
+            where T1 : unmanaged, IComponent
+            where T2 : unmanaged, IComponent
+            where T3 : unmanaged, IComponent
+            where T4 : unmanaged, IComponent
+        {
+            return _frame.Query<T1, T2, T3, T4>();
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

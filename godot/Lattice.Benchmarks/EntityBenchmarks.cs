@@ -582,7 +582,7 @@ namespace Lattice.Benchmarks
     public unsafe class ComponentArchitectureBenchmarks
     {
         private Frame _snapshotSource = null!;
-        private FrameSnapshot _snapshot = null!;
+        private PackedFrameSnapshot _snapshot = null!;
         private Frame _restoreTarget = null!;
         private Frame _baselineMutationFrame = null!;
         private Frame _owningMutationFrame = null!;
@@ -607,7 +607,7 @@ namespace Lattice.Benchmarks
                 _snapshotSource.Add(entity, new HealthComponent(100 + i));
             }
 
-            _snapshot = _snapshotSource.CreateSnapshot();
+            _snapshot = _snapshotSource.CapturePackedSnapshot(ComponentSerializationMode.Checkpoint);
             _restoreTarget = new Frame(EntityCount + 8);
 
             _baselineMutationFrame = new Frame(EntityCount + 8);
@@ -641,14 +641,15 @@ namespace Lattice.Benchmarks
         [Benchmark(Baseline = true)]
         public ulong CreateSnapshot_RawDenseTripleComponent()
         {
-            return _snapshotSource.CreateSnapshot().Checksum;
+            PackedFrameSnapshot snapshot = _snapshotSource.CapturePackedSnapshot(ComponentSerializationMode.Checkpoint);
+            return snapshot.SchemaManifest.Fingerprint ^ (ulong)snapshot.Length;
         }
 
         [Benchmark]
         public ulong RestoreSnapshot_RawDenseTripleComponent()
         {
-            _restoreTarget.RestoreFromSnapshot(_snapshot);
-            return _restoreTarget.CalculateChecksum();
+            _restoreTarget.RestoreFromPackedSnapshot(_snapshot, ComponentSerializationMode.Checkpoint);
+            return _restoreTarget.CalculateChecksum(ComponentSerializationMode.Checkpoint);
         }
 
         [Benchmark]

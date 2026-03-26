@@ -20,7 +20,7 @@ namespace Lattice.Tests.ECS
             runner.Start();
             runner.Step();
 
-            Assert.Equal(1, runner.Session.CurrentTick);
+            Assert.Equal(1, runner.Runtime.CurrentTick);
         }
 
         [Fact]

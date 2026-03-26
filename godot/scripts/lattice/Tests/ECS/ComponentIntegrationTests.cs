@@ -21,6 +21,7 @@ namespace Lattice.Tests.ECS
         private static int _lastLifecycleValue;
         private static int _queryValueAccumulator;
         private static int _queryPairAccumulator;
+        private static int _queryQuadAccumulator;
         private static int _packedSerializeCount;
 
         private struct MetadataComponent : IComponent
@@ -86,6 +87,21 @@ namespace Lattice.Tests.ECS
         }
 
         private struct QueryTertiaryComponent : IComponent
+        {
+            public int Value;
+        }
+
+        private struct QueryQuaternaryComponent : IComponent
+        {
+            public int Value;
+        }
+
+        private struct GlobalStateComponent : IComponent
+        {
+            public int Value;
+        }
+
+        private struct GlobalAuxiliaryComponent : IComponent
         {
             public int Value;
         }
@@ -401,6 +417,31 @@ namespace Lattice.Tests.ECS
         }
 
         [Fact]
+        public void Frame_DeferredStructuralChanges_QueueUntilCommit_AndBlockManualDeferredCommit()
+        {
+            ComponentRegistry.Register<CommandBufferComponent>();
+
+            using var frame = new Frame(8);
+
+            frame.BeginDeferredStructuralChanges();
+
+            EntityRef tempEntity = frame.CreateEntity();
+            frame.Add(tempEntity, new CommandBufferComponent { Value = 41 });
+
+            Assert.True(frame.HasPendingStructuralChanges);
+            Assert.Equal(0, frame.EntityCount);
+            Assert.Throws<InvalidOperationException>(() => frame.CommitDeferredRemovals());
+
+            frame.CommitStructuralChanges();
+
+            EntityRef actualEntity = new EntityRef(0, 1);
+            Assert.False(frame.HasPendingStructuralChanges);
+            Assert.Equal(1, frame.EntityCount);
+            Assert.True(frame.Has<CommandBufferComponent>(actualEntity));
+            Assert.Equal(41, frame.Get<CommandBufferComponent>(actualEntity).Value);
+        }
+
+        [Fact]
         public void Storage_DefaultBlockCapacity_AdaptsToComponentSize()
         {
             var smallStorage = new Storage<RawSnapshotComponent>();
@@ -566,6 +607,61 @@ namespace Lattice.Tests.ECS
         }
 
         [Fact]
+        public void Query_FourComponentEnumerator_AndForEach_CoverFormalFourWayApi()
+        {
+            ComponentRegistry.Register<QueryPrimaryComponent>();
+            ComponentRegistry.Register<QuerySecondaryComponent>(
+                ComponentFlags.None,
+                ComponentCallbacks.Empty,
+                StorageFlags.DeferredRemoval);
+            ComponentRegistry.Register<QueryTertiaryComponent>();
+            ComponentRegistry.Register<QueryQuaternaryComponent>();
+
+            using var frame = new Frame(16);
+            var entities = new EntityRef[6];
+
+            for (int i = 0; i < entities.Length; i++)
+            {
+                EntityRef entity = frame.CreateEntity();
+                entities[i] = entity;
+                frame.Add(entity, new QueryPrimaryComponent { Value = 10 + i });
+                frame.Add(entity, new QuerySecondaryComponent { Value = 100 + i });
+
+                if (i >= 2)
+                {
+                    frame.Add(entity, new QueryTertiaryComponent { Value = 1000 + i });
+                }
+
+                if (i >= 4)
+                {
+                    frame.Add(entity, new QueryQuaternaryComponent { Value = 10000 + i });
+                }
+            }
+
+            frame.Remove<QuerySecondaryComponent>(entities[5]);
+
+            int count = 0;
+            int sum = 0;
+            var enumerator = frame.Query<QueryPrimaryComponent, QuerySecondaryComponent, QueryTertiaryComponent, QueryQuaternaryComponent>().GetEnumerator();
+            while (enumerator.MoveNext())
+            {
+                count++;
+                sum += enumerator.Component1.Value +
+                    enumerator.Component2.Value +
+                    enumerator.Component3.Value +
+                    enumerator.Component4.Value;
+            }
+
+            Assert.Equal(1, count);
+            Assert.Equal(11126, sum);
+
+            _queryQuadAccumulator = 0;
+            frame.Query<QueryPrimaryComponent, QuerySecondaryComponent, QueryTertiaryComponent, QueryQuaternaryComponent>()
+                .ForEach(&AccumulateQueryQuad);
+            Assert.Equal(11126, _queryQuadAccumulator);
+        }
+
+        [Fact]
         public void Query_SingleComponentFunctionPointer_ScansActiveEntries()
         {
             ComponentRegistry.Register<QueryPrimaryComponent>();
@@ -607,6 +703,105 @@ namespace Lattice.Tests.ECS
             Assert.Equal(3, enumerator.Component1.Value);
             Assert.Equal(9, enumerator.Component2.Value);
             Assert.False(enumerator.MoveNext());
+        }
+
+        [Fact]
+        public void FrameReadOnly_Query4_AndGlobalState_ForwardToFormalApis()
+        {
+            ComponentRegistry.Register<QueryPrimaryComponent>();
+            ComponentRegistry.Register<QuerySecondaryComponent>(
+                ComponentFlags.None,
+                ComponentCallbacks.Empty,
+                StorageFlags.DeferredRemoval);
+            ComponentRegistry.Register<QueryTertiaryComponent>();
+            ComponentRegistry.Register<QueryQuaternaryComponent>();
+            ComponentRegistry.Register<GlobalStateComponent>(ComponentFlags.Singleton, ComponentCallbacks.Empty);
+
+            using var frame = new Frame(8);
+            EntityRef entity = frame.CreateEntity();
+            frame.Add(entity, new QueryPrimaryComponent { Value = 3 });
+            frame.Add(entity, new QuerySecondaryComponent { Value = 9 });
+            frame.Add(entity, new QueryTertiaryComponent { Value = 27 });
+            frame.Add(entity, new QueryQuaternaryComponent { Value = 81 });
+            EntityRef globalEntity = frame.SetGlobal(new GlobalStateComponent { Value = 144 });
+
+            var readOnly = new FrameReadOnly(frame);
+
+            Assert.True(readOnly.HasGlobal<GlobalStateComponent>());
+            Assert.True(readOnly.TryGetGlobal(out GlobalStateComponent global));
+            Assert.Equal(144, global.Value);
+            Assert.Equal(globalEntity, readOnly.GetGlobalEntity<GlobalStateComponent>());
+            Assert.True(readOnly.TryGetGlobalEntity<GlobalStateComponent>(out EntityRef resolvedGlobalEntity));
+            Assert.Equal(globalEntity, resolvedGlobalEntity);
+
+            var enumerator = readOnly.Query<QueryPrimaryComponent, QuerySecondaryComponent, QueryTertiaryComponent, QueryQuaternaryComponent>().GetEnumerator();
+
+            Assert.True(enumerator.MoveNext());
+            Assert.Equal(entity, enumerator.Entity);
+            Assert.Equal(3, enumerator.Component1.Value);
+            Assert.Equal(9, enumerator.Component2.Value);
+            Assert.Equal(27, enumerator.Component3.Value);
+            Assert.Equal(81, enumerator.Component4.Value);
+            Assert.False(enumerator.MoveNext());
+        }
+
+        [Fact]
+        public void Frame_GlobalStateApi_ProvidesUnifiedSingletonAccess()
+        {
+            ComponentRegistry.Register<GlobalStateComponent>(ComponentFlags.Singleton, ComponentCallbacks.Empty);
+
+            using var frame = new Frame(8);
+
+            EntityRef firstEntity = frame.SetGlobal(new GlobalStateComponent { Value = 7 });
+
+            Assert.True(frame.HasGlobal<GlobalStateComponent>());
+            Assert.Equal(firstEntity, frame.GetGlobalEntity<GlobalStateComponent>());
+            Assert.True(frame.TryGetGlobalEntity<GlobalStateComponent>(out EntityRef resolvedEntity));
+            Assert.Equal(firstEntity, resolvedEntity);
+            Assert.True(frame.TryGetGlobal(out GlobalStateComponent state));
+            Assert.Equal(7, state.Value);
+            Assert.Equal(7, frame.GetGlobal<GlobalStateComponent>().Value);
+
+            EntityRef updatedEntity = frame.SetGlobal(new GlobalStateComponent { Value = 11 });
+
+            Assert.Equal(firstEntity, updatedEntity);
+            Assert.Equal(11, frame.GetGlobal<GlobalStateComponent>().Value);
+
+            Assert.True(frame.RemoveGlobal<GlobalStateComponent>());
+            Assert.False(frame.HasGlobal<GlobalStateComponent>());
+            Assert.False(frame.TryGetGlobal<GlobalStateComponent>(out _));
+            Assert.False(frame.TryGetGlobalEntity<GlobalStateComponent>(out _));
+            Assert.False(frame.IsValid(firstEntity));
+        }
+
+        [Fact]
+        public void Frame_GlobalStateApi_RejectsNonSingletonComponents()
+        {
+            ComponentRegistry.Register<GlobalAuxiliaryComponent>();
+
+            using var frame = new Frame(8);
+
+            Assert.Throws<InvalidOperationException>(() => frame.HasGlobal<GlobalAuxiliaryComponent>());
+            Assert.Throws<InvalidOperationException>(() => frame.SetGlobal(new GlobalAuxiliaryComponent { Value = 1 }));
+            Assert.Throws<InvalidOperationException>(() => frame.TryGetGlobal<GlobalAuxiliaryComponent>(out _));
+            Assert.Throws<InvalidOperationException>(() => frame.RemoveGlobal<GlobalAuxiliaryComponent>());
+        }
+
+        [Fact]
+        public void Frame_GlobalStateApi_RemovesOnlySingletonComponent_WhenCarrierHasOtherComponents()
+        {
+            ComponentRegistry.Register<GlobalStateComponent>(ComponentFlags.Singleton, ComponentCallbacks.Empty);
+            ComponentRegistry.Register<GlobalAuxiliaryComponent>();
+
+            using var frame = new Frame(8);
+            EntityRef globalEntity = frame.SetGlobal(new GlobalStateComponent { Value = 5 });
+            frame.Add(globalEntity, new GlobalAuxiliaryComponent { Value = 9 });
+
+            Assert.True(frame.RemoveGlobal<GlobalStateComponent>());
+            Assert.True(frame.IsValid(globalEntity));
+            Assert.False(frame.HasGlobal<GlobalStateComponent>());
+            Assert.True(frame.Has<GlobalAuxiliaryComponent>(globalEntity));
+            Assert.Equal(9, frame.Get<GlobalAuxiliaryComponent>(globalEntity).Value);
         }
 
         [Fact]
@@ -839,6 +1034,16 @@ namespace Lattice.Tests.ECS
         private static void AccumulateQueryPair(EntityRef entity, QueryPrimaryComponent* primary, QuerySecondaryComponent* secondary)
         {
             _queryPairAccumulator += primary->Value + secondary->Value;
+        }
+
+        private static void AccumulateQueryQuad(
+            EntityRef entity,
+            QueryPrimaryComponent* primary,
+            QuerySecondaryComponent* secondary,
+            QueryTertiaryComponent* tertiary,
+            QueryQuaternaryComponent* quaternary)
+        {
+            _queryQuadAccumulator += primary->Value + secondary->Value + tertiary->Value + quaternary->Value;
         }
 
         private static int SumOwningPairValues(OwningGroup<QueryPrimaryComponent, QuerySecondaryComponent> group)
