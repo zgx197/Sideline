@@ -66,7 +66,7 @@
   <Target Name="BuildLatticeDeterminismAnalyzer" BeforeTargets="CoreCompile" Condition="'$(DesignTimeBuild)' != 'true'">
     <MSBuild
       Projects="$(LatticeDeterminismAnalyzerProject)"
-      Targets="Build"
+      Targets="Restore;Build"
       Properties="Configuration=$(Configuration);Platform=AnyCPU" />
     <ItemGroup>
       <Analyzer Include="$(LatticeDeterminismAnalyzerDll)" />
