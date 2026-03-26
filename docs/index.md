@@ -15,7 +15,7 @@ description: Sideline - 工作间隙偷偷经营地下世界的2D独立游戏
     </div>
     <p style="margin-top: 30px; color: var(--color-text-muted);">
         当前版本: <span class="tag tag-green">Phase 0 - 技术验证</span>
-        预计 EA 发布: 2025 Q4
+        底座状态: Lattice 运行时与测试治理持续完善中
     </p>
 </section>
 
@@ -64,8 +64,8 @@ description: Sideline - 工作间隙偷偷经营地下世界的2D独立游戏
     
     <div class="pixel-card" style="max-width: 600px; margin: 0 auto;">
         <h3 style="margin-top: 0;">Phase 0 技术验证版</h3>
-        <p>当前版本包含：无边框窗口原型、基础 UI 框架</p>
-        <p style="color: var(--color-accent-gold);">即将推出：ECS 框架演示、FP 定点数验证</p>
+        <p>当前版本包含：无边框窗口原型、基础 UI 骨架、Facet 工具链、Lattice 运行时底座验证</p>
+        <p style="color: var(--color-accent-gold);">下一阶段重点：玩法层接入、长时稳定性与更真实复杂度验证</p>
         
         <div style="margin-top: 30px;">
             <a href="#" class="pixel-btn pixel-btn-primary" style="margin: 10px;">📥 Windows 版</a>
@@ -129,8 +129,8 @@ description: Sideline - 工作间隙偷偷经营地下世界的2D独立游戏
             </tr>
             <tr>
                 <td>桥接层</td>
-                <td>GodotRenderBridge</td>
-                <td>同步 SimulationWorld 状态到 Godot Node</td>
+                <td>Godot 宿主/桥接层</td>
+                <td>同步 Lattice SessionRuntime 状态到 Godot Node</td>
             </tr>
             <tr>
                 <td>网络层</td>
