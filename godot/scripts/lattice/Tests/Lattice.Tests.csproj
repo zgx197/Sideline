@@ -9,8 +9,6 @@
     <RootNamespace>Lattice.Tests</RootNamespace>
     <AssemblyName>Lattice.Tests</AssemblyName>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <LatticeDeterminismAnalyzerProject>$(MSBuildThisFileDirectory)..\Tools\Lattice.Analyzers\Lattice.Analyzers.csproj</LatticeDeterminismAnalyzerProject>
-    <LatticeDeterminismAnalyzerDll>$(MSBuildThisFileDirectory)..\Tools\Lattice.Analyzers\bin\$(Configuration)\netstandard2.0\Lattice.Analyzers.dll</LatticeDeterminismAnalyzerDll>
   </PropertyGroup>
 
   <!-- 测试框架 -->
@@ -41,21 +39,10 @@
   <!-- 引用 Lattice 核心 -->
   <ItemGroup>
     <ProjectReference Include="..\Lattice.csproj" />
-    <Reference Include="Lattice.Analyzers" HintPath="$(LatticeDeterminismAnalyzerDll)" Condition="Exists('$(LatticeDeterminismAnalyzerDll)')" />
+    <ProjectReference Include="..\Tools\Lattice.Analyzers\Lattice.Analyzers.csproj" />
   </ItemGroup>
 
   <ItemGroup>
     <Compile Include="..\Benchmarks\BenchmarkGovernanceCli.cs" Link="Performance\BenchmarkGovernanceCli.cs" />
   </ItemGroup>
-
-  <Target Name="BuildLatticeDeterminismAnalyzerReference" BeforeTargets="ResolveReferences" Condition="'$(DesignTimeBuild)' != 'true'">
-    <MSBuild
-      Projects="$(LatticeDeterminismAnalyzerProject)"
-      Targets="Build"
-      Properties="Configuration=$(Configuration);Platform=AnyCPU" />
-    <ItemGroup>
-      <Reference Include="Lattice.Analyzers" HintPath="$(LatticeDeterminismAnalyzerDll)" />
-    </ItemGroup>
-  </Target>
-
 </Project>
