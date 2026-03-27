@@ -442,9 +442,14 @@ namespace Lattice.Tests.ECS
 
         private static bool IsAllowedPath(string relativePath, string[] allowedRelativePaths)
         {
+            string normalizedRelativePath = NormalizeRelativePath(relativePath);
+
             for (int i = 0; i < allowedRelativePaths.Length; i++)
             {
-                if (string.Equals(relativePath, allowedRelativePaths[i], StringComparison.OrdinalIgnoreCase))
+                if (string.Equals(
+                    normalizedRelativePath,
+                    NormalizeRelativePath(allowedRelativePaths[i]),
+                    StringComparison.OrdinalIgnoreCase))
                 {
                     return true;
                 }
@@ -455,8 +460,15 @@ namespace Lattice.Tests.ECS
 
         private static void AssertArchived(string repoRoot, string relativePath)
         {
-            string content = File.ReadAllText(Path.Combine(repoRoot, relativePath));
+            string content = File.ReadAllText(Path.Combine(repoRoot, NormalizeRelativePath(relativePath)));
             Assert.Contains("历史归档文档", content, StringComparison.Ordinal);
+        }
+
+        private static string NormalizeRelativePath(string relativePath)
+        {
+            return relativePath
+                .Replace('\\', Path.DirectorySeparatorChar)
+                .Replace('/', Path.DirectorySeparatorChar);
         }
 
         private static string ResolveRepoRoot()
