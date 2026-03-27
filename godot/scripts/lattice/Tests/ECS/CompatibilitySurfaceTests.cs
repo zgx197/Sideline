@@ -162,12 +162,17 @@ namespace Lattice.Tests.ECS
         }
 
         [Fact]
-        public void SystemFramework_DoesNotExposePrematureSystemFamilyTypes()
+        public void SystemFramework_OnlyExposesAcceptedSystemFamilyTypes()
         {
             Assembly assembly = typeof(SystemScheduler).Assembly;
 
-            Assert.Null(assembly.GetType("Lattice.ECS.Framework.SystemBase", throwOnError: false, ignoreCase: false));
-            Assert.Null(assembly.GetType("Lattice.ECS.Framework.SystemGroup", throwOnError: false, ignoreCase: false));
+            Type? systemBaseType = assembly.GetType("Lattice.ECS.Framework.SystemBase", throwOnError: false, ignoreCase: false);
+            Type? systemGroupType = assembly.GetType("Lattice.ECS.Framework.SystemGroup", throwOnError: false, ignoreCase: false);
+
+            Assert.NotNull(systemBaseType);
+            Assert.NotNull(systemGroupType);
+            Assert.True(systemBaseType!.IsPublic);
+            Assert.True(systemGroupType!.IsPublic);
             Assert.Null(assembly.GetType("Lattice.ECS.Framework.SystemMainThreadFilter", throwOnError: false, ignoreCase: false));
             Assert.Null(assembly.GetType("Lattice.ECS.Framework.SystemThreadedFilter", throwOnError: false, ignoreCase: false));
         }

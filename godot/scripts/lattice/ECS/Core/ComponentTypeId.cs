@@ -140,6 +140,7 @@ namespace Lattice.ECS.Core
                 ReverseNameLookup[typeof(T).Name] = id;
 
                 ComponentTypeId<T>.SetRegistration(id, sizeof(T), flags, resolvedStorageFlags, callbacks);
+                ComponentCommandRegistry.Register<T>(id);
                 return id;
             }
         }
