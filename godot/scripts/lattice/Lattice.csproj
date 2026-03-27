@@ -19,8 +19,6 @@
     <!-- 允许不安全代码（高性能 ECS 需要） -->
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
 
-    <LatticeDeterminismAnalyzerProject>$(MSBuildThisFileDirectory)Tools\Lattice.Analyzers\Lattice.Analyzers.csproj</LatticeDeterminismAnalyzerProject>
-    <LatticeDeterminismAnalyzerDll>$(MSBuildThisFileDirectory)Tools\Lattice.Analyzers\bin\$(Configuration)\netstandard2.0\Lattice.Analyzers.dll</LatticeDeterminismAnalyzerDll>
   </PropertyGroup>
 
   <!-- 纯 C# 库，不依赖 Godot -->
@@ -59,18 +57,11 @@
       Include="Tools\SwizzleGenerator\SwizzleGenerator.csproj" 
       OutputItemType="Analyzer"
       ReferenceOutputAssembly="false" />
-    <Analyzer Include="$(LatticeDeterminismAnalyzerDll)" Condition="Exists('$(LatticeDeterminismAnalyzerDll)')" />
+    <ProjectReference
+      Include="Tools\Lattice.Analyzers\Lattice.Analyzers.csproj"
+      OutputItemType="Analyzer"
+      ReferenceOutputAssembly="false" />
     <Compile Include="Tools\SwizzleGenerator\GenerateSwizzleAttribute.cs" />
   </ItemGroup>
-
-  <Target Name="BuildLatticeDeterminismAnalyzer" BeforeTargets="CoreCompile" Condition="'$(DesignTimeBuild)' != 'true'">
-    <MSBuild
-      Projects="$(LatticeDeterminismAnalyzerProject)"
-      Targets="Restore;Build"
-      Properties="Configuration=$(Configuration);Platform=AnyCPU" />
-    <ItemGroup>
-      <Analyzer Include="$(LatticeDeterminismAnalyzerDll)" />
-    </ItemGroup>
-  </Target>
 
 </Project>

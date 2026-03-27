@@ -2,8 +2,8 @@
 // Licensed under GPL-3.0.
 
 using System;
-using System.Collections.Generic;
 using System.Buffers.Binary;
+using System.Collections.Generic;
 using Lattice.Core;
 using Lattice.ECS.Serialization;
 
