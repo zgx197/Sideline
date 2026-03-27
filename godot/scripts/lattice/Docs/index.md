@@ -14,6 +14,7 @@
 
 - `godot/scripts/lattice/README.md`
 - `godot/scripts/lattice/ECS/Framework/SystemDesignNotes.md`
+- `godot/scripts/lattice/ECS/Framework/CoreRuntimeGuardrails.md`
 - `godot/scripts/lattice/Benchmarks/README.md`
 
 保留本页的原因：

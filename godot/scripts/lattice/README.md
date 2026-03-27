@@ -14,6 +14,7 @@ Lattice 是 Sideline 项目中孵化的自研确定性 ECS 运行时，目标是
 权威设计说明文档：
 
 - `godot/scripts/lattice/ECS/Framework/SystemDesignNotes.md`
+- `godot/scripts/lattice/ECS/Framework/CoreRuntimeGuardrails.md`
 
 如果需要了解当前真实能力，请优先看上面的设计文档和 `Tests/ECS` 下的测试，而不是参考历史草图。
 
