@@ -1,6 +1,15 @@
 # Sideline — 游戏设计与技术架构文档
 
-> 版本：v0.2 | 日期：2026-03-03
+> 版本：v0.3 | 日期：2026-03-27
+>
+> 说明：
+>
+> 本文档保留为游戏设计与路线图主文档，但其中部分早期 Lattice 命名和仓库结构示意已落后于当前实现。
+>
+> 当前 Lattice 主干实现请优先参考：
+>
+> - `godot/scripts/lattice/README.md`
+> - `godot/scripts/lattice/ECS/Framework/SystemDesignNotes.md`
 
 ---
 
@@ -131,13 +140,12 @@ Sideline/                        # 私有仓库（GitHub Private）
 │          渲染层（Godot 4）            │
 │  Node2D 纯渲染，无逻辑               │
 ├──────────────────────────────────────┤
-│       GodotRenderBridge              │
-│  每帧同步 SimulationWorld 状态到 Node │
+│   Godot 桥接层 / 宿主层（持续演进）   │
+│  每帧同步 Lattice SessionRuntime 状态到 Node │
 ├──────────────────────────────────────┤
-│       SimulationWorld（Lattice）      │
-│  Entity / Component / System         │
-│  FixedPoint Math / 确定性物理         │
-│  StateSnapshot / InputBuffer         │
+│       Lattice（确定性运行时）         │
+│  Frame / Entity / System / Session   │
+│  FP Math / Checkpoint / History      │
 ├──────────────────────────────────────┤
 │       网络层（后期 DLC）              │
 │  Lockstep / Steam Relay              │
@@ -158,7 +166,7 @@ Sideline/                        # 私有仓库（GitHub Private）
 
 #### 3. 帧调度
 ```
-InputBuffer → Simulation.Tick() → StateSnapshot
+PlayerInput / SessionInputSet → SessionRuntime.Update() → History / Checkpoint
 ```
 - 初期单机：本地 Input 直接 Tick
 - 后期联机：Lockstep 直接套上去，核心不动

@@ -3,8 +3,10 @@
 
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using Lattice.Core;
+using Lattice.ECS.Framework;
 using Lattice.Math;
 
 namespace Lattice.ECS.Core
@@ -84,6 +86,27 @@ namespace Lattice.ECS.Core
         /// <summary>Owning Group 生命周期维护列表。</summary>
         private List<IFrameOwningGroup>? _owningGroupBindings;
 
+        /// <summary>结构性修改命令缓冲。</summary>
+        private CommandBuffer _structuralCommandBuffer;
+
+        /// <summary>结构性修改命令缓冲是否已初始化。</summary>
+        private bool _structuralCommandBufferInitialized;
+
+        /// <summary>当前是否正在延迟结构性修改。</summary>
+        private bool _deferStructuralChanges;
+
+        /// <summary>当前是否正在回放结构性修改。</summary>
+        private bool _isReplayingStructuralChanges;
+
+        /// <summary>当前是否处于系统作者契约守卫作用域。</summary>
+        private bool _hasActiveSystemAuthoringContract;
+
+        /// <summary>当前执行系统的作者契约。</summary>
+        private SystemAuthoringContract _activeSystemAuthoringContract;
+
+        /// <summary>当前执行系统名称，仅用于守卫报错。</summary>
+        private string? _activeSystemName;
+
         #endregion
 
         #region 属性
@@ -92,16 +115,27 @@ namespace Lattice.ECS.Core
         public int Tick { get; set; }
 
         /// <summary>固定时间步长</summary>
-        public FP DeltaTime { get; set; }
+        public FP DeltaTime
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get;
+            set;
+        }
 
         /// <summary>实体数量</summary>
         public int EntityCount => _entityCount;
 
         /// <summary>实体容量。</summary>
-        public int EntityCapacity => _entityCapacity;
+        internal int EntityCapacity => _entityCapacity;
 
         /// <summary>待提交的延迟删除数量。</summary>
         public int PendingDeferredRemovalCount => _pendingRemovalCount;
+
+        /// <summary>
+        /// 当前是否存在尚未提交的结构性修改。
+        /// 主要用于运行时 Tick 管线与测试验证，不属于快照状态的一部分。
+        /// </summary>
+        public bool HasPendingStructuralChanges => _structuralCommandBufferInitialized && !_structuralCommandBuffer.IsEmpty;
 
         #endregion
 
@@ -117,23 +151,23 @@ namespace Lattice.ECS.Core
         #region 快照与复制
 
         /// <summary>
-        /// 创建帧快照。
+        /// 创建帧状态对象图快照。
+        /// 该接口主要保留给兼容、调试和显式恢复测试，不用于 Session 热路径。
         /// </summary>
+        [Obsolete("请优先改用 CapturePackedSnapshot()。CreateSnapshot() 仅保留给兼容、调试和显式恢复测试。", false)]
+        [EditorBrowsable(EditorBrowsableState.Never)]
         public FrameSnapshot CreateSnapshot(ComponentSerializationMode mode = ComponentSerializationMode.Default)
         {
-            var entityVersions = new ushort[_entityCapacity];
-            var entityNextFree = new int[_entityCapacity];
-            var entityComponentMasks = new ulong[_entityCapacity * ComponentMaskBlockCount];
+            int metadataCount = _entityCount;
+            var entityVersions = new ushort[metadataCount];
+            var entityNextFree = new int[metadataCount];
+            var entityComponentMasks = new ulong[metadataCount * ComponentMaskBlockCount];
 
-            for (int i = 0; i < _entityCapacity; i++)
+            if (metadataCount > 0)
             {
-                entityVersions[i] = _entityVersions[i];
-                entityNextFree[i] = _entityNextFree[i];
-            }
-
-            for (int i = 0; i < entityComponentMasks.Length; i++)
-            {
-                entityComponentMasks[i] = _entityComponentMasks[i];
+                new ReadOnlySpan<ushort>(_entityVersions, metadataCount).CopyTo(entityVersions);
+                new ReadOnlySpan<int>(_entityNextFree, metadataCount).CopyTo(entityNextFree);
+                new ReadOnlySpan<ulong>(_entityComponentMasks, entityComponentMasks.Length).CopyTo(entityComponentMasks);
             }
 
             var pendingEntities = new EntityRef[_pendingRemovalCount];
@@ -178,11 +212,26 @@ namespace Lattice.ECS.Core
                 snapshots);
         }
 
+        /// <summary>
+        /// 创建紧凑字节帧快照。
+        /// 主要用于 Session 的 checkpoint 与采样历史。
+        /// 当前会同时记录 packed snapshot 格式版本和本次实际写出的组件 schema 摘要。
+        /// </summary>
+        public PackedFrameSnapshot CapturePackedSnapshot(ComponentSerializationMode mode = ComponentSerializationMode.Default)
+        {
+            var writer = new FrameStateBufferWriter();
+            ComponentSchemaManifest schemaManifest = WritePackedState(writer, mode);
+            return writer.ToSnapshot(Tick, _entityCapacity, schemaManifest);
+        }
+
         #endregion
 
         /// <summary>
-        /// 从快照恢复帧状态。
+        /// 从对象图快照恢复帧状态。
+        /// 该接口主要保留给兼容 API 与测试使用。
         /// </summary>
+        [Obsolete("请优先改用 RestoreFromPackedSnapshot()。RestoreFromSnapshot() 仅保留给兼容 API 与测试使用。", false)]
+        [EditorBrowsable(EditorBrowsableState.Never)]
         public void RestoreFromSnapshot(FrameSnapshot snapshot, ComponentSerializationMode mode = ComponentSerializationMode.Default)
         {
             if (snapshot == null)
@@ -190,38 +239,43 @@ namespace Lattice.ECS.Core
                 throw new ArgumentNullException(nameof(snapshot));
             }
 
-            bool preserveOwningGroups = _owningGroupBindings != null && _owningGroupBindings.Count > 0;
-
-            ReleaseState(preserveOwningGroups);
-            InitializeState(snapshot.EntityCapacity, preserveOwningGroups);
-
-            if (preserveOwningGroups)
-            {
-                ReinitializeOwningGroups();
-            }
+            PrepareForSnapshotRestore(snapshot.EntityCapacity, reuseExistingState: false);
 
             Tick = snapshot.Tick;
             DeltaTime = snapshot.DeltaTime;
             _entityCount = snapshot.EntityCount;
             _freeListHead = snapshot.FreeListHead;
+            int metadataCount = snapshot.EntityVersions.Length;
 
-            if (snapshot.EntityVersions.Length != _entityCapacity ||
-                snapshot.EntityNextFree.Length != _entityCapacity ||
-                snapshot.EntityComponentMasks.Length != _entityCapacity * ComponentMaskBlockCount)
+            if (metadataCount < snapshot.EntityCount ||
+                snapshot.EntityNextFree.Length != metadataCount ||
+                snapshot.EntityComponentMasks.Length != metadataCount * ComponentMaskBlockCount)
             {
                 throw new InvalidOperationException("Snapshot entity metadata size does not match frame capacity.");
             }
 
-            for (int i = 0; i < _entityCapacity; i++)
+            for (int i = 0; i < metadataCount; i++)
             {
                 _entityVersions[i] = snapshot.EntityVersions[i];
                 _entityNextFree[i] = snapshot.EntityNextFree[i];
                 _entities[i] = i < _entityCount ? new EntityRef(i, _entityVersions[i]) : EntityRef.None;
             }
 
+            for (int i = metadataCount; i < _entityCapacity; i++)
+            {
+                _entityVersions[i] = 1;
+                _entityNextFree[i] = -1;
+                _entities[i] = EntityRef.None;
+            }
+
             for (int i = 0; i < snapshot.EntityComponentMasks.Length; i++)
             {
                 _entityComponentMasks[i] = snapshot.EntityComponentMasks[i];
+            }
+
+            for (int i = snapshot.EntityComponentMasks.Length; i < _entityCapacity * ComponentMaskBlockCount; i++)
+            {
+                _entityComponentMasks[i] = 0;
             }
 
             for (int i = 0; i < snapshot.ComponentStorages.Length; i++)
@@ -236,15 +290,142 @@ namespace Lattice.ECS.Core
             {
                 _pendingRemovalEntities[i] = snapshot.PendingRemovalEntities[i];
                 _pendingRemovalTypeIds[i] = snapshot.PendingRemovalTypeIds[i];
+            }
 
-                int typeId = _pendingRemovalTypeIds[i];
-                if (_storageInitialized[typeId] && _componentStorages[typeId] != null)
+            FinalizeSnapshotRestore();
+        }
+
+        /// <summary>
+        /// 从紧凑字节帧快照恢复状态。
+        /// </summary>
+        public void RestoreFromPackedSnapshot(PackedFrameSnapshot snapshot, ComponentSerializationMode mode = ComponentSerializationMode.Default)
+        {
+            if (snapshot == null)
+            {
+                throw new ArgumentNullException(nameof(snapshot));
+            }
+
+            if (snapshot.FormatVersion != PackedFrameSnapshot.CurrentFormatVersion)
+            {
+                throw new InvalidOperationException(
+                    $"Packed snapshot format version {snapshot.FormatVersion} is not compatible with current runtime format version {PackedFrameSnapshot.CurrentFormatVersion}.");
+            }
+
+            if (snapshot.SchemaManifest.IsSpecified && snapshot.SchemaManifest.SerializationMode != mode)
+            {
+                throw new InvalidOperationException(
+                    $"Packed snapshot was captured with serialization mode {snapshot.SchemaManifest.SerializationMode}, but restore requested mode {mode}.");
+            }
+
+            var reader = new FrameStateReader(snapshot.Data, snapshot.Length);
+
+            int tick = reader.ReadInt32();
+            long deltaTimeRaw = reader.ReadInt64();
+            int entityCapacity = reader.ReadInt32();
+            int entityCount = reader.ReadInt32();
+            int freeListHead = reader.ReadInt32();
+
+            PrepareForSnapshotRestore(entityCapacity, reuseExistingState: true);
+
+            Tick = tick;
+            DeltaTime = FP.FromRaw(deltaTimeRaw);
+            _entityCount = entityCount;
+            _freeListHead = freeListHead;
+
+            int metadataCount = reader.ReadInt32();
+            if (metadataCount < entityCount)
+            {
+                throw new InvalidOperationException("Packed snapshot entity metadata size does not match frame capacity.");
+            }
+
+            for (int i = 0; i < metadataCount; i++)
+            {
+                _entityVersions[i] = reader.ReadUInt16();
+            }
+
+            for (int i = metadataCount; i < _entityCapacity; i++)
+            {
+                _entityVersions[i] = 1;
+            }
+
+            int nextFreeCount = reader.ReadInt32();
+            if (nextFreeCount != metadataCount)
+            {
+                throw new InvalidOperationException("Packed snapshot next-free metadata size does not match entity metadata.");
+            }
+
+            for (int i = 0; i < metadataCount; i++)
+            {
+                _entityNextFree[i] = reader.ReadInt32();
+                _entities[i] = i < _entityCount ? new EntityRef(i, _entityVersions[i]) : EntityRef.None;
+            }
+
+            for (int i = metadataCount; i < _entityCapacity; i++)
+            {
+                _entityNextFree[i] = -1;
+                _entities[i] = EntityRef.None;
+            }
+
+            int maskCount = reader.ReadInt32();
+            if (maskCount != metadataCount * ComponentMaskBlockCount)
+            {
+                throw new InvalidOperationException("Packed snapshot component mask size does not match entity metadata.");
+            }
+
+            ReadOnlySpan<byte> maskBytes = reader.ReadBytes(maskCount * sizeof(ulong));
+            fixed (byte* maskPtr = maskBytes)
+            {
+                Buffer.MemoryCopy(maskPtr, _entityComponentMasks, sizeof(ulong) * _entityCapacity * ComponentMaskBlockCount, maskBytes.Length);
+            }
+
+            for (int i = maskCount; i < _entityCapacity * ComponentMaskBlockCount; i++)
+            {
+                _entityComponentMasks[i] = 0;
+            }
+
+            int pendingEntityCount = reader.ReadInt32();
+            EnsurePendingRemovalCapacity(pendingEntityCount);
+            _pendingRemovalCount = pendingEntityCount;
+            for (int i = 0; i < pendingEntityCount; i++)
+            {
+                _pendingRemovalEntities[i] = EntityRef.FromRaw(reader.ReadUInt64());
+            }
+
+            int pendingTypeCount = reader.ReadInt32();
+            if (pendingTypeCount != pendingEntityCount)
+            {
+                throw new InvalidOperationException("Packed snapshot pending removal metadata size does not match.");
+            }
+
+            for (int i = 0; i < pendingTypeCount; i++)
+            {
+                _pendingRemovalTypeIds[i] = reader.ReadUInt16();
+            }
+
+            int storageCount = reader.ReadInt32();
+            ResetInitializedStorages();
+            Span<int> serializedTypeIds = stackalloc int[MaxComponentTypes];
+
+            for (int i = 0; i < storageCount; i++)
+            {
+                int typeId = reader.ReadInt32();
+                serializedTypeIds[i] = typeId;
+                ComponentRegistry.GetPackedStateRestorer(typeId)(this, reader, mode);
+                _storageInitialized[typeId] = true;
+            }
+
+            if (snapshot.SchemaManifest.IsSpecified)
+            {
+                ComponentSchemaManifest currentSchema = ComponentRegistry.CreateSchemaManifest(serializedTypeIds[..storageCount], mode);
+                if (!currentSchema.Equals(snapshot.SchemaManifest))
                 {
-                    ComponentRegistry.GetPendingRemovalMarker(typeId)(_componentStorages[typeId], _pendingRemovalEntities[i]);
+                    throw new InvalidOperationException(
+                        $"Packed snapshot component schema fingerprint does not match the current registry for mode {mode}. " +
+                        $"Snapshot={snapshot.SchemaManifest.Fingerprint}, Current={currentSchema.Fingerprint}.");
                 }
             }
 
-            RebuildOwningGroups();
+            FinalizeSnapshotRestore();
         }
 
         /// <summary>
@@ -253,8 +434,87 @@ namespace Lattice.ECS.Core
         public Frame Clone(ComponentSerializationMode mode = ComponentSerializationMode.Default)
         {
             var clone = new Frame(_entityCapacity);
-            clone.RestoreFromSnapshot(CreateSnapshot(mode), mode);
+            clone.RestoreFromPackedSnapshot(CapturePackedSnapshot(mode), mode);
             return clone;
+        }
+
+        /// <summary>
+        /// 克隆当前帧的完整运行时状态。
+        /// 该路径保留所有组件状态，供预测推进、回滚和历史补帧复用。
+        /// </summary>
+        public Frame CloneState()
+        {
+            var clone = new Frame(_entityCapacity);
+            clone.CopyStateFrom(this);
+            return clone;
+        }
+
+        /// <summary>
+        /// 从另一个帧复制状态到当前帧。
+        /// </summary>
+        public void CopyFrom(Frame source, ComponentSerializationMode mode = ComponentSerializationMode.Default)
+        {
+            ArgumentNullException.ThrowIfNull(source);
+            RestoreFromPackedSnapshot(source.CapturePackedSnapshot(mode), mode);
+        }
+
+        /// <summary>
+        /// 从另一个帧直接复制完整运行时状态，避免热路径走托管快照分配。
+        /// </summary>
+        public void CopyStateFrom(Frame source)
+        {
+            ArgumentNullException.ThrowIfNull(source);
+
+            if (ReferenceEquals(this, source))
+            {
+                return;
+            }
+
+            bool preserveOwningGroups = _owningGroupBindings != null && _owningGroupBindings.Count > 0;
+            EnsureCompatibleStateForCopy(source._entityCapacity, preserveOwningGroups);
+            ResetStructuralChangeTracking();
+
+            Tick = source.Tick;
+            DeltaTime = source.DeltaTime;
+            _entityCount = source._entityCount;
+            _freeListHead = source._freeListHead;
+
+            int entityBytes = sizeof(EntityRef) * source._entityCapacity;
+            int versionBytes = sizeof(ushort) * source._entityCapacity;
+            int nextFreeBytes = sizeof(int) * source._entityCapacity;
+            int maskBytes = sizeof(ulong) * source._entityCapacity * ComponentMaskBlockCount;
+
+            Buffer.MemoryCopy(source._entities, _entities, entityBytes, entityBytes);
+            Buffer.MemoryCopy(source._entityVersions, _entityVersions, versionBytes, versionBytes);
+            Buffer.MemoryCopy(source._entityNextFree, _entityNextFree, nextFreeBytes, nextFreeBytes);
+            Buffer.MemoryCopy(source._entityComponentMasks, _entityComponentMasks, maskBytes, maskBytes);
+
+            EnsurePendingRemovalCapacity(source._pendingRemovalCount);
+            _pendingRemovalCount = source._pendingRemovalCount;
+            if (_pendingRemovalCount > 0)
+            {
+                int pendingEntityBytes = sizeof(EntityRef) * _pendingRemovalCount;
+                int pendingTypeBytes = sizeof(ushort) * _pendingRemovalCount;
+                Buffer.MemoryCopy(source._pendingRemovalEntities, _pendingRemovalEntities, pendingEntityBytes, pendingEntityBytes);
+                Buffer.MemoryCopy(source._pendingRemovalTypeIds, _pendingRemovalTypeIds, pendingTypeBytes, pendingTypeBytes);
+            }
+
+            for (int typeId = 1; typeId <= ComponentRegistry.Count; typeId++)
+            {
+                if (source._storageInitialized[typeId] && source._componentStorages[typeId] != null)
+                {
+                    ComponentRegistry.GetStorageCopier(typeId)(this, source._componentStorages[typeId]);
+                    _storageInitialized[typeId] = true;
+                    continue;
+                }
+
+                if (_storageInitialized[typeId] && _componentStorages[typeId] != null)
+                {
+                    ComponentRegistry.GetStorageResetter(typeId)(_componentStorages[typeId]);
+                }
+            }
+
+            RebuildOwningGroups();
         }
 
         /// <summary>
@@ -262,16 +522,26 @@ namespace Lattice.ECS.Core
         /// </summary>
         public ulong CalculateChecksum(ComponentSerializationMode mode = ComponentSerializationMode.Checkpoint)
         {
-            return CreateSnapshot(mode).Checksum;
+            var writer = new FrameStateChecksumWriter();
+            WritePackedState(writer, mode);
+            return writer.Checksum;
         }
 
         #region 实体操作
 
         /// <summary>
-        /// 创建实体 - O(1)
+        /// 创建实体 - O(1)。
+        /// 若当前帧正处于运行时的结构性修改延迟阶段，则返回临时实体引用，并在后续提交阶段真正物化。
         /// </summary>
         public EntityRef CreateEntity()
         {
+            EnsureStructuralChangesAllowed(nameof(CreateEntity));
+
+            if (ShouldDeferStructuralChanges())
+            {
+                return QueueCreateEntity();
+            }
+
             int index;
             ushort version;
 
@@ -306,6 +576,14 @@ namespace Lattice.ECS.Core
         /// </summary>
         public void DestroyEntity(EntityRef entity)
         {
+            EnsureStructuralChangesAllowed(nameof(DestroyEntity));
+
+            if (ShouldDeferStructuralChanges())
+            {
+                QueueDestroyEntity(entity);
+                return;
+            }
+
             if (!IsValid(entity)) return;
 
             // 删除所有组件
@@ -344,10 +622,19 @@ namespace Lattice.ECS.Core
         #region 组件操作
 
         /// <summary>
-        /// 添加组件 - O(1) 均摊
+        /// 添加组件 - O(1) 均摊。
+        /// 若当前帧正处于运行时的结构性修改延迟阶段，则该操作会先排入结构提交缓冲，而不是立即影响查询拓扑。
         /// </summary>
         public void Add<T>(EntityRef entity, in T component) where T : unmanaged, IComponent
         {
+            EnsureStructuralChangesAllowed(nameof(Add));
+
+            if (ShouldDeferStructuralChanges())
+            {
+                QueueAddComponent(entity, component);
+                return;
+            }
+
             if (!IsValid(entity))
                 throw new ArgumentException($"Invalid entity: {entity}");
 
@@ -379,9 +666,18 @@ namespace Lattice.ECS.Core
 
         /// <summary>
         /// 设置组件值；若组件不存在则添加。
+        /// 当运行时开启结构性修改延迟时，对已存在组件的字段写入仍会立即生效；
+        /// 但对缺失组件或临时实体的写入会延迟到结构提交阶段统一生效。
         /// </summary>
         public void Set<T>(EntityRef entity, in T component) where T : unmanaged, IComponent
         {
+            if (ShouldDeferSet<T>(entity))
+            {
+                EnsureStructuralChangesAllowed(nameof(Set));
+                QueueSetComponent(entity, component);
+                return;
+            }
+
             if (!IsValid(entity))
                 throw new ArgumentException($"Invalid entity: {entity}");
 
@@ -411,10 +707,19 @@ namespace Lattice.ECS.Core
         }
 
         /// <summary>
-        /// 移除组件 - O(1)
+        /// 移除组件 - O(1)。
+        /// 若当前帧正处于运行时的结构性修改延迟阶段，则移除会延迟到结构提交阶段统一生效。
         /// </summary>
         public void Remove<T>(EntityRef entity) where T : unmanaged, IComponent
         {
+            EnsureStructuralChangesAllowed(nameof(Remove));
+
+            if (ShouldDeferStructuralChanges())
+            {
+                QueueRemoveComponent<T>(entity);
+                return;
+            }
+
             if (!IsValid(entity)) return;
 
             int typeId = ComponentTypeId<T>.Id;
@@ -528,35 +833,155 @@ namespace Lattice.ECS.Core
         }
 
         /// <summary>
-        /// 获取单组件过滤器。
+        /// 检查当前帧是否存在指定的全局 singleton 组件。
+        /// 该 API 是玩法层正式推荐的全局状态入口，不再要求外部自己约定“特殊实体”。
         /// </summary>
-#pragma warning disable CS0618
-        public Filter<T> Filter<T>() where T : unmanaged, IComponent
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public bool HasGlobal<T>() where T : unmanaged, IComponent
         {
-            return new Filter<T>(this);
+            EnsureGlobalReadAllowed(nameof(HasGlobal));
+
+            int typeId = ComponentTypeId<T>.Id;
+            EnsureSingletonComponentType<T>(typeId);
+            var storage = GetStorage<T>(typeId);
+            return storage != null && storage->SingletonEntity != EntityRef.None;
         }
 
         /// <summary>
-        /// 获取双组件过滤器。
+        /// 获取全局 singleton 组件引用。
         /// </summary>
-        public Filter<T1, T2> Filter<T1, T2>()
-            where T1 : unmanaged, IComponent
-            where T2 : unmanaged, IComponent
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public ref T GetGlobal<T>() where T : unmanaged, IComponent
         {
-            return new Filter<T1, T2>(this);
+            EnsureGlobalWriteAllowed(nameof(GetGlobal));
+
+            int typeId = ComponentTypeId<T>.Id;
+            EnsureSingletonComponentType<T>(typeId);
+
+            var storage = GetStorage<T>(typeId);
+            if (storage == null || storage->SingletonEntity == EntityRef.None)
+            {
+                throw new InvalidOperationException($"Global component {typeof(T).Name} not found.");
+            }
+
+            return ref storage->GetSingleton();
         }
 
         /// <summary>
-        /// 获取三组件过滤器。
+        /// 尝试获取全局 singleton 组件值。
         /// </summary>
-        public Filter<T1, T2, T3> Filter<T1, T2, T3>()
-            where T1 : unmanaged, IComponent
-            where T2 : unmanaged, IComponent
-            where T3 : unmanaged, IComponent
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public bool TryGetGlobal<T>(out T component) where T : unmanaged, IComponent
         {
-            return new Filter<T1, T2, T3>(this);
+            EnsureGlobalReadAllowed(nameof(TryGetGlobal));
+
+            int typeId = ComponentTypeId<T>.Id;
+            EnsureSingletonComponentType<T>(typeId);
+
+            var storage = GetStorage<T>(typeId);
+            if (storage != null && storage->SingletonEntity != EntityRef.None)
+            {
+                component = storage->GetSingleton();
+                return true;
+            }
+
+            component = default;
+            return false;
         }
-#pragma warning restore CS0618
+
+        /// <summary>
+        /// 获取全局 singleton 组件所在实体。
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public EntityRef GetGlobalEntity<T>() where T : unmanaged, IComponent
+        {
+            EnsureGlobalWriteAllowed(nameof(GetGlobalEntity));
+
+            int typeId = ComponentTypeId<T>.Id;
+            EnsureSingletonComponentType<T>(typeId);
+
+            var storage = GetStorage<T>(typeId);
+            if (storage == null || storage->SingletonEntity == EntityRef.None)
+            {
+                throw new InvalidOperationException($"Global component {typeof(T).Name} not found.");
+            }
+
+            return storage->SingletonEntity;
+        }
+
+        /// <summary>
+        /// 尝试获取全局 singleton 组件所在实体。
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public bool TryGetGlobalEntity<T>(out EntityRef entity) where T : unmanaged, IComponent
+        {
+            EnsureGlobalWriteAllowed(nameof(TryGetGlobalEntity));
+
+            int typeId = ComponentTypeId<T>.Id;
+            EnsureSingletonComponentType<T>(typeId);
+
+            var storage = GetStorage<T>(typeId);
+            if (storage != null && storage->SingletonEntity != EntityRef.None)
+            {
+                entity = storage->SingletonEntity;
+                return true;
+            }
+
+            entity = EntityRef.None;
+            return false;
+        }
+
+        /// <summary>
+        /// 设置全局 singleton 组件。
+        /// 若当前尚未存在对应全局状态，则会自动创建承载它的实体。
+        /// </summary>
+        public EntityRef SetGlobal<T>(in T component) where T : unmanaged, IComponent
+        {
+            EnsureGlobalWriteAllowed(nameof(SetGlobal));
+
+            int typeId = ComponentTypeId<T>.Id;
+            EnsureSingletonComponentType<T>(typeId);
+
+            var storage = GetStorage<T>(typeId);
+            if (storage != null && storage->SingletonEntity != EntityRef.None)
+            {
+                EntityRef entity = storage->SingletonEntity;
+                Set(entity, component);
+                return entity;
+            }
+
+            EntityRef created = CreateEntity();
+            Add(created, component);
+            return created;
+        }
+
+        /// <summary>
+        /// 移除全局 singleton 组件。
+        /// 若该组件是实体上唯一的组件，则会一并销毁其承载实体，避免留下空壳全局实体。
+        /// </summary>
+        public bool RemoveGlobal<T>() where T : unmanaged, IComponent
+        {
+            EnsureGlobalWriteAllowed(nameof(RemoveGlobal));
+
+            int typeId = ComponentTypeId<T>.Id;
+            EnsureSingletonComponentType<T>(typeId);
+
+            var storage = GetStorage<T>(typeId);
+            if (storage == null || storage->SingletonEntity == EntityRef.None)
+            {
+                return false;
+            }
+
+            EntityRef entity = storage->SingletonEntity;
+            if (EntityHasOnlyComponent(entity, typeId))
+            {
+                DestroyEntity(entity);
+                return true;
+            }
+
+            Remove<T>(entity);
+            return true;
+        }
 
         #endregion
 
@@ -637,6 +1062,13 @@ namespace Lattice.ECS.Core
         /// </summary>
         public void CommitDeferredRemovals()
         {
+            if (ShouldDeferStructuralChanges())
+            {
+                throw new InvalidOperationException(
+                    "Cannot commit deferred removals while structural changes are being deferred. " +
+                    "Wait for the runtime structural commit stage to complete.");
+            }
+
             if (_pendingRemovalCount == 0)
             {
                 return;
@@ -654,6 +1086,94 @@ namespace Lattice.ECS.Core
             }
 
             _pendingRemovalCount = 0;
+        }
+
+        /// <summary>
+        /// 进入“结构性修改延迟提交”模式。
+        /// 在该模式下，实体创建/销毁与组件增删会先进入命令缓冲，直到显式提交时才生效。
+        /// </summary>
+        internal void BeginDeferredStructuralChanges()
+        {
+            if (_deferStructuralChanges)
+            {
+                throw new InvalidOperationException("Deferred structural changes have already been started for this frame.");
+            }
+
+            EnsureStructuralCommandBuffer();
+            _structuralCommandBuffer.Clear();
+            _deferStructuralChanges = true;
+            _isReplayingStructuralChanges = false;
+        }
+
+        /// <summary>
+        /// 提交当前 Tick 累积的结构性修改。
+        /// </summary>
+        internal void CommitStructuralChanges()
+        {
+            if (!_deferStructuralChanges && !_isReplayingStructuralChanges)
+            {
+                CommitDeferredRemovals();
+                return;
+            }
+
+            _deferStructuralChanges = false;
+
+            if (!_structuralCommandBufferInitialized || _structuralCommandBuffer.IsEmpty)
+            {
+                CommitDeferredRemovals();
+                return;
+            }
+
+            _isReplayingStructuralChanges = true;
+            try
+            {
+                _structuralCommandBuffer.Playback(this);
+            }
+            finally
+            {
+                _isReplayingStructuralChanges = false;
+            }
+        }
+
+        /// <summary>
+        /// 中止当前 Tick 尚未提交的结构性修改。
+        /// 仅供运行时在 Tick 失败或异常路径下回收临时状态。
+        /// </summary>
+        internal void AbortStructuralChanges()
+        {
+            if (_structuralCommandBufferInitialized)
+            {
+                _structuralCommandBuffer.Clear();
+            }
+
+            _deferStructuralChanges = false;
+            _isReplayingStructuralChanges = false;
+        }
+
+        /// <summary>
+        /// 进入系统作者契约守卫作用域。
+        /// 仅供 `SystemScheduler` 在系统 `OnUpdate(...)` 执行前后使用。
+        /// </summary>
+        internal void BeginSystemAuthoringScope(ISystem system)
+        {
+            ArgumentNullException.ThrowIfNull(system);
+
+            if (_hasActiveSystemAuthoringContract)
+            {
+                throw new InvalidOperationException("A system authoring scope is already active for this frame.");
+            }
+
+            _activeSystemAuthoringContract = system.Contract;
+            _activeSystemName = system.GetType().Name;
+            _hasActiveSystemAuthoringContract = true;
+        }
+
+        /// <summary>
+        /// 退出系统作者契约守卫作用域。
+        /// </summary>
+        internal void EndSystemAuthoringScope()
+        {
+            ResetSystemAuthoringGuard();
         }
 
         #endregion
@@ -716,6 +1236,21 @@ namespace Lattice.ECS.Core
             where T3 : unmanaged, IComponent
         {
             return new Query<T1, T2, T3>(this);
+        }
+
+        /// <summary>
+        /// 获取四组件查询。
+        /// 这是当前正式公开的强类型 Query 上限；
+        /// 更高维组合应优先考虑拆分系统职责，或结合 `MatchesFilter(...)` 做显式条件匹配。
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public Query<T1, T2, T3, T4> Query<T1, T2, T3, T4>()
+            where T1 : unmanaged, IComponent
+            where T2 : unmanaged, IComponent
+            where T3 : unmanaged, IComponent
+            where T4 : unmanaged, IComponent
+        {
+            return new Query<T1, T2, T3, T4>(this);
         }
 
         /// <summary>
@@ -1030,6 +1565,50 @@ namespace Lattice.ECS.Core
             }
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static void EnsureSingletonComponentType<T>(int typeId) where T : unmanaged, IComponent
+        {
+            if ((ComponentRegistry.GetStorageFlags(typeId) & StorageFlags.Singleton) == 0)
+            {
+                throw new InvalidOperationException(
+                    $"Component {typeof(T).Name} is not registered as a singleton/global component.");
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private bool EntityHasOnlyComponent(EntityRef entity, int typeId)
+        {
+            if (!IsValid(entity))
+            {
+                return false;
+            }
+
+            ulong* mask = GetComponentMaskPointer(entity.Index);
+            int targetBlock = typeId >> 6;
+            ulong targetBit = 1UL << (typeId & 0x3F);
+
+            for (int block = 0; block < ComponentMaskBlockCount; block++)
+            {
+                ulong value = mask[block];
+                if (block == targetBlock)
+                {
+                    if (value != targetBit)
+                    {
+                        return false;
+                    }
+
+                    continue;
+                }
+
+                if (value != 0)
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
         private void RebuildOwningGroups()
         {
             if (_owningGroupBindings == null || _owningGroupBindings.Count == 0)
@@ -1041,6 +1620,80 @@ namespace Lattice.ECS.Core
             {
                 _owningGroupBindings[i].Rebuild(this);
             }
+        }
+
+        private ComponentSchemaManifest WritePackedState(FrameStateWriter writer, ComponentSerializationMode mode)
+        {
+            writer.WriteInt32(Tick);
+            writer.WriteInt64(DeltaTime.RawValue);
+            writer.WriteInt32(_entityCapacity);
+            writer.WriteInt32(_entityCount);
+            writer.WriteInt32(_freeListHead);
+
+            int metadataCount = _entityCount;
+            writer.WriteInt32(metadataCount);
+            for (int i = 0; i < metadataCount; i++)
+            {
+                writer.WriteUInt16(_entityVersions[i]);
+            }
+
+            writer.WriteInt32(metadataCount);
+            for (int i = 0; i < metadataCount; i++)
+            {
+                writer.WriteInt32(_entityNextFree[i]);
+            }
+
+            int maskCount = metadataCount * ComponentMaskBlockCount;
+            writer.WriteInt32(maskCount);
+            if (maskCount > 0)
+            {
+                writer.WriteBytes(_entityComponentMasks, maskCount * sizeof(ulong));
+            }
+
+            writer.WriteInt32(_pendingRemovalCount);
+            for (int i = 0; i < _pendingRemovalCount; i++)
+            {
+                writer.WriteUInt64(_pendingRemovalEntities[i].Raw);
+            }
+
+            writer.WriteInt32(_pendingRemovalCount);
+            for (int i = 0; i < _pendingRemovalCount; i++)
+            {
+                writer.WriteUInt16(_pendingRemovalTypeIds[i]);
+            }
+
+            Span<int> serializableTypeIds = stackalloc int[MaxComponentTypes];
+            int storageCount = 0;
+            for (int typeId = 1; typeId <= ComponentRegistry.Count; typeId++)
+            {
+                if (!_storageInitialized[typeId] || _componentStorages[typeId] == null)
+                {
+                    continue;
+                }
+
+                if (!ComponentRegistry.CanSerializeComponent(typeId, mode))
+                {
+                    continue;
+                }
+
+                if (!ComponentRegistry.GetPackedStatePresenceChecker(typeId)(_componentStorages[typeId], mode))
+                {
+                    continue;
+                }
+
+                serializableTypeIds[storageCount++] = typeId;
+            }
+
+            ComponentSchemaManifest schemaManifest = ComponentRegistry.CreateSchemaManifest(serializableTypeIds[..storageCount], mode);
+
+            writer.WriteInt32(storageCount);
+            for (int i = 0; i < storageCount; i++)
+            {
+                int typeId = serializableTypeIds[i];
+                ComponentRegistry.GetPackedStateWriter(typeId)(_componentStorages[typeId], writer, mode);
+            }
+
+            return schemaManifest;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -1092,10 +1745,79 @@ namespace Lattice.ECS.Core
                 _owningGroups = new Dictionary<ulong, object>();
                 _owningGroupBindings = new List<IFrameOwningGroup>();
             }
+
+            _structuralCommandBuffer = default;
+            _structuralCommandBufferInitialized = false;
+            _deferStructuralChanges = false;
+            _isReplayingStructuralChanges = false;
+            ResetSystemAuthoringGuard();
+        }
+
+        private void PrepareForSnapshotRestore(int entityCapacity, bool reuseExistingState)
+        {
+            bool preserveOwningGroups = _owningGroupBindings != null && _owningGroupBindings.Count > 0;
+            if (reuseExistingState)
+            {
+                EnsureCompatibleStateForCopy(entityCapacity, preserveOwningGroups);
+                return;
+            }
+
+            ReleaseState(preserveOwningGroups);
+            InitializeState(entityCapacity, preserveOwningGroups);
+
+            if (preserveOwningGroups)
+            {
+                ReinitializeOwningGroups();
+            }
+        }
+
+        private void ResetInitializedStorages()
+        {
+            for (int typeId = 1; typeId <= ComponentRegistry.Count; typeId++)
+            {
+                if (_storageInitialized[typeId] && _componentStorages[typeId] != null)
+                {
+                    ComponentRegistry.GetStorageResetter(typeId)(_componentStorages[typeId]);
+                }
+            }
+        }
+
+        private void FinalizeSnapshotRestore()
+        {
+            ResetStructuralChangeTracking();
+
+            for (int i = 0; i < _pendingRemovalCount; i++)
+            {
+                int typeId = _pendingRemovalTypeIds[i];
+                if (_storageInitialized[typeId] && _componentStorages[typeId] != null)
+                {
+                    ComponentRegistry.GetPendingRemovalMarker(typeId)(_componentStorages[typeId], _pendingRemovalEntities[i]);
+                }
+            }
+
+            RebuildOwningGroups();
+        }
+
+        private void EnsureCompatibleStateForCopy(int sourceEntityCapacity, bool preserveOwningGroups)
+        {
+            if (_allocator != null && _entityCapacity == sourceEntityCapacity)
+            {
+                return;
+            }
+
+            ReleaseState(preserveOwningGroups);
+            InitializeState(sourceEntityCapacity, preserveOwningGroups);
+
+            if (preserveOwningGroups)
+            {
+                ReinitializeOwningGroups();
+            }
         }
 
         private void ReleaseState(bool preserveOwningGroups = false)
         {
+            ReleaseStructuralCommandBuffer();
+
             if (!preserveOwningGroups)
             {
                 _owningGroups?.Clear();
@@ -1134,6 +1856,165 @@ namespace Lattice.ECS.Core
             _freeListHead = -1;
             Tick = 0;
             DeltaTime = FP.Zero;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private bool ShouldDeferStructuralChanges()
+        {
+            return _deferStructuralChanges && !_isReplayingStructuralChanges;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private bool ShouldDeferSet<T>(EntityRef entity) where T : unmanaged, IComponent
+        {
+            if (!ShouldDeferStructuralChanges())
+            {
+                return false;
+            }
+
+            if (entity.Index < 0)
+            {
+                return true;
+            }
+
+            if (!IsValid(entity))
+            {
+                return false;
+            }
+
+            return !Has<T>(entity);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private EntityRef QueueCreateEntity()
+        {
+            EnsureStructuralCommandBuffer();
+            return _structuralCommandBuffer.CreateEntity();
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void QueueDestroyEntity(EntityRef entity)
+        {
+            if (entity.Index >= 0 && !IsValid(entity))
+            {
+                return;
+            }
+
+            EnsureStructuralCommandBuffer();
+            _structuralCommandBuffer.DestroyEntity(entity);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void QueueAddComponent<T>(EntityRef entity, in T component) where T : unmanaged, IComponent
+        {
+            if (entity.Index >= 0 && !IsValid(entity))
+            {
+                throw new ArgumentException($"Invalid entity: {entity}");
+            }
+
+            EnsureStructuralCommandBuffer();
+            _structuralCommandBuffer.AddComponent(entity, component);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void QueueSetComponent<T>(EntityRef entity, in T component) where T : unmanaged, IComponent
+        {
+            if (entity.Index >= 0 && !IsValid(entity))
+            {
+                throw new ArgumentException($"Invalid entity: {entity}");
+            }
+
+            EnsureStructuralCommandBuffer();
+            _structuralCommandBuffer.SetComponent(entity, component);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void QueueRemoveComponent<T>(EntityRef entity) where T : unmanaged, IComponent
+        {
+            if (entity.Index >= 0 && !IsValid(entity))
+            {
+                return;
+            }
+
+            EnsureStructuralCommandBuffer();
+            _structuralCommandBuffer.RemoveComponent<T>(entity);
+        }
+
+        private void EnsureStructuralCommandBuffer()
+        {
+            if (_structuralCommandBufferInitialized)
+            {
+                return;
+            }
+
+            _structuralCommandBuffer.Initialize(capacity: 1024);
+            _structuralCommandBufferInitialized = true;
+        }
+
+        private void ResetStructuralChangeTracking()
+        {
+            if (_structuralCommandBufferInitialized)
+            {
+                _structuralCommandBuffer.Clear();
+            }
+
+            _deferStructuralChanges = false;
+            _isReplayingStructuralChanges = false;
+            ResetSystemAuthoringGuard();
+        }
+
+        private void ReleaseStructuralCommandBuffer()
+        {
+            if (_structuralCommandBufferInitialized)
+            {
+                _structuralCommandBuffer.Dispose();
+                _structuralCommandBufferInitialized = false;
+            }
+
+            _structuralCommandBuffer = default;
+            _deferStructuralChanges = false;
+            _isReplayingStructuralChanges = false;
+            ResetSystemAuthoringGuard();
+        }
+
+        private void EnsureGlobalReadAllowed(string apiName)
+        {
+            if (!_hasActiveSystemAuthoringContract || _activeSystemAuthoringContract.AllowsGlobalReads)
+            {
+                return;
+            }
+
+            throw new InvalidOperationException(
+                $"System {_activeSystemName} cannot call {apiName} because its contract does not allow global state access.");
+        }
+
+        private void EnsureGlobalWriteAllowed(string apiName)
+        {
+            if (!_hasActiveSystemAuthoringContract || _activeSystemAuthoringContract.AllowsGlobalWrites)
+            {
+                return;
+            }
+
+            throw new InvalidOperationException(
+                $"System {_activeSystemName} cannot call {apiName} because its contract does not allow writable global state access.");
+        }
+
+        private void EnsureStructuralChangesAllowed(string apiName)
+        {
+            if (!_hasActiveSystemAuthoringContract || _activeSystemAuthoringContract.AllowsStructuralChanges)
+            {
+                return;
+            }
+
+            throw new InvalidOperationException(
+                $"System {_activeSystemName} cannot call {apiName} because its contract does not allow structural changes.");
+        }
+
+        private void ResetSystemAuthoringGuard()
+        {
+            _hasActiveSystemAuthoringContract = false;
+            _activeSystemAuthoringContract = SystemAuthoringContract.Default;
+            _activeSystemName = null;
         }
 
         private void ReinitializeOwningGroups()

@@ -16,11 +16,6 @@ public partial class FacetToolsPlugin : EditorPlugin
     private const string PluginName = "Facet";
 
     /// <summary>
-    /// 顶部工具菜单中的命令名称。
-    /// </summary>
-    private const string ToolMenuTitle = "Open Facet Workspace";
-
-    /// <summary>
     /// Facet 主工作区场景路径。
     /// 使用场景驱动的容器布局，避免继续在代码中手拼复杂界面。
     /// </summary>
@@ -31,6 +26,7 @@ public partial class FacetToolsPlugin : EditorPlugin
     /// 插件进入编辑器树时创建，退出时销毁。
     /// </summary>
     private FacetMainScreen? _mainScreen;
+    private bool _loadFailed;
 
     /// <summary>
     /// 插件进入编辑器树时初始化主工作区，并把入口挂到编辑器主界面与工具菜单。
@@ -38,32 +34,16 @@ public partial class FacetToolsPlugin : EditorPlugin
     public override void _EnterTree()
     {
         FacetEditorDiagnostics.Info("Plugin", "EnterTree");
+        _loadFailed = false;
 
         try
         {
-            PackedScene mainScreenScene = GD.Load<PackedScene>(MainScreenScenePath)
-                ?? throw new InvalidOperationException($"Facet main screen scene load failed: {MainScreenScenePath}");
-
-            _mainScreen = mainScreenScene.Instantiate<FacetMainScreen>();
-            _mainScreen.Name = "FacetMainScreen";
-            _mainScreen.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-            _mainScreen.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
-            _mainScreen.CustomMinimumSize = Vector2.Zero;
-            _mainScreen.Hide();
-            EditorInterface.Singleton.GetEditorMainScreen().AddChild(_mainScreen);
-
-            AddToolMenuItem(ToolMenuTitle, Callable.From(OpenFacetWorkspace));
-
-            // 保留一个环境变量入口，便于自动化排查编辑器布局问题时直接拉起 Facet 工作区。
-            if (System.Environment.GetEnvironmentVariable("SIDELINE_FACET_AUTO_OPEN") == "1")
-            {
-                CallDeferred(nameof(OpenFacetWorkspaceForDiagnostics));
-            }
+            CleanupMainScreen();
         }
         catch (Exception exception)
         {
             FacetEditorDiagnostics.Error("Plugin", "EnterTree failed.", exception);
-            throw;
+            _loadFailed = true;
         }
     }
 
@@ -76,19 +56,11 @@ public partial class FacetToolsPlugin : EditorPlugin
 
         try
         {
-            RemoveToolMenuItem(ToolMenuTitle);
-
-            if (_mainScreen != null)
-            {
-                _mainScreen.GetParent()?.RemoveChild(_mainScreen);
-                _mainScreen.QueueFree();
-                _mainScreen = null;
-            }
+            CleanupMainScreen();
         }
         catch (Exception exception)
         {
             FacetEditorDiagnostics.Error("Plugin", "ExitTree failed.", exception);
-            throw;
         }
     }
 
@@ -125,45 +97,71 @@ public partial class FacetToolsPlugin : EditorPlugin
     {
         FacetEditorDiagnostics.Info("Plugin", $"MakeVisible visible={visible}");
 
-        if (_mainScreen == null)
+        if (!visible)
         {
-            FacetEditorDiagnostics.Warning("Plugin", "Main screen is null during MakeVisible.");
+            CleanupMainScreen();
             return;
         }
 
         try
         {
-            _mainScreen.Visible = visible;
-            if (visible)
+            EnsureMainScreenCreated();
+            if (_mainScreen == null)
             {
-                _mainScreen.EnsureViewportLayout();
-                _mainScreen.RefreshNow();
-                _mainScreen.CallDeferred(nameof(FacetMainScreen.EnsureViewportLayout));
-                _mainScreen.CallDeferred(nameof(FacetMainScreen.LogLayoutSnapshot));
+                return;
             }
+
+            _mainScreen.Visible = visible;
+            _mainScreen.EnsureViewportLayout();
+            _mainScreen.RefreshNow();
+            _mainScreen.LogLayoutSnapshot();
         }
         catch (Exception exception)
         {
             FacetEditorDiagnostics.Error("Plugin", $"MakeVisible failed. visible={visible}", exception);
-            throw;
+            _mainScreen?.ShowToolError("Facet 主工作区刷新失败，请查看 user://logs/facet-editor.log。", exception);
+            CleanupMainScreen();
         }
     }
 
-    /// <summary>
-    /// 打开 Facet 主工作区页签。
-    /// </summary>
-    private void OpenFacetWorkspace()
+    private void EnsureMainScreenCreated()
     {
-        FacetEditorDiagnostics.Info("Plugin", "OpenFacetWorkspace");
-        EditorInterface.Singleton.SetMainScreenEditor(PluginName);
+        if (_mainScreen != null)
+        {
+            if (GodotObject.IsInstanceValid(_mainScreen))
+            {
+                return;
+            }
+
+            _mainScreen = null;
+        }
+
+        PackedScene mainScreenScene = GD.Load<PackedScene>(MainScreenScenePath)
+            ?? throw new InvalidOperationException($"Facet main screen scene load failed: {MainScreenScenePath}");
+
+        _mainScreen = mainScreenScene.Instantiate<FacetMainScreen>();
+        _mainScreen.Name = "FacetMainScreen";
+        _mainScreen.SetAnchorsPreset(Control.LayoutPreset.FullRect);
+        _mainScreen.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+        _mainScreen.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
+        _mainScreen.CustomMinimumSize = Vector2.Zero;
+        _mainScreen.Hide();
+        EditorInterface.Singleton.GetEditorMainScreen().AddChild(_mainScreen);
     }
 
-    /// <summary>
-    /// 诊断场景专用入口。
-    /// 当前逻辑与普通打开行为一致，但保留独立方法便于后续扩展自动诊断流程。
-    /// </summary>
-    private void OpenFacetWorkspaceForDiagnostics()
+    private void CleanupMainScreen()
     {
-        OpenFacetWorkspace();
+        if (_mainScreen == null)
+        {
+            return;
+        }
+
+        if (GodotObject.IsInstanceValid(_mainScreen))
+        {
+            _mainScreen.GetParent()?.RemoveChild(_mainScreen);
+            _mainScreen.QueueFree();
+        }
+
+        _mainScreen = null;
     }
 }

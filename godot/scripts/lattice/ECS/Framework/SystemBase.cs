@@ -52,5 +52,13 @@ namespace Lattice.ECS.Framework
         public virtual void OnDispose(Frame frame)
         {
         }
+
+        /// <summary>
+        /// 与当前最小 `ISystem` 生命周期契约对齐的销毁入口。
+        /// </summary>
+        public virtual void OnDestroy(Frame frame)
+        {
+            OnDispose(frame);
+        }
     }
 }

@@ -1,565 +1,372 @@
-# Lattice - 确定性 ECS 帧同步框架
+# Lattice
 
-> 在 Sideline 项目中孵化的自研 ECS 框架，目标是为独立游戏提供轻量、确定性的游戏逻辑基础。
->
-> **设计参考**: 本框架设计大量参考了成熟的 [FrameSyncEngine](https://github.com/ifreetalk) 帧同步框架（Unity 商业级方案），取其精华并针对 Godot 和独立游戏场景进行简化。
+Lattice 是 Sideline 项目中孵化的自研确定性 ECS 运行时，目标是为独立游戏提供一套可测试、可回滚、可逐步扩展的纯 C# 模拟底座。
 
----
+当前主干已经不再是“只有 ECS 基座”，而是具备了一个最小可运行闭环：
 
-## 核心设计原则
+- `FP`、`Entity`、`Component`、`Frame` 已进入稳定可用阶段
+- `ISystem`、`SystemScheduler`、`SessionRuntime / MinimalPredictionSession / LocalAuthoritativeSession` 已进入正式编译面
+- `SessionRunner`、`SessionRunnerBuilder` 已提供最小装配与驱动入口
+- 已支持输入、历史帧、检查点、最小回滚与重模拟
+- 已有 `MovementSystem`、`LifetimeSystem`、`SpawnerSystem` 三条真实样例链路
+- 已有 `System + SessionRuntime` 端到端联调测试与一组固定回归入口
 
-1. **确定性优先** - 相同输入必然产生相同输出，这是帧同步和回放的基础
-2. **零外部依赖** - 纯 C# 实现，不依赖 Godot 或其他引擎，便于移植和测试
-3. **渐进式抽象** - 在真实项目中生长，而非凭空设计
-4. **分层隔离** - 严格区分纯逻辑层、桥接层和渲染层
+权威设计说明文档：
 
----
+- `godot/scripts/lattice/ECS/Framework/SystemDesignNotes.md`
 
-## 技术栈选择：.NET 8
+如果需要了解当前真实能力，请优先看上面的设计文档和 `Tests/ECS` 下的测试，而不是参考历史草图。
 
-经过对 .NET 8 / 9 / 10 三个版本的深入分析，Lattice 选择 **.NET 8** 作为目标框架。
+## 当前状态（2026-03-27）
 
-### 版本对比
+当前实现已经不再处于“刚跨过 7 分”的阶段，而是完成了 8.5 分目标中的主干制度化收口，重点已经从“能不能跑起来”转向：
 
-| 特性 | .NET 8 ✅ | .NET 9 | .NET 10 |
-|------|----------|--------|---------|
-| **Godot 4.6 支持** | 官方完整支持 | 实验性/计算兼容 | 不支持 |
-| **LTS 长期支持** | 是（到 2026-11） | 否 | 否 |
-| **C# 版本** | C# 12 | C# 13 | C# 14 |
-| **稳定性** | ⭐⭐⭐⭐⭐ | ⭐⭐⭐ | ⭐ |
-| **ECS开发风险** | 低 | 中 | 高 |
+- 运行时可靠性
+- 装配成本
+- 历史帧与回滚成本
+- 文档与实现一致性
+- determinism / 协议 / benchmark 治理长期稳定性
 
-### 各版本详细分析
+本轮已完成的关键收口：
 
-#### .NET 8（推荐）✅
+- `Session` 历史帧管理已改为有界 O(1) 按 Tick 访问
+- 历史帧替换与淘汰时会及时释放脱离引用的 `Frame`
+- 已完成 `SessionRuntime / MinimalPredictionSession / LocalAuthoritativeSession` 三层运行时分层
+- 已完成 `SystemAuthoringContract`、轻量 `SystemPhase` 与 determinism analyzer 主干收口
+- 已完成输入 payload / checkpoint / packed snapshot / component schema 的第一轮正式版本治理
+- 已完成 `SessionRunner` 生命周期模型、失败收敛与 runtime shared service 宿主挂接
+- `SessionRuntimeBenchmarks` 已从“观察项”升级为“治理项”，当前 policy 为 `v4`
+- benchmark 已补正式 CLI 入口 `--govern / --govern-report` 与自动化测试覆盖
+- README 已移除旧 `World / SystemBase / SystemGroup / StateSnapshot` 架构描述，并同步当前 benchmark / runtime 边界
 
-**优势：**
-- **官方完整支持**：Godot 4.6 主要测试目标，稳定性最高
-- **LTS 保障**：长期支持到 2026-11，确定性框架需要稳定基础
-- **所有需要的特性已齐全**：
-  - `Span<T>`、`Memory<T>` - 零拷贝内存操作
-  - `ArrayPool<T>` - 内存池替代自定义 Allocator
-  - `Source Generators` - 自动生成组件代码
-  - `Unsafe` 类 - 必要时使用（如 `MemoryMarshal.Cast`）
-  - `ref struct` - 栈上分配，避免 GC
-  - `readonly struct` - 性能优化
-
-**对 Lattice 的收益：**
-```csharp
-// .NET 8 完全支持的特性
-public ref struct ComponentSpan<T>  // 零GC遍历
-public readonly struct FP          // 定点数性能优化
-public static ReadOnlySpan<byte> LookupTable => new byte[] { ... }; // 查找表内联
-```
-
-#### .NET 9（实验性）⚠️
-
-**优势：**
-- SIMD 优化（`Vector<T>` 改进）
-- Android 官方支持（Godot 4.6 导出 Android 需要）
-
-**缺陷（对确定性框架致命）：**
-- **非 LTS**：支持周期仅 18 个月
-- **确定性风险**：JIT 编译器优化改变可能影响运算一致性
-- **兼容性风险**：不是 Godot 4.6 主要测试目标
-
-#### .NET 10（不支持）❌
-
-**现状：**
-- 目前处于 Preview/RC 阶段（预计 2025-11 正式发布）
-- Godot 4.6 完全不支持
-- 无稳定的 `Godot.NET.Sdk` 版本
-
-### 选择 .NET 8 的核心原因
-
-1. **确定性优先**：帧同步框架不能容忍运行时不确定性，.NET 8 经过大量游戏项目验证
-2. **Godot 4.6 官方支持**：避免奇怪的兼容性问题
-3. **LTS 保障**：开发周期内持续获得安全更新
-4. **功能足够**：所有需要的特性已能满足 Lattice 设计
-
-### .NET 8 提供的核心特性（Lattice 将使用）
+## 最小运行时用法
 
 ```csharp
-// 1. Span<T> - 零拷贝组件访问
-public Span<T> GetComponents<T>() where T : struct
-{
-	return MemoryMarshal.Cast<byte, T>(_storage);
-}
+using Lattice.ECS.Framework.Systems;
+using Lattice.ECS.Session;
+using Lattice.Math;
 
-// 2. ArrayPool - 内存管理
-private readonly ArrayPool<byte> _pool = ArrayPool<byte>.Shared;
+var options = new SessionRuntimeOptions(FP.One, localPlayerId: 0);
 
-// 3. Source Generator - 自动生成组件代码
-[Generator]
-public class ComponentGenerator : ISourceGenerator { ... }
+using var runner = new SessionRunnerBuilder()
+    .WithRuntimeOptions(options)
+    .AddSystem(new MovementSystem())
+    .AddSystem(new LifetimeSystem())
+    .Build();
 
-// 4. Unsafe - 必要时使用（确定性可控）
-public ref T GetRef<T>(int index) 
-	=> ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_array), index);
+runner.Start();
+runner.Step();
+runner.Stop();
 ```
 
----
+如果你需要更贴近玩法的链路，可以参考：
 
-## 架构设计（参考 FrameSyncEngine）
+- `Tests/ECS/SystemSessionIntegrationTests.cs`
+- `Tests/ECS/SpawnerSystemIntegrationTests.cs`
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                     Godot 渲染层                             │
-│  (Sprite2D, Animation, Input, SceneTree, Camera...)          │
-├─────────────────────────────────────────────────────────────┤
-│                     Bridge（桥接层）                          │
-│  ┌─────────────┐  ┌──────────────┐  ┌─────────────────────┐ │
-│  │LatticeBridge│  │  EntityView  │  │   InputCollector    │ │
-│  │ (同步入口)   │  │ (Entity→Node)│  │  (Godot输入→Command)│ │
-│  └─────────────┘  └──────────────┘  └─────────────────────┘ │
-├─────────────────────────────────────────────────────────────┤
-│                   Simulation（纯 C# 模拟层）                  │
-│  ┌─────────────┐  ┌──────────────┐  ┌─────────────────────┐ │
-│  │   World     │  │    Frame     │  │       Systems       │ │
-│  │  (世界入口)  │  │  (帧数据容器) │  │  - MovementSystem   │ │
-│  │             │  │              │  │  - CombatSystem     │ │
-│  │ Frames:     │  │ - Components │  │  - 用户自定义系统    │ │
-│  │  Verified   │  │ - Entities   │  │                     │ │
-│  │  Predicted  │  │ - Global data│  │                     │ │
-│  │  Previous   │  │              │  │                     │ │
-│  └─────────────┘  └──────────────┘  └─────────────────────┘ │
-├─────────────────────────────────────────────────────────────┤
-│                     Core（核心基础设施）                      │
-│  ┌──────────────┐  ┌──────────────┐  ┌────────────────────┐ │
-│  │    Math      │  │  Collections │  │   Serialization    │ │
-│  │   - FP       │  │   - FSList   │  │   - StateSnapshot  │ │
-│  │   - FPVector2│  │   - FSDict   │  │   - InputBuffer    │ │
-│  │   - FPMath   │  │   - FSHashSet│  │   - Command        │ │
-│  └──────────────┘  └──────────────┘  └────────────────────┘ │
-└─────────────────────────────────────────────────────────────┘
-```
+## 当前主干的真实模块划分
 
----
-
-## 模块划分
-
-```
+```text
 lattice/
-├── Core/                   # ECS 核心：World, Entity, Archetype, Frame
-│   ├── Entity.cs           # 实体 ID 管理
-│   ├── Component.cs        # 组件基类/接口
-│   ├── Frame.cs            # 单帧数据容器（组件存储）
-│   └── World.cs            # 世界管理器，多帧支持
-│
-├── ECS/Framework/          # 系统调度骨架
-│   ├── ISystem.cs          # 系统接口
-│   ├── SystemBase.cs       # 系统基类
-│   ├── SystemGroup.cs      # 系统组（层级容器）
-│   └── SystemScheduler.cs  # 单线程固定顺序调度器
-│
-├── Math/                   # 定点数与确定性数学 ⭐ 生产就绪
-│   ├── FP.cs               # 定点数 (Q48.16) - 四舍五入乘法
-│   ├── FP.*.cs             # 分部类：Math/String/Trig/InverseTrig/Unsafe
-│   ├── FPVector2.cs        # 2D 定点向量（含自动 Swizzle）
-│   ├── FPVector3.cs        # 3D 定点向量（含自动 Swizzle）
-│   ├── FPMath.cs           # 数学函数（含查找表）
-│   ├── FPLut*.cs           # LUT 系统（文件格式、缓存优化）
-│   ├── FPSimd.cs           # ⚠️ 整数 SIMD（仅 Vector<long>，确定性）
-│   ├── FP.Unsafe.cs        # 不安全指针操作（极致性能）
-│   └── WorldPosition.cs    # 无限世界坐标（Chunk-based）
-│
-├── Collections/            # 确定性集合（避免非确定性遍历）
-│   ├── FSList.cs           # 确定性列表
-│   ├── FSDictionary.cs     # 确定性字典（有序遍历）
-│   └── RingBuffer.cs       # 环形缓冲区（用于 InputBuffer）
-│
-├── Serialization/          # 状态快照与序列化
-│   ├── StateSnapshot.cs    # 状态快照保存/恢复
-│   ├── InputBuffer.cs      # 输入缓冲区（用于联机）
-│   └── Command.cs          # 命令基类
-│
-└── Bridge/                 # Godot 桥接层（可选，与 Godot 耦合）
-	├── LatticeBridge.cs    # 主桥接入口
-	├── EntityView.cs       # 实体视图同步
-	└── InputCollector.cs   # 输入收集
+├── Core/                   # 基础设施与通用类型
+├── Math/                   # 定点数与确定性数学
+├── Collections/            # 确定性集合
+├── ECS/
+│   ├── Core/               # Frame / Entity / Storage / Query / Snapshot
+│   ├── Framework/          # ISystem / SystemScheduler / Gameplay sample systems
+│   └── Session/            # SessionRuntime / MinimalPredictionSession / LocalAuthoritativeSession / SessionRunner / SessionRunnerBuilder
+└── Tests/
+    ├── ECS/                # 运行时与联调测试
+    └── Performance/        # BenchmarkDotNet 与性能烟雾测试
 ```
 
----
+当前主干中正式存在且可用的运行时骨架是：
 
-## 核心概念
+- `Frame`
+- `ISystem`
+- `SystemScheduler`
+- `SessionRuntime`
+- `MinimalPredictionSession`
+- `LocalAuthoritativeSession`
+- `SessionRuntimeDataBoundary`
+- `SessionRuntimeOptions`
+- `SessionRunnerDefinition`
+- `SessionRunner`
+- `SessionRunnerBuilder`
 
-### 1. Entity（实体）
+当前主干中保留但不推荐作为新代码默认入口的兼容 API 是：
 
-- 纯 ID，使用 `uint32` 表示
-- 无数据、无行为，只是组件的容器标识
-- 从对象池分配，避免 GC
+- `Session`
+- `SessionRunner.Session`
+- `SessionRunnerBuilder.WithSessionFactory(...)`
+- `SessionRunnerBuilder.BuildSession()`
 
-### 2. Component（组件）
+当前主干中没有正式实现，不应再按“现成能力”理解的内容是：
 
-- 纯数据结构（`struct`），禁止包含方法
-- 所有字段必须是值类型或 `struct`
-- 支持的数据类型：
-  - 基础类型：`bool`, `byte`, `short`, `int`, `long`
-  - 定点数：`FP`, `FPVector2`
-  - 枚举：必须显式指定底层类型
-  - 固定数组：`FP[10]`（长度编译期确定）
-- **禁止**：引用类型、`string`、变长集合、`float`/`double`
+- `World`
+- `SystemBase`
+- `SystemGroup`
+- `StateSnapshot`
 
-### 3. System（系统）
+这些名词只属于历史设计阶段，不代表当前编译中的主干实现。
 
-- 包含游戏逻辑，按特定顺序处理组件
-- 每帧对所有匹配的 Entity-Component 组合执行逻辑
-- 支持多线程（后期），初期单线程顺序执行
-- 当前主线状态：已接入 `ISystem / SystemBase / SystemGroup / SystemScheduler`，普通系统推荐使用 `frame.Filter<T...>()`，热点系统可退回 `GetComponentBlockIterator<T>()`
+代码层面上，系统层当前的正式边界也有显式入口：
 
-```csharp
-public sealed class MovementSystem : SystemBase
-{
-    public override void OnUpdate(Frame frame, FP deltaTime)
-    {
-        var filter = frame.Filter<Position, Velocity>();
-        var enumerator = filter.GetEnumerator();
+- `SystemScheduler.Boundary`
+- `SystemSchedulerKind.FlatPhasedOrdered`
+- `SystemSchedulerCapability`
+- `UnsupportedSystemSchedulerCapability`
 
-        while (enumerator.MoveNext())
-        {
-            enumerator.Component1.Value += enumerator.Component2.Value * deltaTime;
-        }
-    }
-}
+也就是说，当前系统层支持什么和不支持什么，不再只停留在 README 和设计文档里。
+
+## 当前正式支持的运行模式边界
+
+当前主干正式支持的是两种 runtime 模式：
+
+- `MinimalPredictionSession`
+  - 纯 C# 驱动的固定帧模拟
+  - 单线程、固定顺序系统调度
+  - 基于 `PredictedFrame` 的本地预测推进
+  - 基于 `VerifyFrame()` / `RollbackTo()` 的最小验证与回滚修正
+  - 基于 `CreateCheckpoint()` / `RestoreFromCheckpoint()` 的显式状态保存与恢复
+- `LocalAuthoritativeSession`
+  - 纯 C# 驱动的固定帧模拟
+  - 单线程、固定顺序系统调度
+  - 本地权威前推
+  - 显式 checkpoint 保存与恢复
+  - 不承诺预测验证与 rewind
+
+当前主干明确不作为正式能力提供的是：
+
+- 完整网络会话管理
+- 房间态、玩家映射、传输层
+- 多线程系统调度
+- 资源化 / 配置化多模式启动
+- FrameSync 风格的大型系统家族与产品层会话入口
+
+因此，当前正式运行时应优先理解为 `SessionRuntime / MinimalPredictionSession / LocalAuthoritativeSession`，而不是完整联机框架。
+
+代码层面上，这个边界现在也有显式描述入口：
+
+- `Session.RuntimeBoundary`
+- `SessionRuntimeKind.MinimalPrediction`
+- `SessionRuntimeKind.LocalAuthoritative`
+- `SessionRuntimeCapability`
+- `UnsupportedSessionRuntimeCapability`
+
+也就是说，“当前支持什么、不支持什么”不再只停留在 README 和设计文档里。
+
+## 运行时 API 分层
+
+当前主干对运行时 API 的推荐分层是：
+
+- 正式公开 API：
+  - `SessionRuntime`
+  - `MinimalPredictionSession`
+  - `LocalAuthoritativeSession`
+  - `SessionRuntimeOptions`
+  - `SessionRuntimeContext`
+  - `SessionRuntimeContextBoundary`
+  - `ISessionRuntimeSharedService`
+  - `SessionRuntimeInputBoundary`
+  - `SessionInputSet`
+  - `IPlayerInput`
+  - `IInputPayloadCodec<TInput>`
+  - `SessionTickPipelineBoundary`
+  - `SessionTickStage`
+  - `SessionRunnerBuilder`
+  - `SessionRunnerDefinition`
+  - `SessionRunner`
+  - `SessionCheckpoint`
+- 保留兼容 API：
+  - `Session`
+  - `SessionRunner.Session`
+  - `SessionRunnerBuilder.WithSessionFactory(...)`
+  - `SessionRunnerBuilder.BuildSession()`
+  - `IInputCommand`
+- 内部运行时 API：
+  - `InputBuffer`
+  - 运行时内部历史 / checkpoint / materialize 辅助结构
+  - context 绑定、历史 cache 失效等 internal 协调入口
+
+这意味着：
+
+- 新代码默认应面向 `SessionRuntime / MinimalPredictionSession / LocalAuthoritativeSession / SessionRunnerBuilder`
+- 运行期共享对象若要进入 `Context`，应显式实现 `ISessionRuntimeSharedService`，并保持为非状态型 runtime service
+- 兼容 API 可以继续用来承接旧调用面，但不应再作为新样例、新 benchmark、新玩法入口
+- 内部策略对象不再作为对外设计承诺的一部分
+
+## 输入/历史策略边界
+
+当前主干对输入、历史帧和 checkpoint 的稳定公开契约，已通过：
+
+- `SessionRuntime.InputBoundary`
+- `SessionRuntime.DataBoundary`
+
+显式暴露到代码层。
+
+当前正式输入语义是：
+
+- 输入主模型是 `IPlayerInput`，而不是把 payload 序列化绑进核心输入对象
+- 输入按 `(playerId, tick)` 写入，并在每个 tick 聚合成 `SessionInputSet`
+- `SessionInputSet` 只包含实际写入的玩家输入，不会自动补默认输入或沿用上一帧输入
+- 同一 `(playerId, tick)` 的重复写入采用 `LatestWriteWins`
+- tick 内输入遍历顺序按玩家 ID 升序稳定排列
+- 若需要网络 / 文件 / 回放 payload，对接点应放在外层 `IInputPayloadCodec<TInput>`
+
+当前正式数据语义是：
+
+- 输入策略：按 `(playerId, tick)` 读写，属于固定窗口保留
+- 历史策略：按 tick 读取，live history 不足时可由 sampled snapshot 按需重建
+- checkpoint 策略：显式创建与恢复，主路径格式是 packed snapshot
+
+当前明确不作为稳定公开 API 承诺的是：
+
+- 缺失输入自动沿用上一帧
+- 内建默认输入合成
+- 内建网络传输序列化
+- 输入窗口大小
+- 历史窗口大小
+- sampled snapshot 采样间隔
+- materialize cache 大小
+- 可插拔 history store 或替代 checkpoint 格式
+
+这些参数现在属于内部实现调优，而不是对外设计承诺。也就是说，外部代码应依赖“能做什么”，而不是依赖当前默认 sizing 数值。
+
+## Tick 管线与结构提交边界
+
+当前主干对 Tick 生命周期与结构性修改可见性的稳定公开契约，已通过：
+
+- `SessionRuntime.TickPipeline`
+- `SessionRuntime.CurrentTickStage`
+
+显式暴露到代码层。
+
+当前正式语义是：
+
+- Tick 按 `InputApply -> Simulation -> StructuralCommit -> Cleanup -> HistoryCapture` 顺序推进
+- `Simulation` 阶段允许直接修改已存在组件的数据字段
+- 实体创建/销毁、组件增删等结构性修改会先进入延迟提交缓冲
+- 结构性修改在 `StructuralCommit` 阶段统一生效，而不是在后续系统中立即可见
+
+当前明确不作为稳定公开 API 承诺的是：
+
+- 在 `Simulation` 阶段立即看到同 Tick 的结构性修改
+- 运行期自由重排 Tick 阶段
+- 每个系统拥有独立结构提交阶段
+
+这意味着：Lattice 当前已经把“结构性修改何时生效”和“系统按什么轻量 phase 运行”写成正式运行时规则，但仍没有继续扩成更重的 `SystemGroup` / 依赖图 / 系统家族。
+
+## 兼容 API 边界
+
+当前仍保留、但不属于主链路的兼容面主要有：
+
+- `FrameSnapshot`
+- `Frame.CreateSnapshot() / RestoreFromSnapshot()`
+- `Filter<T...>`
+- `FilterOptimized<T...>`
+
+这些 API 仍保留的原因：
+
+- `FrameSnapshot` 仍适合对象图断言、显式恢复测试、单个组件存储恢复问题排查
+- `Filter<T...>` 与 `FilterOptimized<T...>` 仍给旧调用方留出迁移窗口，避免一次性大拆
+
+这些 API 不应进入的新用法：
+
+- 新的 checkpoint、history、rollback 路径不要再基于 `FrameSnapshot`
+- 新系统默认不要再写成 `Filter<T...>` / `FilterOptimized<T...>`，统一改走 `Frame.Query<T...>()`
+- 新的性能优化与 benchmark 不再围绕兼容 API 做主路径结论
+
+未来继续收口前，需要先满足的前置条件：
+
+- 兼容 API 在主仓库和玩法层的实际使用面已清点清楚
+- `PackedFrameSnapshot` 和 `Query<T...>()` 已覆盖现存主用途
+- 显式恢复测试、调试断言与迁移样例已有稳定替代说明
+
+当前实现中，上述兼容 API 都应视为“可用但非推荐”，不会作为后续主线能力继续扩展。
+
+带 usage inventory 的兼容面清单见：
+
+- `godot/scripts/lattice/ECS/CompatibilityInventory.md`
+
+## 已完成的最小闭环能力
+
+- 创建 `SessionRuntime` / `MinimalPredictionSession` 并驱动固定帧更新
+- 注册多个系统并按固定顺序执行
+- 创建实体、添加组件、执行查询与样例系统逻辑
+- 使用 `Frame.Query<T1, T2, T3, T4>()` 表达常见多组件玩法查询
+- 使用 `Frame.SetGlobal<T>() / GetGlobal<T>() / RemoveGlobal<T>()` 访问正式全局状态
+- 保存历史帧并按 Tick 读取
+- 创建检查点并恢复
+- 校验失败后回滚并重模拟
+- 用 `SessionRunnerBuilder` 进行代码侧最小装配
+
+## 当前仍然保守的地方
+
+Lattice 现在可以跑，但还没有进入“极限优化”阶段。当前仍然保守的点主要有：
+
+- 帧推进、回滚起点和历史补帧已切到 direct state copy
+- checkpoint 与 sampled history 已切到 packed snapshot，但公开 `FrameSnapshot` 兼容 API 仍然保留
+- 运行配置对象当前只公开 `DeltaTime / LocalPlayerId`，不提前暴露历史窗口与采样策略
+- 运行时仍以单线程和固定顺序为主
+- 系统层当前只支持轻量 phase，不包含系统树、依赖排序、多线程系统族
+- `Frame.Query` 当前正式强类型上限收口到 4 组件，更高维组合仍建议显式拆系统或配合 `MatchesFilter(...)`
+- 装配层仍是代码驱动，尚未引入更完整的资源化配置
+
+这不是 bug，而是当前阶段的刻意选择：先把正确性、边界和可维护性收紧，再继续往玩法和更深优化推进。
+
+## 主要测试入口
+
+功能与回归测试：
+
+- `Tests/ECS/SessionTests.cs`
+- `Tests/ECS/SystemSchedulerTests.cs`
+- `Tests/ECS/SessionRunnerTests.cs`
+- `Tests/ECS/SessionRunnerBuilderTests.cs`
+- `Tests/ECS/SystemSessionIntegrationTests.cs`
+- `Tests/ECS/SpawnerSystemIntegrationTests.cs`
+- `Tests/ECS/Runtime85RegressionTests.cs`
+
+性能与治理入口：
+
+- `Tests/Performance/SessionRuntimeBenchmarks.cs`
+- `Tests/Performance/SessionRuntimeBenchmarkGovernance.cs`
+- `Tests/Performance/BenchmarkGovernanceCliTests.cs`
+- `Tests/Performance/FPBenchmarks.cs`
+- `Tests/Performance/StorageBenchmark.cs`
+- `Benchmarks/Lattice.RuntimeBenchmarks.csproj`
+
+运行 Session 基线 benchmark：
+
+```bash
+dotnet run --configuration Release --project godot/scripts/lattice/Benchmarks/Lattice.RuntimeBenchmarks.csproj -- --filter "*SessionRuntimeBenchmarks*"
 ```
 
-### 4. Frame（帧）- **借鉴 FrameSyncEngine**
+运行 Session benchmark 治理校验：
 
-Frame 是 ECS 的数据容器，存储某一时刻的所有组件数据：
-
-```csharp
-public class Frame
-{
-	// 实体管理
-	public EntityManager Entities { get; }
-	
-	// 组件存储（Archetype/Chunk 布局）
-	public ComponentStore Components { get; }
-	
-	// 全局数据（如随机数种子、游戏时间）
-	public GlobalData Globals { get; }
-	
-	// 当前帧信息
-	public int Tick { get; }           // 帧号
-	public FP DeltaTime { get; }       // 固定时间步长
-}
+```bash
+dotnet run --configuration Release --project godot/scripts/lattice/Benchmarks/Lattice.RuntimeBenchmarks.csproj -- --govern
 ```
 
-### 5. World（世界）- **借鉴 FrameSyncEngine**
+如果已经有 BenchmarkDotNet CSV 报告，也可以直接校验：
 
-World 管理多个 Frame，支持预测-回滚：
-
-```csharp
-public class World
-{
-	// 多帧容器（关键设计，参考 FrameSyncEngine）
-	public Frame Verified { get; }      // 服务器确认的权威帧
-	public Frame Predicted { get; }     // 本地预测的最新帧
-	public Frame Previous { get; }      // 上一预测帧（用于插值）
-	
-	// 推进一帧
-	public void Tick(InputCommand input);
-	
-	// 状态快照
-	public StateSnapshot SaveSnapshot();
-	public void LoadSnapshot(StateSnapshot snapshot);
-	
-	// 校验和（用于验证确定性）
-	public ulong CalculateChecksum();
-}
+```bash
+dotnet run --configuration Release --project godot/scripts/lattice/Benchmarks/Lattice.RuntimeBenchmarks.csproj -- --govern-report BenchmarkDotNet.Artifacts/results/Lattice.Tests.Performance.SessionRuntimeBenchmarks-report.csv
 ```
 
-### 6. FP（定点数）- **Q16.16 格式**
+## 构建与验证
 
-确定性计算的基础，替代 `float`/`double`：
-
-```csharp
-public struct FP
-{
-	private long _raw;  // Q16.16: 高48位整数，低16位小数
-	
-	public static FP FromFloat(float f) => new((long)(f * ONE));
-	public float ToFloat() => _raw / (float)ONE;
-	
-	// 运算
-	public static FP operator +(FP a, FP b) => new(a._raw + b._raw);
-	public static FP operator *(FP a, FP b) => new((a._raw * b._raw) >> FRACTIONAL_BITS);
-	
-	// 常用常量
-	public static readonly FP Zero = new(0);
-	public static readonly FP One = new(ONE);
-	public static readonly FP Pi = new(205887L);  // 预计算
-}
+```bash
+dotnet build godot/Sideline.sln -nologo
+dotnet test godot/scripts/lattice/Tests/Lattice.Tests.csproj -nologo
 ```
 
-**数值范围**：
-- 整数部分：约 -32768 ~ 32767（安全乘法范围）
-- 小数精度：约 0.000015（1/65536）
-
----
-
-## 与 Godot 的边界
-
-| Lattice（纯逻辑） | Bridge（桥接层） | Godot（渲染） |
-|------------------|-----------------|--------------|
-| `World.Tick()` | 收集输入、调用 Tick | `_Process()` |
-| `Position (FP)` | `FP → float` 转换 | `Sprite2D.Position` |
-| `FPVector2` | 转换为 `Vector2` | 视觉呈现 |
-| 组件数据 | 同步到 Node 属性 | 动画、粒子效果 |
-| 确定性随机 (`RNG`) | 种子管理 | 无关（Godot 随机仅用于视觉） |
-| `Command` 输入 | `Input → Command` 转换 | `Input.IsActionPressed()` |
-
----
-
-## 参考 FrameSyncEngine 的设计决策
-
-### 借鉴的内容
-
-| 特性 | FrameSyncEngine 实现 | Lattice 计划实现 |
-|------|---------------------|-----------------|
-| **分层架构** | Core / Simulation / Runtime / Editor | Core / Simulation / Bridge（简化）|
-| **多帧设计** | Verified / Predicted / PredictedPrevious / PreviousUpdatePredicted | Verified / Predicted / Previous（简化）|
-| **定点数格式** | Q16.16 / Q48.16 (`long` 存储) | 相同，直接借鉴 |
-| **查找表** | `FPLut` 预计算三角函数 | 相同，预计算 sin/cos/atan2 |
-| **系统分类** | SystemBase / SystemGroup / SystemMainThread / SystemThreaded | SystemBase / SystemGroup（初期单线程）|
-| **输入缓冲** | `InputBuffer` 支持预测和回滚 | 相同实现 |
-| **校验和** | 每帧计算 Checksum 验证确定性 | 相同实现 |
-
-### 简化的内容
-
-| 特性 | FrameSyncEngine | Lattice（简化）|
-|------|-----------------|---------------|
-| **内存管理** | 自定义 `FrameHeap` / `Heap` Allocator | .NET 默认 + `ArrayPool`（后期再优化）|
-| **DSL 代码生成** | `.qtn` 文件编译为 C# | 手写 C#（后期考虑 Source Generator）|
-| **物理系统** | 内置确定性 2D/3D 物理 | 简单 AABB 碰撞起步 |
-| **导航寻路** | 内置 NavMesh 系统 | 无（或后期添加简单寻路）|
-| **多线程** | 支持 SystemThreaded | 初期单线程 |
-| **实体原型** | 完整的 EntityPrototype 系统 | 运行时创建 Entity（简化）|
-
----
-
-## 防呆设计哲学（Poka-Yoke）
-
-Lattice 的设计不仅关注功能实现，更注重**防止错误使用**。好的框架应该让正确的用法容易，让错误的用法困难（甚至不可能）。
-
-> **核心理念**：借鉴 FrameSyncEngine 使用 `unsafe` 形成的"心理门槛"效应，但用更安全、更明确的方式实现。
-
-### 为什么不用 `unsafe` 但保留其"警示效应"
-
-| 方案 | FrameSyncEngine | Lattice 设计 |
-|------|-----------------|--------------|
-| **性能优化** | 使用 `unsafe` 指针操作 | 使用 `AggressiveInlining`，性能相当 |
-| **规范限制** | `unsafe` 关键字强制审查 | 显式 API 命名 + 编译时禁止 |
-| **防呆效果** | 平台限制（Web导出困难） | 编译错误 > 运行时错误 |
-
-**关键洞察**：`unsafe` 的真正价值不在于性能，而在于它形成的**显式同意机制**——开发者必须 conscious 地使用危险功能。
-
-### 具体设计策略
-
-#### 1. 显式标记危险操作
-
-```csharp
-public struct FP
-{
-	// ✅ 安全的唯一入口
-	[MethodImpl(AggressiveInlining)]
-	public static FP FromRaw(long raw) => new() { RawValue = raw };
-	
-	// ⚠️ 危险操作：显式 UNSAFE 后缀 + 编译警告
-	#if DEBUG
-	[Obsolete("警告：FromFloat_UNSAFE 只能在编辑器配置中使用！模拟中会导致非确定性", true)]
-	#endif
-	public static FP FromFloat_UNSAFE(float f) => FromRaw((long)(f * ONE));
-}
-```
-
-#### 2. 编译时禁止隐式转换
-
-```csharp
-// ❌ 不提供隐式转换——让错误在编译期暴露
-// public static implicit operator FP(float f)  <-- 故意不提供
-
-// ✅ 显式转换——开发者必须 conscious 地调用
-FP a = FP.FromRaw(FP.Raw._1_5);  // 正确
-FP b = 1.5f;                      // 编译错误！
-FP c = FP.FromFloat_UNSAFE(1.5f); // 显式标记，代码审查时一眼看出问题
-```
-
-#### 3. API 设计原则
-
-| 原则 | 说明 | 示例 |
-|------|------|------|
-| **单一入口** | 确定性操作只有一条安全路径 | `FromRaw()` |
-| **显式危险** | 不安全的操作必须有 `UNSAFE` 后缀 | `FromFloat_UNSAFE()` |
-| **编译报错** | Debug 模式下危险操作直接编译失败 | `[Obsolete(..., true)]` |
-| **文档警示** | 每个危险操作必须有 XML 文档警告 | `/// <warning>` |
-
-#### 4. 心理门槛设计
-
-```csharp
-// 开发者写代码时的心理流程：
-// 1. 想写：FP pos = 1.5f;
-//    结果：编译错误！❌ 没有隐式转换
-//    思考：哦，必须用定点数...
-//
-// 2. 想写：FP pos = FP.FromFloat(1.5f);
-//    结果：编译错误！❌ 没有这个方法
-//    思考：看来框架禁止 float...
-//
-// 3. 发现：FP.FromFloat_UNSAFE(1.5f);
-//    结果：编译错误（Debug）⚠️ Obsolete 报错
-//    思考：这真的很危险，我应该用预计算的 Raw 值...
-//
-// 4. 最终：FP pos = FP.FromRaw(FP.Raw._1_50);
-//    结果：编译通过 ✅
-//    思考：这是正确的确定性做法！
-```
-
----
-
-## 确定性保障清单
-
-为确保帧同步的确定性，必须遵守以下规则：
-
-- [x] **数学运算**: 全部使用 `FP` 替代 `float`/`double`
-- [x] **随机数**: 使用种子化的 `RNG`，每帧确定性地生成
-- [x] **集合遍历**: 使用 `FSDictionary`/`FSList` 确保顺序一致
-- [x] **逻辑更新**: 使用固定时间步长（Fixed Timestep）
-- [x] **组件数据**: 全部使用值类型（`struct`），禁止引用类型
-- [x] **系统执行**: 按固定顺序执行，不依赖 `Dictionary` 遍历顺序
-- [x] **API 设计**: 危险操作必须有 `UNSAFE` 后缀，禁止隐式转换
-- [x] **跨平台 CI**: Linux/Windows/macOS/x64/ARM64 全平台验证
-
----
-
-## 性能优化特性
-
-Lattice 提供多层级的性能优化，所有优化均保持**确定性保证**：
-
-### 1. 无分支操作（Branchless）
-
-适用于热点代码（物理、AI、粒子），避免分支预测失败：
-
-```csharp
-// 标准版本（有分支，可读性好）
-FP Clamp(FP value, FP min, FP max)
-
-// 无分支版本（热点代码使用）
-FP ClampBranchless(FP value, FP min, FP max)  // 位运算实现
-```
-
-### 2. 整数 SIMD（⚠️ 仅整数，禁用浮点 SIMD）
-
-```csharp
-// ✅ 安全：整数 SIMD 完全确定性
-FPSimd.AddBatch(a, b, result);        // Vector<long>
-FPSimd.MultiplyBatch(a, b, result);   // Vector<long>
-
-// ❌ 禁止：浮点 SIMD 非确定性（不同 CPU 结果不同）
-// Vector<float> 和 Vector<double> 被明确禁止
-```
-
-**SIMD 支持状态**: SSE2 (128-bit) / AVX2 (256-bit) / NEON (ARM64)
-
-### 3. Unsafe 指针操作
-
-极致性能场景（确保内存安全的前提下）：
-
-```csharp
-unsafe {
-	fixed (FP* pa = a, pb = b, pr = result) {
-		FPUnsafe.Multiply(pa, pb, pr, count);  // 无边界检查
-	}
-}
-```
-
-### 4. LUT 缓存优化
-
-大数据集批处理，Cache-line 友好：
-
-```csharp
-FPLutCacheOptimized.SinBatch(angles, results);      // 2.2x 加速
-FPLutCacheOptimized.DistanceSquaredBatch(points);   // 6.6x 加速
-```
-
-### 5. 性能对比
-
-| 操作 | 标量 | SIMD/Unsafe | 加速比 |
-|------|------|-------------|--------|
-| 批量加法 | 1x | SIMD | 2-4x |
-| 批量乘法 | 1x | SIMD | 2-4x |
-| Sin/Cos 查表 | 1x | 缓存优化 | 2.2x |
-| 距离计算 | 1x | 缓存优化 | 6.6x (平方) |
-
----
-
-## 开发路线图
-
-### Phase 0 - 骨架验证（当前）
-- [x] 项目结构搭建
-- [x] 设计文档编写
-- [x] 确定性验证：694 测试通过，跨平台 CI 验证
-- [x] 最小 ECS 跑通：Entity + Component + 第一阶段 System 调度骨架
-
-### Phase 1 - 定点数与数学 ✅ 已完成
-- [x] `FP` 定点数实现（Q48.16，四舍五入乘法）
-- [x] 三角函数查找表（Sin/Cos/Tan/Atan，1024/4096 双精度）
-- [x] `FPVector2` / `FPVector3` 向量运算（含 Swizzle 生成器）
-- [x] 性能优化：无分支操作、SIMD 整数、Unsafe 指针
-- [x] `WorldPosition` 无限世界坐标系统
-- [x] LUT 文件版本管理与缓存优化
-
-### Phase 2 - 核心 ECS
-- [ ] `Frame` 单帧数据容器
-- [ ] `World` 多帧管理（Verified / Predicted）
-- [x] `ISystem / SystemBase / SystemGroup / SystemScheduler` 第一阶段调度骨架
-- [x] `frame.Filter<T...>()` 安全入口与系统级集成测试
-- [x] `CommandBuffer` 已支持已注册组件的 Create / Add / Set / Remove / Destroy 回放
-- [ ] 热点路径与更高级的专用布局继续收口
-- [ ] 确定性集合 `FSList` / `FSDictionary`
-
-### Phase 3 - 游戏集成
-- [ ] Sideline 角色移动（纯 Lattice 驱动）
-- [ ] Input 收集 → `Command` → 执行
-- [ ] `LatticeBridge` Godot 桥接层
-- [ ] `EntityView` 实体-节点同步
-
-### Phase 4 - 联机准备
-- [ ] `StateSnapshot` 状态快照
-- [ ] `InputBuffer` 输入缓冲区
-- [ ] 每帧 `Checksum` 计算
-- [ ] Lockstep 网络适配层
-
----
-
-## 命名约定
-
-- 接口：`I` 前缀，如 `IComponent`, `ISystem`
-- 结构体：PascalCase，如 `Position`, `Velocity`
-- 方法：PascalCase（遵循 C# 规范）
-- 私有字段：`_` 前缀 + camelCase，如 `_raw`, `_entities`
-- 定点数类型：前缀 `FP`，如 `FP`, `FPVector2`, `FPMath`
-- 确定性集合：前缀 `FS`，如 `FSList`, `FSDictionary`（FrameSync）
-
----
-
-## 参考资料
-
-### 框架参考
-- [FrameSyncEngine](https://github.com/ifreetalk) - Unity 商业级帧同步框架（主要参考）
-  - 架构设计：分层隔离、多帧管理
-  - 定点数实现：Q16.16 格式、查找表
-  - 系统调度：SystemGroup、执行顺序
-
-### 理论文章
-- [Overwatch Gameplay Architecture and Netcode](https://www.youtube.com/watch?v=W3aieHjyNvw)
-- [Unity DOTS 设计理念](https://unity.com/dots)
-- [Deterministic Lockstep 模式](https://www.gabrielgambetta.com/client-server-game-architecture.html)
-- [1500 Archers on a 28.8: Network Programming in Age of Empires and Beyond](https://www.gamedeveloper.com/programming/1500-archers-on-a-28-8-network-programming-in-age-of-empires-and-beyond)
-
----
-
-**状态**: 🚧 开发中（定点数库生产就绪，ECS 数据层可用，System 第一阶段骨架已接入）  
-**目标框架**: .NET 8  
-**测试状态**: 694 测试通过，跨平台 CI（Linux/Win/macOS/ARM64）  
-**最后更新**: 2026-03-24
+## 下一步关注点
+
+如果目标是让 Lattice 继续支撑更真实、更复杂的玩法负载，而不是继续修改底层设计，下一阶段最值得投入的方向是：
+
+- 继续清点兼容 API 的真实使用面，并决定下一轮是否可以继续缩小保留范围
+- 在正式 benchmark 治理已经到位的前提下，继续补真实玩法级 soak / stress / replay-like 验证
+- 持续压缩文档与实现之间的版本差
+- 把当前制度化边界继续带到更复杂的产品层场景里验证
+- 用真实玩法链路继续验证回滚和装配边界

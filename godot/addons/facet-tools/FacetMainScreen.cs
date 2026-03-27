@@ -75,6 +75,7 @@ public partial class FacetMainScreen : PanelContainer
     private Button _runtimeDiagnosticsUseCurrentPageButton = null!;
     private Button _runtimeDiagnosticsClearFocusButton = null!;
     private bool _isUiReady;
+    private bool _uiEventsConnected;
     private double _autoRefreshElapsedSeconds;
 
     public override void _Ready()
@@ -83,6 +84,7 @@ public partial class FacetMainScreen : PanelContainer
         {
             FacetEditorDiagnostics.Info("MainScreen", $"Ready parent={GetParent()?.GetType().Name ?? "<null>"}");
             Name = "FacetMainScreen";
+            SetAnchorsPreset(LayoutPreset.FullRect);
             SizeFlagsHorizontal = SizeFlags.ExpandFill;
             SizeFlagsVertical = SizeFlags.ExpandFill;
             CustomMinimumSize = Vector2.Zero;
@@ -94,13 +96,21 @@ public partial class FacetMainScreen : PanelContainer
             SetProcess(true);
             RefreshNow();
             UpdateResponsiveLayout();
-            CallDeferred(nameof(UpdateResponsiveLayout));
         }
         catch (Exception exception)
         {
             FacetEditorDiagnostics.Error("MainScreen", "Ready failed.", exception);
-            throw;
+            SetProcess(false);
+            ShowToolError("Facet 主工作区初始化失败，请查看 user://logs/facet-editor.log。", exception);
         }
+    }
+
+    public override void _ExitTree()
+    {
+        SetProcess(false);
+        DisconnectUiEvents();
+        _isUiReady = false;
+        _autoRefreshElapsedSeconds = 0.0d;
     }
 
     public override void _Notification(int what)
@@ -194,7 +204,7 @@ public partial class FacetMainScreen : PanelContainer
         catch (Exception exception)
         {
             FacetEditorDiagnostics.Error("MainScreen", "RefreshNow failed.", exception);
-            throw;
+            ShowToolError("Facet 主工作区刷新失败，请查看 user://logs/facet-editor.log。", exception);
         }
     }
 
@@ -262,17 +272,7 @@ public partial class FacetMainScreen : PanelContainer
         ApplyTheme();
         ConfigureFilters();
         ConfigureTabTitles();
-
-        _refreshButton.Pressed += RefreshNow;
-        _openLogButton.Pressed += OnOpenUserLogsPressed;
-        _currentPageReloadTestButton.Pressed += OnRunCurrentPageHotReloadTestPressed;
-        _dungeonReloadTestButton.Pressed += OnRunDungeonHotReloadTestPressed;
-        _refreshHotReloadStatusButton.Pressed += RefreshNow;
-        _openGeneratedLayoutLabButton.Pressed += OnOpenGeneratedLayoutLabPressed;
-        _openTemplateLayoutLabButton.Pressed += OnOpenTemplateLayoutLabPressed;
-        _refreshLayoutLabStatusButton.Pressed += RefreshNow;
-        _runtimeDiagnosticsUseCurrentPageButton.Pressed += OnUseCurrentPageDiagnosticsFocusPressed;
-        _runtimeDiagnosticsClearFocusButton.Pressed += OnClearDiagnosticsFocusPressed;
+        ConnectUiEvents();
     }
 
     private void ConfigureTabTitles()
@@ -349,6 +349,7 @@ public partial class FacetMainScreen : PanelContainer
 
     private void ConfigureFilters()
     {
+        DisconnectUiEvents();
         _sessionFilter.TextChanged += OnFilterChanged;
         _categoryFilter.TextChanged += OnFilterChanged;
 
@@ -371,6 +372,71 @@ public partial class FacetMainScreen : PanelContainer
         _runtimeDiagnosticsObserverChannelFilter.AddItem("工具", 5);
         _runtimeDiagnosticsObserverChannelFilter.Select(0);
         _runtimeDiagnosticsObserverChannelFilter.ItemSelected += OnDiagnosticsObserverChannelSelected;
+    }
+
+    private void ConnectUiEvents()
+    {
+        if (_uiEventsConnected)
+        {
+            return;
+        }
+
+        _refreshButton.Pressed += RefreshNow;
+        _openLogButton.Pressed += OnOpenUserLogsPressed;
+        _currentPageReloadTestButton.Pressed += OnRunCurrentPageHotReloadTestPressed;
+        _dungeonReloadTestButton.Pressed += OnRunDungeonHotReloadTestPressed;
+        _refreshHotReloadStatusButton.Pressed += RefreshNow;
+        _openGeneratedLayoutLabButton.Pressed += OnOpenGeneratedLayoutLabPressed;
+        _openTemplateLayoutLabButton.Pressed += OnOpenTemplateLayoutLabPressed;
+        _refreshLayoutLabStatusButton.Pressed += RefreshNow;
+        _runtimeDiagnosticsUseCurrentPageButton.Pressed += OnUseCurrentPageDiagnosticsFocusPressed;
+        _runtimeDiagnosticsClearFocusButton.Pressed += OnClearDiagnosticsFocusPressed;
+        _uiEventsConnected = true;
+    }
+
+    private void DisconnectUiEvents()
+    {
+        if (_sessionFilter != null)
+        {
+            _sessionFilter.TextChanged -= OnFilterChanged;
+        }
+
+        if (_categoryFilter != null)
+        {
+            _categoryFilter.TextChanged -= OnFilterChanged;
+        }
+
+        if (_levelFilter != null)
+        {
+            _levelFilter.ItemSelected -= OnLevelSelected;
+        }
+
+        if (_runtimeDiagnosticsFocusFilter != null)
+        {
+            _runtimeDiagnosticsFocusFilter.TextChanged -= OnDiagnosticsObserverFilterChanged;
+        }
+
+        if (_runtimeDiagnosticsObserverChannelFilter != null)
+        {
+            _runtimeDiagnosticsObserverChannelFilter.ItemSelected -= OnDiagnosticsObserverChannelSelected;
+        }
+
+        if (!_uiEventsConnected)
+        {
+            return;
+        }
+
+        _refreshButton.Pressed -= RefreshNow;
+        _openLogButton.Pressed -= OnOpenUserLogsPressed;
+        _currentPageReloadTestButton.Pressed -= OnRunCurrentPageHotReloadTestPressed;
+        _dungeonReloadTestButton.Pressed -= OnRunDungeonHotReloadTestPressed;
+        _refreshHotReloadStatusButton.Pressed -= RefreshNow;
+        _openGeneratedLayoutLabButton.Pressed -= OnOpenGeneratedLayoutLabPressed;
+        _openTemplateLayoutLabButton.Pressed -= OnOpenTemplateLayoutLabPressed;
+        _refreshLayoutLabStatusButton.Pressed -= RefreshNow;
+        _runtimeDiagnosticsUseCurrentPageButton.Pressed -= OnUseCurrentPageDiagnosticsFocusPressed;
+        _runtimeDiagnosticsClearFocusButton.Pressed -= OnClearDiagnosticsFocusPressed;
+        _uiEventsConnected = false;
     }
 
     private static StyleBoxFlat CreateScreenPanelStyle()
@@ -485,9 +551,17 @@ public partial class FacetMainScreen : PanelContainer
 
     private void OnOpenUserLogsPressed()
     {
-        string userLogsDirectory = ProjectSettings.GlobalizePath("user://logs");
-        FacetEditorDiagnostics.Info("MainScreen", $"OpenUserLogs path={userLogsDirectory}");
-        OS.ShellOpen(userLogsDirectory);
+        try
+        {
+            string userLogsDirectory = ProjectSettings.GlobalizePath("user://logs");
+            FacetEditorDiagnostics.Info("MainScreen", $"OpenUserLogs path={userLogsDirectory}");
+            OS.ShellOpen(userLogsDirectory);
+        }
+        catch (Exception exception)
+        {
+            FacetEditorDiagnostics.Error("MainScreen", "OpenUserLogs failed.", exception);
+            ShowToolError("打开日志目录失败，请查看 user://logs/facet-editor.log。", exception);
+        }
     }
 
     private void UpdateMetrics(int totalCount, int filteredCount, int sessionCount, int categoryCount)
@@ -1368,6 +1442,59 @@ public partial class FacetMainScreen : PanelContainer
         }
 
         return node;
+    }
+
+    public void ShowToolError(string summary, Exception exception)
+    {
+        string detail = $"{summary}\n{exception.GetType().Name}: {exception.Message}";
+        Label? logSummaryLabel = GetNodeOrNull<Label>("%LogSummaryLabel");
+        RichTextLabel? entriesLabel = GetNodeOrNull<RichTextLabel>("%EntriesLabel");
+        Label? hotReloadStatusLabel = GetNodeOrNull<Label>("%HotReloadBridgeStatusLabel");
+        Label? layoutStatusLabel = GetNodeOrNull<Label>("%LayoutLabBridgeStatusLabel");
+        Label? runtimeStatusLabel = GetNodeOrNull<Label>("%RuntimeDiagnosticsStatusLabel");
+        RichTextLabel? snapshotLabel = GetNodeOrNull<RichTextLabel>("%RuntimeDiagnosticsSnapshotLabel");
+        RichTextLabel? validationLabel = GetNodeOrNull<RichTextLabel>("%RuntimeDiagnosticsValidationLabel");
+        RichTextLabel? observerLabel = GetNodeOrNull<RichTextLabel>("%RuntimeDiagnosticsObserverLabel");
+
+        if (logSummaryLabel != null)
+        {
+            logSummaryLabel.Text = detail;
+        }
+
+        if (entriesLabel != null)
+        {
+            entriesLabel.Text = detail;
+        }
+
+        if (hotReloadStatusLabel != null)
+        {
+            hotReloadStatusLabel.Text = detail;
+        }
+
+        if (layoutStatusLabel != null)
+        {
+            layoutStatusLabel.Text = detail;
+        }
+
+        if (runtimeStatusLabel != null)
+        {
+            runtimeStatusLabel.Text = detail;
+        }
+
+        if (snapshotLabel != null)
+        {
+            snapshotLabel.Text = detail;
+        }
+
+        if (validationLabel != null)
+        {
+            validationLabel.Text = detail;
+        }
+
+        if (observerLabel != null)
+        {
+            observerLabel.Text = detail;
+        }
     }
 
     private sealed record FacetEditorLogEntry(

@@ -1,6 +1,3 @@
-// Copyright (c) 2026 Sideline Authors. All rights reserved.
-// Licensed under GPL-3.0.
-
 using System;
 using System.Collections.Generic;
 using Lattice.ECS.Core;
@@ -10,587 +7,501 @@ using Xunit;
 
 namespace Lattice.Tests.ECS
 {
-    public sealed class SystemSchedulerTests
+    public class SystemSchedulerTests
     {
         [Fact]
-        public void InitializeAndUpdate_RunSystemsInRegistrationOrder()
+        public void Update_ExecutesSystemsByPhaseThenRegistrationOrder()
         {
-            var events = new List<string>();
             using var frame = new Frame(8);
+            var events = new List<string>();
             var scheduler = new SystemScheduler();
 
-            scheduler.Add(new RecordingSystem("A", events));
-            scheduler.Add(new RecordingSystem("B", events));
+            scheduler.Add(new RecordingSystem("resolve", events, SystemPhase.Resolve));
+            scheduler.Add(new RecordingSystem("simulation", events, SystemPhase.Simulation));
+            scheduler.Add(new RecordingSystem("input", events, SystemPhase.Input));
+            scheduler.Add(new RecordingSystem("cleanup", events, SystemPhase.Cleanup));
+            scheduler.Add(new RecordingSystem("pre", events, SystemPhase.PreSimulation));
 
             scheduler.Initialize(frame);
-            scheduler.Update(frame, FP.One);
+            scheduler.Update(frame, FP.Zero);
 
             Assert.Equal(
                 new[]
                 {
-                    "A:init",
-                    "B:init",
-                    "A:enabled",
-                    "B:enabled",
-                    "A:update",
-                    "B:update"
+                    "init:input",
+                    "init:pre",
+                    "init:simulation",
+                    "init:resolve",
+                    "init:cleanup",
+                    "update:input",
+                    "update:pre",
+                    "update:simulation",
+                    "update:resolve",
+                    "update:cleanup"
                 },
                 events);
         }
 
         [Fact]
-        public void GroupUpdate_UsesDepthFirstRegistrationOrder()
+        public void Boundary_ExposesFlatPhasedOrderedContract()
         {
-            var events = new List<string>();
-            using var frame = new Frame(8);
             var scheduler = new SystemScheduler();
 
-            var group = new SystemGroup(
-                "Simulation",
-                new RecordingSystem("Movement", events),
-                new RecordingSystem("Lifetime", events));
+            SystemSchedulerBoundary boundary = scheduler.Boundary;
 
-            scheduler.Add(group);
-            scheduler.Add(new RecordingSystem("Cleanup", events));
+            Assert.Equal(SystemSchedulerKind.FlatPhasedOrdered, boundary.SchedulerKind);
+            Assert.True(boundary.Supports(SystemSchedulerCapability.OrderedExecution));
+            Assert.True(boundary.Supports(SystemSchedulerCapability.ExplicitLifecycle));
+            Assert.True(boundary.Supports(SystemSchedulerCapability.StaticRegistrationBeforeInitialize));
+            Assert.True(boundary.Supports(SystemSchedulerCapability.PhasedExecution));
+            Assert.True(boundary.Supports(SystemSchedulerCapability.AuthoringContractValidation));
+            Assert.True(boundary.ExplicitlyDoesNotSupport(UnsupportedSystemSchedulerCapability.RuntimeMutation));
+            Assert.True(boundary.ExplicitlyDoesNotSupport(UnsupportedSystemSchedulerCapability.EnableDisable));
+            Assert.True(boundary.ExplicitlyDoesNotSupport(UnsupportedSystemSchedulerCapability.DependencyOrdering));
+            Assert.True(boundary.ExplicitlyDoesNotSupport(UnsupportedSystemSchedulerCapability.HierarchicalGrouping));
+            Assert.True(boundary.ExplicitlyDoesNotSupport(UnsupportedSystemSchedulerCapability.ThreadedExecution));
+        }
+
+        [Fact]
+        public void Update_PreservesRegistrationOrderWithinSamePhase()
+        {
+            using var frame = new Frame(8);
+            var events = new List<string>();
+            var scheduler = new SystemScheduler();
+
+            scheduler.Add(new RecordingSystem("sim-a", events, SystemPhase.Simulation));
+            scheduler.Add(new RecordingSystem("sim-b", events, SystemPhase.Simulation));
+            scheduler.Add(new RecordingSystem("resolve-a", events, SystemPhase.Resolve));
+            scheduler.Add(new RecordingSystem("resolve-b", events, SystemPhase.Resolve));
 
             scheduler.Initialize(frame);
-            scheduler.Update(frame, FP.One);
+            scheduler.Update(frame, FP.Zero);
 
             Assert.Equal(
                 new[]
                 {
-                    "Movement:init",
-                    "Lifetime:init",
-                    "Cleanup:init",
-                    "Movement:enabled",
-                    "Lifetime:enabled",
-                    "Cleanup:enabled",
-                    "Movement:update",
-                    "Lifetime:update",
-                    "Cleanup:update"
+                    "init:sim-a",
+                    "init:sim-b",
+                    "init:resolve-a",
+                    "init:resolve-b",
+                    "update:sim-a",
+                    "update:sim-b",
+                    "update:resolve-a",
+                    "update:resolve-b"
                 },
                 events);
         }
 
         [Fact]
-        public void DisabledByDefaultSystem_IsInitializedButSkippedUntilEnabled()
+        public void Initialize_AndShutdown_AreIdempotent()
         {
-            var events = new List<string>();
             using var frame = new Frame(8);
+            var system = new CountingSystem();
             var scheduler = new SystemScheduler();
-            var disabled = new DisabledRecordingSystem("Disabled", events);
 
-            scheduler.Add(disabled);
+            scheduler.Add(system);
+
             scheduler.Initialize(frame);
-            scheduler.Update(frame, FP.One);
+            scheduler.Initialize(frame);
+            scheduler.Shutdown(frame);
+            scheduler.Shutdown(frame);
+            scheduler.Initialize(frame);
 
-            Assert.Equal(new[] { "Disabled:init" }, events);
-            Assert.False(scheduler.IsEnabled(disabled));
-
-            scheduler.Enable(disabled);
-            scheduler.Update(frame, FP.One);
-
-            Assert.Equal(
-                new[]
-                {
-                    "Disabled:init",
-                    "Disabled:enabled",
-                    "Disabled:update"
-                },
-                events);
-            Assert.True(scheduler.IsEnabled(disabled));
+            Assert.Equal(2, system.InitCount);
+            Assert.Equal(1, system.DestroyCount);
         }
 
         [Fact]
-        public void DisableGroup_DisablesAllChildrenInHierarchy()
+        public void Lifecycle_UsesSamePhaseOrderForShutdown()
         {
-            var events = new List<string>();
             using var frame = new Frame(8);
+            var events = new List<string>();
             var scheduler = new SystemScheduler();
 
-            var child = new RecordingSystem("Child", events);
-            var group = new SystemGroup("Group", child);
+            scheduler.Add(new RecordingSystem("resolve", events, SystemPhase.Resolve));
+            scheduler.Add(new RecordingSystem("input", events, SystemPhase.Input));
+            scheduler.Add(new RecordingSystem("simulation", events, SystemPhase.Simulation));
 
-            scheduler.Add(group);
             scheduler.Initialize(frame);
-
-            scheduler.Disable(group);
-            scheduler.Update(frame, FP.One);
-
-            Assert.Equal(
-                new[]
-                {
-                    "Child:init",
-                    "Child:enabled",
-                    "Child:disabled"
-                },
-                events);
-
-            scheduler.Enable(group);
-            scheduler.Update(frame, FP.One);
+            scheduler.Update(frame, FP.Zero);
+            scheduler.Shutdown(frame);
 
             Assert.Equal(
                 new[]
                 {
-                    "Child:init",
-                    "Child:enabled",
-                    "Child:disabled",
-                    "Child:enabled",
-                    "Child:update"
+                    "init:input",
+                    "init:simulation",
+                    "init:resolve",
+                    "update:input",
+                    "update:simulation",
+                    "update:resolve",
+                    "destroy:input",
+                    "destroy:simulation",
+                    "destroy:resolve"
                 },
                 events);
         }
 
         [Fact]
-        public void AddAfterInitialize_InitializesImmediatelyAndParticipatesInSubsequentUpdates()
+        public void Remove_BeforeInitialize_PreventsFutureLifecycle()
         {
-            var events = new List<string>();
             using var frame = new Frame(8);
+            var events = new List<string>();
             var scheduler = new SystemScheduler();
+            var first = new RecordingSystem("A", events);
+            var second = new RecordingSystem("B", events);
 
-            scheduler.Add(new RecordingSystem("Existing", events));
+            scheduler.Add(first);
+            scheduler.Add(second);
+
+            bool removed = scheduler.Remove(first);
+
             scheduler.Initialize(frame);
+            scheduler.Update(frame, FP.Zero);
 
-            scheduler.Add(new RecordingSystem("Late", events));
-            scheduler.Update(frame, FP.One);
-
+            Assert.True(removed);
             Assert.Equal(
                 new[]
                 {
-                    "Existing:init",
-                    "Existing:enabled",
-                    "Late:init",
-                    "Late:enabled",
-                    "Existing:update",
-                    "Late:update"
+                    "init:B",
+                    "update:B"
                 },
                 events);
         }
 
         [Fact]
-        public void DisableByType_DisablesAllMatchingSystemsUntilEnabledAgain()
+        public void Add_RejectsNullAndDuplicateInstance()
         {
-            var events = new List<string>();
+            var scheduler = new SystemScheduler();
+            var system = new CountingSystem();
+
+            Assert.Throws<ArgumentNullException>(() => scheduler.Add(null!));
+
+            scheduler.Add(system);
+
+            Assert.Throws<InvalidOperationException>(() => scheduler.Add(system));
+        }
+
+        [Fact]
+        public void Add_RejectsWritableGlobalSystemsOutsideAllowedPhases()
+        {
+            var scheduler = new SystemScheduler();
+            var system = new ContractSystem(
+                SystemPhase.Simulation,
+                new SystemAuthoringContract(
+                    SystemFrameAccess.ReadWrite,
+                    SystemGlobalAccess.ReadWrite));
+
+            InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() => scheduler.Add(system));
+
+            Assert.Contains("global", exception.Message, StringComparison.OrdinalIgnoreCase);
+        }
+
+        [Fact]
+        public void Update_RejectsStructuralChangesWithoutExplicitContract()
+        {
             using var frame = new Frame(8);
             var scheduler = new SystemScheduler();
-
-            scheduler.Add(new TaggedRecordingSystem("A", events));
-            scheduler.Add(new TaggedRecordingSystem("B", events));
-
+            scheduler.Add(new StructuralMutationSystem(SystemAuthoringContract.Default));
             scheduler.Initialize(frame);
-            scheduler.Disable<TaggedRecordingSystem>();
-            scheduler.Update(frame, FP.One);
 
-            Assert.Equal(
-                new[]
+            InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() => scheduler.Update(frame, FP.Zero));
+
+            Assert.Contains(nameof(Frame.CreateEntity), exception.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void Update_AllowsDeclaredStructuralChanges()
+        {
+            using var frame = new Frame(8);
+            var scheduler = new SystemScheduler();
+            scheduler.Add(new StructuralMutationSystem(new SystemAuthoringContract(
+                SystemFrameAccess.ReadWrite,
+                SystemGlobalAccess.None,
+                SystemStructuralChangeAccess.Deferred)));
+            scheduler.Initialize(frame);
+
+            scheduler.Update(frame, FP.Zero);
+
+            Assert.Equal(1, frame.EntityCount);
+        }
+
+        [Fact]
+        public void Update_RejectsGlobalReadsWithoutExplicitContract()
+        {
+            ComponentRegistry.Register<SchedulerGlobalStateComponent>(ComponentFlags.Singleton, ComponentCallbacks.Empty);
+
+            using var frame = new Frame(8);
+            frame.SetGlobal(new SchedulerGlobalStateComponent { Value = 7 });
+
+            var scheduler = new SystemScheduler();
+            scheduler.Add(new GlobalProbeSystem(
+                new SystemAuthoringContract(SystemFrameAccess.ReadWrite),
+                static currentFrame => currentFrame.TryGetGlobal(out SchedulerGlobalStateComponent _)));
+            scheduler.Initialize(frame);
+
+            InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() => scheduler.Update(frame, FP.Zero));
+
+            Assert.Contains(nameof(Frame.TryGetGlobal), exception.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void Update_AllowsReadOnlyGlobalAccessThroughTryGetGlobal()
+        {
+            ComponentRegistry.Register<SchedulerGlobalStateComponent>(ComponentFlags.Singleton, ComponentCallbacks.Empty);
+
+            using var frame = new Frame(8);
+            frame.SetGlobal(new SchedulerGlobalStateComponent { Value = 11 });
+
+            int observedValue = 0;
+            var scheduler = new SystemScheduler();
+            scheduler.Add(new GlobalProbeSystem(
+                new SystemAuthoringContract(
+                    SystemFrameAccess.ReadOnly,
+                    SystemGlobalAccess.ReadOnly),
+                currentFrame =>
                 {
-                    "A:init",
-                    "B:init",
-                    "A:enabled",
-                    "B:enabled",
-                    "B:disabled",
-                    "A:disabled"
-                },
-                events);
-            Assert.False(scheduler.IsEnabled<TaggedRecordingSystem>());
-
-            scheduler.Enable<TaggedRecordingSystem>();
-            scheduler.Update(frame, FP.One);
-
-            Assert.Equal(
-                new[]
-                {
-                    "A:init",
-                    "B:init",
-                    "A:enabled",
-                    "B:enabled",
-                    "B:disabled",
-                    "A:disabled",
-                    "A:enabled",
-                    "B:enabled",
-                    "A:update",
-                    "B:update"
-                },
-                events);
-            Assert.True(scheduler.IsEnabled<TaggedRecordingSystem>());
-        }
-
-        [Fact]
-        public void Dispose_CallsSystemsInReverseRegistrationOrder()
-        {
-            var events = new List<string>();
-            using var frame = new Frame(8);
-            var scheduler = new SystemScheduler();
-
-            scheduler.Add(new RecordingSystem("A", events));
-            scheduler.Add(new RecordingSystem("B", events));
-
-            scheduler.Initialize(frame);
-            scheduler.Dispose(frame);
-
-            Assert.Equal(
-                new[]
-                {
-                    "A:init",
-                    "B:init",
-                    "A:enabled",
-                    "B:enabled",
-                    "B:disabled",
-                    "B:dispose",
-                    "A:disabled",
-                    "A:dispose"
-                },
-                events);
-        }
-
-        [Fact]
-        public void UpdateBeforeInitialize_ThrowsInvalidOperationException()
-        {
-            using var frame = new Frame(8);
-            var scheduler = new SystemScheduler();
-
-            scheduler.Add(new RecordingSystem("A", new List<string>()));
-
-            Assert.Throws<InvalidOperationException>(() => scheduler.Update(frame, FP.One));
-        }
-
-        [Fact]
-        public void InitializeTwice_ThrowsInvalidOperationException()
-        {
-            using var frame = new Frame(8);
-            var scheduler = new SystemScheduler();
-
-            scheduler.Add(new RecordingSystem("A", new List<string>()));
+                    Assert.True(currentFrame.TryGetGlobal(out SchedulerGlobalStateComponent state));
+                    observedValue = state.Value;
+                }));
             scheduler.Initialize(frame);
 
-            Assert.Throws<InvalidOperationException>(() => scheduler.Initialize(frame));
+            scheduler.Update(frame, FP.Zero);
+
+            Assert.Equal(11, observedValue);
         }
 
         [Fact]
-        public void DisposeBeforeInitialize_ThrowsInvalidOperationException()
+        public void Update_RejectsGlobalWritesWhenContractIsReadOnly()
         {
+            ComponentRegistry.Register<SchedulerGlobalStateComponent>(ComponentFlags.Singleton, ComponentCallbacks.Empty);
+
             using var frame = new Frame(8);
+            frame.SetGlobal(new SchedulerGlobalStateComponent { Value = 3 });
+
             var scheduler = new SystemScheduler();
-
-            scheduler.Add(new RecordingSystem("A", new List<string>()));
-
-            Assert.Throws<InvalidOperationException>(() => scheduler.Dispose(frame));
-        }
-
-        [Fact]
-        public void MutationDuringUpdate_ThrowsInvalidOperationException()
-        {
-            using var frame = new Frame(8);
-            var scheduler = new SystemScheduler();
-            var mutator = new MutatingSystem(scheduler);
-
-            scheduler.Add(mutator);
+            scheduler.Add(new GlobalProbeSystem(
+                new SystemAuthoringContract(
+                    SystemFrameAccess.ReadWrite,
+                    SystemGlobalAccess.ReadOnly),
+                currentFrame => currentFrame.SetGlobal(new SchedulerGlobalStateComponent { Value = 9 })));
             scheduler.Initialize(frame);
 
-            Assert.Throws<InvalidOperationException>(() => scheduler.Update(frame, FP.One));
+            InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() => scheduler.Update(frame, FP.Zero));
+
+            Assert.Contains(nameof(Frame.SetGlobal), exception.Message, StringComparison.Ordinal);
         }
 
         [Fact]
-        public void GetNodes_ExportsStableTreeAndExecutionOrder()
+        public void ISystem_DefaultPhase_IsSimulation()
+        {
+            ISystem system = new CountingSystem();
+
+            Assert.Equal(SystemPhase.Simulation, system.Phase);
+        }
+
+        [Fact]
+        public void ISystem_DefaultContract_DoesNotAllowGlobalsOrStructuralChanges()
+        {
+            ISystem system = new CountingSystem();
+
+            Assert.Equal(SystemAuthoringContract.Default, system.Contract);
+            Assert.False(system.Contract.AllowsGlobalReads);
+            Assert.False(system.Contract.AllowsGlobalWrites);
+            Assert.False(system.Contract.AllowsStructuralChanges);
+        }
+
+        [Fact]
+        public void Update_BeforeInitialize_Throws()
         {
             using var frame = new Frame(8);
             var scheduler = new SystemScheduler();
+            scheduler.Add(new CountingSystem());
 
-            var movement = new RecordingSystem(
-                "Movement",
-                new List<string>(),
-                new SystemMetadata(
-                    Order: -10,
-                    Kind: SystemExecutionKind.HotPath,
-                    Category: "Simulation",
-                    DebugCategory: "Simulation/Movement",
-                    AllowRuntimeToggle: true));
-            var lifetime = new RecordingSystem("Lifetime", new List<string>());
-            var group = new SystemGroup("Simulation", movement, lifetime);
-            var cleanup = new RecordingSystem(
-                "Cleanup",
-                new List<string>(),
-                new SystemMetadata(
-                    Order: 20,
-                    Kind: SystemExecutionKind.MainThread,
-                    Category: "Cleanup",
-                    DebugCategory: "Cleanup/Final",
-                    AllowRuntimeToggle: false));
+            Assert.Throws<InvalidOperationException>(() => scheduler.Update(frame, FP.Zero));
+        }
 
-            scheduler.Add(group);
-            scheduler.Add(cleanup);
+        [Fact]
+        public void Add_WhenInitialized_RequiresShutdownFirst()
+        {
+            using var frame = new Frame(8);
+            var scheduler = new SystemScheduler();
+            scheduler.Add(new CountingSystem());
             scheduler.Initialize(frame);
 
-            SystemNodeInfo[] nodes = scheduler.GetNodes();
-            Assert.Equal(4, nodes.Length);
-            Assert.Equal("Simulation", nodes[0].Name);
-            Assert.True(nodes[0].IsGroup);
-            Assert.True(nodes[0].IsRoot);
-            Assert.True(nodes[0].Active);
-            Assert.Equal(SystemExecutionKind.Group, nodes[0].Kind);
-
-            Assert.Equal("Movement", nodes[1].Name);
-            Assert.Equal("Simulation", nodes[1].ParentName);
-            Assert.Equal(1, nodes[1].Depth);
-            Assert.True(nodes[1].Active);
-            Assert.Equal(-10, nodes[1].Order);
-            Assert.Equal(SystemExecutionKind.HotPath, nodes[1].Kind);
-            Assert.Equal("Simulation", nodes[1].Category);
-            Assert.Equal("Simulation/Movement", nodes[1].DebugCategory);
-            Assert.True(nodes[1].AllowRuntimeToggle);
-
-            Assert.Equal("Cleanup", nodes[3].Name);
-            Assert.True(nodes[3].IsRoot);
-            Assert.Equal(0, nodes[3].Depth);
-            Assert.Equal(20, nodes[3].Order);
-            Assert.False(nodes[3].AllowRuntimeToggle);
-
-            SystemNodeInfo[] execution = scheduler.GetExecutionOrder();
-            Assert.Equal(new[] { "Movement", "Lifetime", "Cleanup" }, Array.ConvertAll(execution, static x => x.Name));
-
-            Assert.True(scheduler.TryGetNode(cleanup, out SystemNodeInfo cleanupNode));
-            Assert.Equal("Cleanup", cleanupNode.Name);
-
-            SystemNodeInfo[] named = scheduler.GetNodes("Movement");
-            Assert.Single(named);
-            Assert.Equal("Movement", named[0].Name);
-
-            SystemNodeInfo[] typed = scheduler.GetNodes<RecordingSystem>();
-            Assert.Equal(3, typed.Length);
+            Assert.Throws<InvalidOperationException>(() => scheduler.Add(new CountingSystem()));
         }
 
         [Fact]
-        public void ExecutionOrder_UsesMetadataOrderBeforeRegistrationOrder()
+        public void Remove_WhenInitialized_RequiresShutdownFirst()
         {
             using var frame = new Frame(8);
             var scheduler = new SystemScheduler();
-            var events = new List<string>();
-
-            scheduler.Add(new RecordingSystem("Late", events, new SystemMetadata(10, SystemExecutionKind.MainThread, "Sim", null, true)));
-            scheduler.Add(new RecordingSystem("First", events, new SystemMetadata(-20, SystemExecutionKind.MainThread, "Sim", null, true)));
-            scheduler.Add(new RecordingSystem("TieA", events, new SystemMetadata(10, SystemExecutionKind.MainThread, "Sim", null, true)));
-
+            var system = new CountingSystem();
+            scheduler.Add(system);
             scheduler.Initialize(frame);
-            scheduler.Update(frame, FP.One);
 
-            Assert.Equal(
-                new[] { "First", "Late", "TieA" },
-                Array.ConvertAll(scheduler.GetExecutionOrder(), static x => x.Name));
+            Assert.Throws<InvalidOperationException>(() => scheduler.Remove(system));
         }
 
         [Fact]
-        public void GroupChildren_UseMetadataOrderBeforeRegistrationOrder()
+        public void Clear_WhenInitialized_RequiresShutdownFirst()
         {
             using var frame = new Frame(8);
             var scheduler = new SystemScheduler();
-            var events = new List<string>();
-
-            var group = new SystemGroup(
-                "Simulation",
-                new RecordingSystem("B", events, new SystemMetadata(10, SystemExecutionKind.MainThread, "Sim", null, true)),
-                new RecordingSystem("A", events, new SystemMetadata(-10, SystemExecutionKind.MainThread, "Sim", null, true)),
-                new RecordingSystem("C", events, new SystemMetadata(10, SystemExecutionKind.MainThread, "Sim", null, true)));
-
-            scheduler.Add(group);
-            scheduler.Initialize(frame);
-            scheduler.Update(frame, FP.One);
-
-            Assert.Equal(
-                new[] { "A", "B", "C" },
-                Array.ConvertAll(scheduler.GetExecutionOrder(), static x => x.Name));
-        }
-
-        [Fact]
-        public void RuntimeToggleDisabledSystem_RejectsEnableAndDisableAfterInitialize()
-        {
-            using var frame = new Frame(8);
-            var scheduler = new SystemScheduler();
-            var system = new DisabledRecordingSystem(
-                "Locked",
-                new List<string>(),
-                new SystemMetadata(
-                    Order: 0,
-                    Kind: SystemExecutionKind.MainThread,
-                    Category: "Locked",
-                    DebugCategory: "Locked",
-                    AllowRuntimeToggle: false));
+            var system = new CountingSystem();
 
             scheduler.Add(system);
             scheduler.Initialize(frame);
 
-            Assert.Throws<InvalidOperationException>(() => scheduler.Enable(system));
-            Assert.Throws<InvalidOperationException>(() => scheduler.Enable<DisabledRecordingSystem>());
+            Assert.Throws<InvalidOperationException>(() => scheduler.Clear());
+
+            scheduler.Shutdown(frame);
+            scheduler.Clear();
+
+            Assert.Equal(0, scheduler.Count);
+            Assert.Equal(1, system.InitCount);
+            Assert.Equal(1, system.DestroyCount);
         }
 
-        [Fact]
-        public void Trace_EmitsOrderedLifecycleEventsWithAccurateSnapshots()
-        {
-            using var frame = new Frame(8);
-            var scheduler = new SystemScheduler();
-            var traces = new List<SystemSchedulerTraceEvent>();
-
-            scheduler.Trace = traceEvent =>
-            {
-                Assert.True(scheduler.CurrentSystem.HasValue);
-                Assert.Equal(traceEvent.Name, scheduler.CurrentSystem.Value.Name);
-                traces.Add(traceEvent);
-            };
-
-            scheduler.Add(
-                new RecordingSystem(
-                    "Tracked",
-                    new List<string>(),
-                    new SystemMetadata(
-                        Order: -5,
-                        Kind: SystemExecutionKind.HotPath,
-                        Category: "Simulation",
-                        DebugCategory: "Simulation/Tracked",
-                        AllowRuntimeToggle: true)));
-
-            scheduler.Initialize(frame);
-            scheduler.Update(frame, FP.One);
-            scheduler.Dispose(frame);
-
-            Assert.Equal(
-                new[]
-                {
-                    SystemSchedulerTracePhase.InitEnter,
-                    SystemSchedulerTracePhase.InitExit,
-                    SystemSchedulerTracePhase.EnabledEnter,
-                    SystemSchedulerTracePhase.EnabledExit,
-                    SystemSchedulerTracePhase.UpdateEnter,
-                    SystemSchedulerTracePhase.UpdateExit,
-                    SystemSchedulerTracePhase.DisabledEnter,
-                    SystemSchedulerTracePhase.DisabledExit,
-                    SystemSchedulerTracePhase.DisposeEnter,
-                    SystemSchedulerTracePhase.DisposeExit
-                },
-                Array.ConvertAll(traces.ToArray(), static x => x.Phase));
-
-            Assert.Equal(SystemSchedulerState.Initializing, traces[0].SchedulerState);
-            Assert.Equal(SystemSchedulerState.Initializing, traces[3].SchedulerState);
-            Assert.Equal(SystemSchedulerState.Updating, traces[4].SchedulerState);
-            Assert.Equal(SystemSchedulerState.Disposing, traces[9].SchedulerState);
-
-            Assert.False(traces[0].Initialized);
-            Assert.True(traces[1].Initialized);
-            Assert.False(traces[2].Active);
-            Assert.True(traces[3].Active);
-            Assert.True(traces[6].Active);
-            Assert.False(traces[7].Active);
-            Assert.True(traces[8].Initialized);
-            Assert.False(traces[9].Initialized);
-
-            Assert.Equal("Tracked", traces[0].Name);
-            Assert.Equal("RecordingSystem", traces[0].TypeName);
-            Assert.Equal(-5, traces[0].Order);
-            Assert.Equal(SystemExecutionKind.HotPath, traces[0].Kind);
-            Assert.Equal("Simulation", traces[0].Category);
-            Assert.Equal("Simulation/Tracked", traces[0].DebugCategory);
-            Assert.Equal(0, traces[0].Depth);
-            Assert.False(traces[0].IsGroup);
-            Assert.False(scheduler.CurrentSystem.HasValue);
-        }
-
-        [Fact]
-        public void ParallelReservedSystem_IsRejectedDuringRegistration()
-        {
-            var scheduler = new SystemScheduler();
-
-            InvalidOperationException exception = Assert.Throws<InvalidOperationException>(
-                () => scheduler.Add(new ParallelReservedRecordingSystem()));
-
-            Assert.Contains("ParallelReserved", exception.Message, StringComparison.Ordinal);
-        }
-
-        private class RecordingSystem : SystemBase
+        private sealed class RecordingSystem : ISystem
         {
             private readonly string _name;
             private readonly List<string> _events;
-            private readonly SystemMetadata _metadata;
+            private readonly SystemPhase _phase;
 
-            public RecordingSystem(string name, List<string> events, SystemMetadata? metadata = null)
+            public RecordingSystem(string name, List<string> events, SystemPhase phase = SystemPhase.Simulation)
             {
                 _name = name;
                 _events = events;
-                _metadata = metadata ?? SystemMetadata.Default;
+                _phase = phase;
             }
 
-            public override string Name => _name;
+            public SystemPhase Phase => _phase;
 
-            public override SystemMetadata Metadata => _metadata;
-
-            public override void OnInit(Frame frame)
+            public void OnInit(Frame frame)
             {
-                _events.Add($"{_name}:init");
+                _events.Add($"init:{_name}");
             }
 
-            public override void OnEnabled(Frame frame)
+            public void OnUpdate(Frame frame, FP deltaTime)
             {
-                _events.Add($"{_name}:enabled");
+                _events.Add($"update:{_name}");
             }
 
-            public override void OnDisabled(Frame frame)
+            public void OnDestroy(Frame frame)
             {
-                _events.Add($"{_name}:disabled");
-            }
-
-            public override void OnUpdate(Frame frame, FP deltaTime)
-            {
-                _events.Add($"{_name}:update");
-            }
-
-            public override void OnDispose(Frame frame)
-            {
-                _events.Add($"{_name}:dispose");
+                _events.Add($"destroy:{_name}");
             }
         }
 
-        private sealed class DisabledRecordingSystem : RecordingSystem
+        private sealed class CountingSystem : ISystem
         {
-            public DisabledRecordingSystem(string name, List<string> events, SystemMetadata? metadata = null)
-                : base(name, events, metadata)
+            public int InitCount { get; private set; }
+
+            public int UpdateCount { get; private set; }
+
+            public int DestroyCount { get; private set; }
+
+            public void OnInit(Frame frame)
             {
+                InitCount++;
             }
 
-            public override bool EnabledByDefault => false;
-        }
-
-        private sealed class TaggedRecordingSystem : RecordingSystem
-        {
-            public TaggedRecordingSystem(string name, List<string> events)
-                : base(name, events)
+            public void OnUpdate(Frame frame, FP deltaTime)
             {
-            }
-        }
-
-        private sealed class MutatingSystem : SystemBase
-        {
-            private readonly SystemScheduler _scheduler;
-
-            public MutatingSystem(SystemScheduler scheduler)
-            {
-                _scheduler = scheduler;
+                UpdateCount++;
             }
 
-            public override void OnUpdate(Frame frame, FP deltaTime)
+            public void OnDestroy(Frame frame)
             {
-                _scheduler.Disable(this);
+                DestroyCount++;
             }
         }
 
-        private sealed class ParallelReservedRecordingSystem : SystemBase
+        private sealed class ContractSystem : ISystem
         {
-            public override SystemMetadata Metadata => new(
-                Order: 0,
-                Kind: SystemExecutionKind.ParallelReserved,
-                Category: "Parallel",
-                DebugCategory: "Parallel/Reserved",
-                AllowRuntimeToggle: true);
+            private readonly SystemPhase _phase;
+            private readonly SystemAuthoringContract _contract;
 
-            public override void OnUpdate(Frame frame, FP deltaTime)
+            public ContractSystem(SystemPhase phase, SystemAuthoringContract contract)
+            {
+                _phase = phase;
+                _contract = contract;
+            }
+
+            public SystemPhase Phase => _phase;
+
+            public SystemAuthoringContract Contract => _contract;
+
+            public void OnInit(Frame frame)
             {
             }
+
+            public void OnUpdate(Frame frame, FP deltaTime)
+            {
+            }
+
+            public void OnDestroy(Frame frame)
+            {
+            }
+        }
+
+        private sealed class StructuralMutationSystem : ISystem
+        {
+            private readonly SystemAuthoringContract _contract;
+
+            public StructuralMutationSystem(SystemAuthoringContract contract)
+            {
+                _contract = contract;
+            }
+
+            public SystemAuthoringContract Contract => _contract;
+
+            public void OnInit(Frame frame)
+            {
+            }
+
+            public void OnUpdate(Frame frame, FP deltaTime)
+            {
+                frame.CreateEntity();
+            }
+
+            public void OnDestroy(Frame frame)
+            {
+            }
+        }
+
+        private sealed class GlobalProbeSystem : ISystem
+        {
+            private readonly SystemAuthoringContract _contract;
+            private readonly Action<Frame> _probe;
+
+            public GlobalProbeSystem(SystemAuthoringContract contract, Action<Frame> probe)
+            {
+                _contract = contract;
+                _probe = probe;
+            }
+
+            public SystemAuthoringContract Contract => _contract;
+
+            public void OnInit(Frame frame)
+            {
+            }
+
+            public void OnUpdate(Frame frame, FP deltaTime)
+            {
+                _probe(frame);
+            }
+
+            public void OnDestroy(Frame frame)
+            {
+            }
+        }
+
+        private struct SchedulerGlobalStateComponent : IComponent
+        {
+            public int Value;
         }
     }
 }

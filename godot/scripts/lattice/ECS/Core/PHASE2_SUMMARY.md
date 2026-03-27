@@ -1,4 +1,13 @@
-# Phase 2 实现完成总结
+# Phase 2 实现完成总结（历史归档）
+
+> 历史归档文档：
+>
+> 本文档记录的是 Lattice ECS Core 第二阶段的阶段性总结，其中不少 API、序列化与组件元数据设计已经在当前主干中继续演进。
+>
+> 当前主干能力请优先参考：
+>
+> - `godot/scripts/lattice/README.md`
+> - `godot/scripts/lattice/ECS/Framework/SystemDesignNotes.md`
 
 ## 新增文件
 

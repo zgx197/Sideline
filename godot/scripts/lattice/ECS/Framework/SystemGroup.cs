@@ -76,5 +76,10 @@ namespace Lattice.ECS.Framework
         public void OnDispose(Frame frame)
         {
         }
+
+        public void OnDestroy(Frame frame)
+        {
+            OnDispose(frame);
+        }
     }
 }

@@ -2,6 +2,7 @@
 // Licensed under GPL-3.0.
 
 using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using Lattice.Core;
 using Lattice.ECS.Serialization;
@@ -42,6 +43,8 @@ namespace Lattice.ECS.Core
         public StorageFlags StorageFlags { get; }
 
         public ComponentCallbacks Callbacks { get; }
+
+        public int SerializationVersion => Callbacks.SerializationVersion;
     }
 
     /// <summary>
@@ -63,6 +66,12 @@ namespace Lattice.ECS.Core
         private static readonly ComponentSnapshotRestoreDelegate?[] SnapshotRestorers = new ComponentSnapshotRestoreDelegate[Frame.MaxComponentTypes];
         private static readonly ComponentPendingRemovalDelegate?[] PendingRemovalMarkers = new ComponentPendingRemovalDelegate[Frame.MaxComponentTypes];
         private static readonly ComponentPendingQueueIndexSetterDelegate?[] PendingQueueIndexSetters = new ComponentPendingQueueIndexSetterDelegate[Frame.MaxComponentTypes];
+        private static readonly ComponentStorageCopyDelegate?[] StorageCopiers = new ComponentStorageCopyDelegate[Frame.MaxComponentTypes];
+        private static readonly ComponentStorageResetDelegate?[] StorageResetters = new ComponentStorageResetDelegate[Frame.MaxComponentTypes];
+        private static readonly ComponentPackedStatePresenceDelegate?[] PackedStatePresenceCheckers = new ComponentPackedStatePresenceDelegate[Frame.MaxComponentTypes];
+        private static readonly ComponentPackedStateWriteDelegate?[] PackedStateWriters = new ComponentPackedStateWriteDelegate[Frame.MaxComponentTypes];
+        private static readonly ComponentPackedStateRestoreDelegate?[] PackedStateRestorers = new ComponentPackedStateRestoreDelegate[Frame.MaxComponentTypes];
+        private static readonly int[] FixedPackedPayloadSizes = CreateFixedPackedPayloadSizes();
         private static readonly Dictionary<Type, int> ReverseLookup = new();
         private static readonly Dictionary<string, int> ReverseNameLookup = new(StringComparer.Ordinal);
 
@@ -110,6 +119,9 @@ namespace Lattice.ECS.Core
                 Flags[id] = flags;
                 StorageFlagsByType[id] = resolvedStorageFlags;
                 Callbacks[id] = callbacks;
+                FixedPackedPayloadSizes[id] = callbacks.Serialize != null
+                    ? ComponentRuntimeDispatch<T>.MeasurePackedPayloadSize(callbacks.Serialize)
+                    : sizeof(T);
                 RemoveInvokers[id] = ComponentRuntimeDispatch<T>.RemoveFromFrame;
                 AddAppliers[id] = ComponentRuntimeDispatch<T>.AddToFrame;
                 SetAppliers[id] = ComponentRuntimeDispatch<T>.SetInFrame;
@@ -118,12 +130,17 @@ namespace Lattice.ECS.Core
                 SnapshotRestorers[id] = ComponentRuntimeDispatch<T>.RestoreSnapshot;
                 PendingRemovalMarkers[id] = ComponentRuntimeDispatch<T>.MarkPendingRemoval;
                 PendingQueueIndexSetters[id] = ComponentRuntimeDispatch<T>.SetPendingQueueIndex;
-                ComponentCommandRegistry.Register<T>(id);
+                StorageCopiers[id] = ComponentRuntimeDispatch<T>.CopyStorage;
+                StorageResetters[id] = ComponentRuntimeDispatch<T>.ResetStorage;
+                PackedStatePresenceCheckers[id] = ComponentRuntimeDispatch<T>.HasPackedState;
+                PackedStateWriters[id] = ComponentRuntimeDispatch<T>.WritePackedState;
+                PackedStateRestorers[id] = ComponentRuntimeDispatch<T>.RestorePackedState;
 
                 ReverseLookup.Add(typeof(T), id);
                 ReverseNameLookup[typeof(T).Name] = id;
 
                 ComponentTypeId<T>.SetRegistration(id, sizeof(T), flags, resolvedStorageFlags, callbacks);
+                ComponentCommandRegistry.Register<T>(id);
                 return id;
             }
         }
@@ -165,6 +182,35 @@ namespace Lattice.ECS.Core
         {
             EnsureValidTypeId(id);
             return new ComponentTypeInfo(Types[id]!, id, Sizes[id], Flags[id], StorageFlagsByType[id], Callbacks[id]);
+        }
+
+        internal static ComponentSchemaManifest CreateSchemaManifest(ReadOnlySpan<int> serializedTypeIds, ComponentSerializationMode mode)
+        {
+            ulong hash = 0xCBF29CE484222325;
+
+            AppendInt64(ref hash, ComponentSchemaManifest.CurrentVersion);
+            AppendInt64(ref hash, (int)mode);
+            AppendInt64(ref hash, serializedTypeIds.Length);
+
+            for (int i = 0; i < serializedTypeIds.Length; i++)
+            {
+                int typeId = serializedTypeIds[i];
+                EnsureValidTypeId(typeId);
+
+                Type type = Types[typeId]!;
+                ComponentCallbacks callbacks = Callbacks[typeId];
+
+                AppendInt64(ref hash, typeId);
+                AppendString(ref hash, type.FullName ?? type.Name);
+                AppendInt64(ref hash, Sizes[typeId]);
+                AppendInt64(ref hash, (int)Flags[typeId]);
+                AppendInt64(ref hash, (int)StorageFlagsByType[typeId]);
+                AppendInt64(ref hash, callbacks.Serialize != null ? 1 : 0);
+                AppendInt64(ref hash, callbacks.SerializationVersion);
+                AppendInt64(ref hash, FixedPackedPayloadSizes[typeId]);
+            }
+
+            return new ComponentSchemaManifest(mode, hash, serializedTypeIds.Length);
         }
 
         public static Type GetComponentType(int id)
@@ -294,6 +340,42 @@ namespace Lattice.ECS.Core
             return PendingRemovalMarkers[id] ?? throw new InvalidOperationException($"Pending removal marker missing for component type ID {id}");
         }
 
+        internal static ComponentStorageCopyDelegate GetStorageCopier(int id)
+        {
+            EnsureValidTypeId(id);
+            return StorageCopiers[id] ?? throw new InvalidOperationException($"Storage copier missing for component type ID {id}");
+        }
+
+        internal static ComponentStorageResetDelegate GetStorageResetter(int id)
+        {
+            EnsureValidTypeId(id);
+            return StorageResetters[id] ?? throw new InvalidOperationException($"Storage resetter missing for component type ID {id}");
+        }
+
+        internal static ComponentPackedStatePresenceDelegate GetPackedStatePresenceChecker(int id)
+        {
+            EnsureValidTypeId(id);
+            return PackedStatePresenceCheckers[id] ?? throw new InvalidOperationException($"Packed state presence checker missing for component type ID {id}");
+        }
+
+        internal static ComponentPackedStateWriteDelegate GetPackedStateWriter(int id)
+        {
+            EnsureValidTypeId(id);
+            return PackedStateWriters[id] ?? throw new InvalidOperationException($"Packed state writer missing for component type ID {id}");
+        }
+
+        internal static ComponentPackedStateRestoreDelegate GetPackedStateRestorer(int id)
+        {
+            EnsureValidTypeId(id);
+            return PackedStateRestorers[id] ?? throw new InvalidOperationException($"Packed state restorer missing for component type ID {id}");
+        }
+
+        internal static int GetFixedPackedPayloadSize(int id)
+        {
+            EnsureValidTypeId(id);
+            return FixedPackedPayloadSizes[id];
+        }
+
         internal static StorageFlags GetStorageFlags(int id)
         {
             EnsureValidTypeId(id);
@@ -310,6 +392,13 @@ namespace Lattice.ECS.Core
             }
 
             return mappedFlags;
+        }
+
+        private static int[] CreateFixedPackedPayloadSizes()
+        {
+            int[] sizes = new int[Frame.MaxComponentTypes];
+            Array.Fill(sizes, -1);
+            return sizes;
         }
 
         private static void EnsureValidTypeId(int id)
@@ -343,10 +432,41 @@ namespace Lattice.ECS.Core
             ComponentCallbacks existingCallbacks = Callbacks[id];
             if (existingCallbacks.Serialize != callbacks.Serialize ||
                 existingCallbacks.OnAdded != callbacks.OnAdded ||
-                existingCallbacks.OnRemoved != callbacks.OnRemoved)
+                existingCallbacks.OnRemoved != callbacks.OnRemoved ||
+                existingCallbacks.SerializationVersion != callbacks.SerializationVersion)
             {
                 throw new InvalidOperationException(
                     $"Component {Types[id]!.FullName} already registered with different callbacks.");
+            }
+        }
+
+        private static void AppendInt64(ref ulong hash, int value)
+        {
+            Span<byte> buffer = stackalloc byte[sizeof(int)];
+            BinaryPrimitives.WriteInt32LittleEndian(buffer, value);
+            AppendBytes(ref hash, buffer);
+        }
+
+        private static void AppendString(ref ulong hash, string value)
+        {
+            AppendInt64(ref hash, value.Length);
+            Span<byte> buffer = stackalloc byte[sizeof(char)];
+
+            for (int i = 0; i < value.Length; i++)
+            {
+                BinaryPrimitives.WriteUInt16LittleEndian(buffer, value[i]);
+                AppendBytes(ref hash, buffer);
+            }
+        }
+
+        private static void AppendBytes(ref ulong hash, ReadOnlySpan<byte> data)
+        {
+            const ulong fnvPrime = 0x00000100000001B3;
+
+            for (int i = 0; i < data.Length; i++)
+            {
+                hash ^= data[i];
+                hash *= fnvPrime;
             }
         }
 
@@ -483,6 +603,21 @@ namespace Lattice.ECS.Core
 
     internal static unsafe class ComponentRuntimeDispatch<T> where T : unmanaged, IComponent
     {
+        public static int MeasurePackedPayloadSize(ComponentSerializeDelegate serialize)
+        {
+            if (serialize == null)
+            {
+                return sizeof(T);
+            }
+
+            T component = default;
+            var sizingStream = new FrameStateBitStreamWriter(new FrameStateSizingWriter());
+            var serializer = new FrameSerializer(sizingStream, writing: true);
+            sizingStream.BeginPayload();
+            serialize(&component, serializer);
+            return sizingStream.EndPayload();
+        }
+
         public static void RemoveFromFrame(Frame frame, EntityRef entity)
         {
             frame.Remove<T>(entity);
@@ -601,6 +736,180 @@ namespace Lattice.ECS.Core
             }
 
             typedStorage->SetPendingQueueIndex(entity, queueIndex);
+        }
+
+        public static void CopyStorage(Frame destinationFrame, void* sourceStorage)
+        {
+            var destination = destinationFrame.GetOrCreateStorageForSnapshotRestore<T>(ComponentTypeId<T>.Id);
+            var source = (Storage<T>*)sourceStorage;
+            if (source == null)
+            {
+                return;
+            }
+
+            destination->CopyFrom(source);
+        }
+
+        public static void ResetStorage(void* storage)
+        {
+            var typedStorage = (Storage<T>*)storage;
+            if (typedStorage == null)
+            {
+                return;
+            }
+
+            typedStorage->Reset();
+        }
+
+        public static bool HasPackedState(void* storage, ComponentSerializationMode mode)
+        {
+            int typeId = ComponentTypeId<T>.Id;
+            if (!ComponentRegistry.CanSerializeComponent(typeId, mode))
+            {
+                return false;
+            }
+
+            var typedStorage = (Storage<T>*)storage;
+            return typedStorage != null && typedStorage->Count > 0;
+        }
+
+        public static bool WritePackedState(void* storage, FrameStateWriter writer, ComponentSerializationMode mode)
+        {
+            var typedStorage = (Storage<T>*)storage;
+            if (typedStorage == null || typedStorage->Count == 0)
+            {
+                return false;
+            }
+
+            int typeId = ComponentTypeId<T>.Id;
+
+            writer.WriteInt32(typeId);
+
+            if (ComponentTypeId<T>.Callbacks.Serialize == null)
+            {
+                writer.WriteByte((byte)ComponentSnapshotDataKind.RawDense);
+
+                int denseCount = typedStorage->Count;
+                writer.WriteInt32(denseCount);
+                typedStorage->WriteDenseEntities(writer);
+
+                int dataLength = denseCount * sizeof(T);
+                writer.WriteInt32(dataLength);
+                typedStorage->WriteDenseComponentBytes(writer);
+                return true;
+            }
+
+            int entryCount = typedStorage->Count;
+            int fixedPayloadBytes = ComponentRegistry.GetFixedPackedPayloadSize(typeId);
+            if (fixedPayloadBytes >= 0)
+            {
+                writer.WriteByte((byte)ComponentSnapshotDataKind.FixedSizeEntryPayloads);
+                writer.WriteInt32(entryCount);
+                writer.WriteInt32(fixedPayloadBytes);
+
+                var payloadStream = new FrameStateBitStreamWriter(writer);
+                var serializer = new FrameSerializer(payloadStream, writing: true);
+
+                for (int index = 1; index <= entryCount; index++)
+                {
+                    EntityRef entity = typedStorage->GetEntityRefByIndex(index);
+                    T* componentData = typedStorage->GetDataPointerByIndex(index);
+
+                    writer.WriteUInt64(entity.Raw);
+                    payloadStream.BeginPayload();
+                    ComponentRegistry.SerializeComponent(typeId, componentData, serializer, mode);
+                    int actualPayloadBytes = payloadStream.EndPayload();
+                    if (actualPayloadBytes != fixedPayloadBytes)
+                    {
+                        throw new InvalidOperationException(
+                            $"Component {typeof(T).Name} produced variable-sized serialized payloads. " +
+                            $"Expected={fixedPayloadBytes}, Actual={actualPayloadBytes}.");
+                    }
+                }
+
+                return true;
+            }
+
+            writer.WriteByte((byte)ComponentSnapshotDataKind.EntryPayloads);
+            writer.WriteInt32(entryCount);
+
+            var fallbackPayloadStream = new BitStream();
+            var fallbackSerializer = new FrameSerializer(fallbackPayloadStream, writing: true);
+
+            for (int index = 1; index <= entryCount; index++)
+            {
+                EntityRef entity = typedStorage->GetEntityRefByIndex(index);
+                T* componentData = typedStorage->GetDataPointerByIndex(index);
+
+                fallbackPayloadStream.Reset();
+                ComponentRegistry.SerializeComponent(typeId, componentData, fallbackSerializer, mode);
+
+                writer.WriteUInt64(entity.Raw);
+                ReadOnlySpan<byte> payload = fallbackPayloadStream.GetWrittenSpan();
+                writer.WriteInt32(payload.Length);
+                writer.WriteBytes(payload);
+            }
+
+            return true;
+        }
+
+        public static void RestorePackedState(Frame frame, FrameStateReader reader, ComponentSerializationMode mode)
+        {
+            int typeId = ComponentTypeId<T>.Id;
+            byte kind = reader.ReadByte();
+            var storage = frame.GetOrCreateStorageForSnapshotRestore<T>(typeId);
+
+            if (kind == (byte)ComponentSnapshotDataKind.RawDense)
+            {
+                int denseCount = reader.ReadInt32();
+                ReadOnlySpan<byte> entityBytes = reader.ReadBytes(denseCount * sizeof(EntityRef));
+                int dataLength = reader.ReadInt32();
+                ReadOnlySpan<byte> componentBytes = reader.ReadBytes(dataLength);
+                storage->RestoreDenseSnapshot(entityBytes, componentBytes);
+                return;
+            }
+
+            if (kind == (byte)ComponentSnapshotDataKind.FixedSizeEntryPayloads)
+            {
+                int fixedEntryCount = reader.ReadInt32();
+                int payloadLength = reader.ReadInt32();
+                var stream = new FrameStateBitStreamReader(reader);
+                var serializer = new FrameSerializer(stream, writing: false);
+
+                for (int i = 0; i < fixedEntryCount; i++)
+                {
+                    EntityRef entity = EntityRef.FromRaw(reader.ReadUInt64());
+                    T component = default;
+
+                    if (payloadLength > 0)
+                    {
+                        stream.BeginPayload(payloadLength);
+                        ComponentRegistry.SerializeComponent(typeId, &component, serializer, mode);
+                        stream.EndPayload();
+                    }
+
+                    storage->Add(entity, component);
+                }
+
+                return;
+            }
+
+            int entryCount = reader.ReadInt32();
+            for (int i = 0; i < entryCount; i++)
+            {
+                EntityRef entity = EntityRef.FromRaw(reader.ReadUInt64());
+                int payloadLength = reader.ReadInt32();
+                T component = default;
+
+                if (payloadLength > 0)
+                {
+                    var stream = reader.CreateBitStreamSlice(payloadLength);
+                    var serializer = new FrameSerializer(stream, writing: false);
+                    ComponentRegistry.SerializeComponent(typeId, &component, serializer, mode);
+                }
+
+                storage->Add(entity, component);
+            }
         }
     }
 }

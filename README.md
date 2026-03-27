@@ -2,7 +2,7 @@
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 
-A 2D top-down indie game featuring idle management and dungeon crawling, built with Lattice ECS framework.
+一款 2D 俯视角独立游戏，结合挂机经营与地下城刷宝体验，并在仓内持续孵化自研确定性运行时 Lattice。
 
 **工作间隙偷偷经营地下世界的独立游戏**
 
@@ -13,36 +13,36 @@ A 2D top-down indie game featuring idle management and dungeon crawling, built w
 - **双模式窗口**: 挂机模式(400x300无边框) + 刷宝模式(1280x720全屏)
 - **暗黑刷宝**: Roguelike地下城，随机地图，丰富装备系统
 - **挂机养成**: 离线收益，随时关注你的地下世界
-- **确定性联机**: 基于自研Lattice ECS框架，支持Lockstep帧同步
+- **确定性底座**: 基于自研 Lattice ECS 运行时，为未来 Lockstep / 回放 / 长时模拟打底
 
 ## 🛠️ 技术栈
 
 | 层级 | 技术 | 说明 |
 |------|------|------|
 | 渲染层 | Godot 4.6.1 + C# | 2D俯视角渲染 |
-| 逻辑层 | Lattice (自研) | 确定性ECS帧同步框架 |
+| 逻辑层 | Lattice (自研) | 确定性 ECS 运行时 / 帧同步底座 |
 | 桥接层 | GodotRenderBridge | 状态同步 |
 | 网络层 | Steam Relay (计划中) | Lockstep联机 |
 
 ## 🚀 快速开始
 
 ```bash
-# 克隆仓库
-git clone https://github.com/zgx197/Sideline.git
-cd Sideline/godot
-
-# 构建项目
+# 构建 Godot C# 项目
+cd godot
 dotnet build
-
-# 运行游戏
-dotnet run
 ```
+
+运行方式：
+
+- 用 Godot 4.6.1 Mono 版打开 `godot/project.godot`
+- 或在编辑器内按 `F5` 运行项目
 
 ## 📖 文档
 
 - [项目官网](https://zgx197.github.io/Sideline/)
 - [开发文档](https://zgx197.github.io/Sideline/docs/)
-- [更新日志](https://zgx197.github.io/Sideline/blog/)
+- [Lattice 主文档](godot/scripts/lattice/README.md)
+- [Lattice 设计说明](godot/scripts/lattice/ECS/Framework/SystemDesignNotes.md)
 
 ## 📄 许可证
 

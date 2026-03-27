@@ -14,6 +14,7 @@
   <!-- 测试框架 -->
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.8.0" />
     <PackageReference Include="xunit" Version="2.9.2" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2">
       <PrivateAssets>all</PrivateAssets>
@@ -38,6 +39,10 @@
   <!-- 引用 Lattice 核心 -->
   <ItemGroup>
     <ProjectReference Include="..\Lattice.csproj" />
+    <ProjectReference Include="..\Tools\Lattice.Analyzers\Lattice.Analyzers.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Compile Include="..\Benchmarks\BenchmarkGovernanceCli.cs" Link="Performance\BenchmarkGovernanceCli.cs" />
+  </ItemGroup>
 </Project>

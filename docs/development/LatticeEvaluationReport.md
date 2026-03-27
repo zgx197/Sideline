@@ -1,9 +1,18 @@
-# Lattice 定点数库客观评估报告
+# Lattice 定点数库客观评估报告（历史归档）
+
+> 历史归档文档：
+>
+> 本文档反映的是 2026-03-13 时点、以“定点数库 / Phase 0.2”为中心的阶段性评估，不代表当前 `main` 分支的 Lattice 运行时、ECS、Session、benchmark 治理与测试覆盖状态。
+>
+> 当前主干能力与客观判断请优先参考：
+>
+> - `godot/scripts/lattice/README.md`
+> - `godot/scripts/lattice/ECS/Framework/SystemDesignNotes.md`
 
 > 对比参考：FrameSyncEngine (商业级帧同步框架)
-> 
+>
 > 评估日期：2026-03-13
-> 
+>
 > 评估版本：Lattice Phase 0.2 / FrameSync 最新
 
 ---

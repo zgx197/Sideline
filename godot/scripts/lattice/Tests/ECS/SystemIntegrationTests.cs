@@ -104,12 +104,8 @@ namespace Lattice.Tests.ECS
             frame.Add(entity, new Velocity { Value = FP.One });
             frame.Add(entity, new Lifetime { Remaining = FP.One });
 
-            scheduler.AddRange(
-                new ISystem[]
-                {
-                    new MovementFilterSystem(),
-                    new LifetimeCleanupSystem(host)
-                });
+            scheduler.Add(new MovementFilterSystem());
+            scheduler.Add(new LifetimeCleanupSystem(host));
 
             scheduler.Initialize(frame);
             scheduler.Update(frame, FP.One);
@@ -151,8 +147,7 @@ namespace Lattice.Tests.ECS
         {
             public override unsafe void OnUpdate(Frame frame, FP deltaTime)
             {
-                var filter = frame.Filter<Position, Velocity>();
-                var enumerator = filter.GetEnumerator();
+                var enumerator = frame.Query<Position, Velocity>().GetEnumerator();
 
                 while (enumerator.MoveNext())
                 {

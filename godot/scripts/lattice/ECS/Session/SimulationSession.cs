@@ -187,7 +187,7 @@ namespace Lattice.ECS.Session
             {
                 if (IsRunning && _verifiedFrame != null)
                 {
-                    _scheduler.Dispose(_verifiedFrame);
+                    _scheduler.Shutdown(_verifiedFrame);
                 }
             }
             finally

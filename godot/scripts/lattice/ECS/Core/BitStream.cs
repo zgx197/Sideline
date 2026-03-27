@@ -22,6 +22,9 @@ namespace Lattice.ECS.Core
         /// <summary>数据缓冲区</summary>
         private byte[] _buffer;
 
+        /// <summary>当前逻辑终点（读取模式下可能小于缓冲区长度）。</summary>
+        private int _byteLimit;
+
         /// <summary>当前字节位置</summary>
         private int _bytePosition;
 
@@ -53,6 +56,7 @@ namespace Lattice.ECS.Core
         public BitStream(int initialCapacity = 1024)
         {
             _buffer = new byte[initialCapacity];
+            _byteLimit = _buffer.Length;
             _bytePosition = 0;
             _bitPosition = 0;
             IsWriting = true;
@@ -64,6 +68,7 @@ namespace Lattice.ECS.Core
         public BitStream(byte[] data, int offset = 0, int length = -1)
         {
             _buffer = data;
+            _byteLimit = length >= 0 ? System.Math.Min(data.Length, offset + length) : data.Length;
             _bytePosition = offset;
             _bitPosition = 0;
             IsWriting = false;
@@ -106,8 +111,8 @@ namespace Lattice.ECS.Core
             if (IsWriting)
                 throw new InvalidOperationException("Cannot read in writing mode");
 
-            if (_bytePosition >= _buffer.Length)
-                throw new EndOfStreamException($"Attempted to read beyond buffer length ({_buffer.Length} bytes at position {_bytePosition})");
+            if (_bytePosition >= _byteLimit)
+                throw new EndOfStreamException($"Attempted to read beyond buffer length ({_byteLimit} bytes at position {_bytePosition})");
 
             bool value = (_buffer[_bytePosition] & (1 << _bitPosition)) != 0;
 
@@ -392,7 +397,7 @@ namespace Lattice.ECS.Core
                 _bytePosition++;
             }
 
-            if (_bytePosition + length > _buffer.Length)
+            if (_bytePosition + length > _byteLimit)
                 throw new EndOfStreamException();
 
             Buffer.BlockCopy(_buffer, _bytePosition, destination, offset, length);
@@ -433,7 +438,7 @@ namespace Lattice.ECS.Core
                 _bytePosition++;
             }
 
-            if (_bytePosition + length > _buffer.Length)
+            if (_bytePosition + length > _byteLimit)
                 throw new EndOfStreamException();
 
             fixed (byte* src = &_buffer[_bytePosition])
@@ -460,12 +465,24 @@ namespace Lattice.ECS.Core
         }
 
         /// <summary>
+        /// 获取当前已写入数据的只读视图，不发生额外分配。
+        /// </summary>
+        public ReadOnlySpan<byte> GetWrittenSpan()
+        {
+            return new ReadOnlySpan<byte>(_buffer, 0, BytesUsed);
+        }
+
+        /// <summary>
         /// 重置流（用于复用）
         /// </summary>
         public void Reset()
         {
             _bytePosition = 0;
             _bitPosition = 0;
+            if (IsWriting)
+            {
+                _byteLimit = _buffer.Length;
+            }
         }
 
         /// <summary>
@@ -480,6 +497,7 @@ namespace Lattice.ECS.Core
             byte[] newBuffer = new byte[newCapacity];
             Buffer.BlockCopy(_buffer, 0, newBuffer, 0, _buffer.Length);
             _buffer = newBuffer;
+            _byteLimit = _buffer.Length;
         }
 
         #endregion
@@ -496,7 +514,7 @@ namespace Lattice.ECS.Core
         /// 检查剩余读取空间是否足够
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public bool CanRead(int bytes) => _bytePosition + bytes <= _buffer.Length;
+        public bool CanRead(int bytes) => _bytePosition + bytes <= _byteLimit;
 
         /// <summary>
         /// 验证可以读取指定数量的字节
@@ -506,20 +524,20 @@ namespace Lattice.ECS.Core
             if (!CanRead(bytes))
                 throw new EndOfStreamException(
                     $"Insufficient data to {operation}. " +
-                    $"Required: {bytes} bytes, Available: {_buffer.Length - _bytePosition} bytes " +
+                    $"Required: {bytes} bytes, Available: {_byteLimit - _bytePosition} bytes " +
                     $"(at position {_bytePosition})");
         }
 
         /// <summary>
         /// 获取剩余可读字节数
         /// </summary>
-        public int RemainingBytes => System.Math.Max(0, _buffer.Length - _bytePosition);
+        public int RemainingBytes => System.Math.Max(0, _byteLimit - _bytePosition);
 
         /// <summary>
         /// 获取当前位置信息（用于调试）
         /// </summary>
         public string PositionInfo =>
-            $"Byte: {_bytePosition}, Bit: {_bitPosition}, Length: {_buffer.Length}";
+            $"Byte: {_bytePosition}, Bit: {_bitPosition}, Length: {_byteLimit}";
 
         #endregion
     }

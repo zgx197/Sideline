@@ -224,6 +224,9 @@
         <member name="F:Lattice.ECS.Core.BitStream._buffer">
             <summary>数据缓冲区</summary>
         </member>
+        <member name="F:Lattice.ECS.Core.BitStream._byteLimit">
+            <summary>当前逻辑终点（读取模式下可能小于缓冲区长度）。</summary>
+        </member>
         <member name="F:Lattice.ECS.Core.BitStream._bytePosition">
             <summary>当前字节位置</summary>
         </member>
@@ -400,6 +403,11 @@
             获取写入的数据
             </summary>
         </member>
+        <member name="M:Lattice.ECS.Core.BitStream.GetWrittenSpan">
+            <summary>
+            获取当前已写入数据的只读视图，不发生额外分配。
+            </summary>
+        </member>
         <member name="M:Lattice.ECS.Core.BitStream.Reset">
             <summary>
             重置流（用于复用）
@@ -570,6 +578,13 @@
         <member name="P:Lattice.ECS.Core.ComponentCallbacks.OnRemoved">
             <summary>组件移除回调。</summary>
         </member>
+        <member name="P:Lattice.ECS.Core.ComponentCallbacks.SerializationVersion">
+            <summary>
+            组件序列化协议版本。
+            当组件的稳定序列化布局发生兼容性变更时，应显式递增此版本，
+            而不是继续依赖“调用方知道改过什么”的隐式约定。
+            </summary>
+        </member>
         <member name="T:Lattice.ECS.Core.ComponentCommandRegistry">
             <summary>
             组件命令回放注册表。
@@ -666,6 +681,19 @@
         </member>
         <member name="F:Lattice.ECS.Core.ComponentFlags.HideInDump">
             <summary>在编辑器的帧转储中隐藏</summary>
+        </member>
+        <member name="T:Lattice.ECS.Core.ComponentSchemaManifest">
+            <summary>
+            当前快照 / checkpoint 实际写出的组件 schema 清单摘要。
+            用于把“这一份序列化负载依赖的组件协议是什么”显式固化到代码层，
+            避免未来格式演进时只能靠经验判断兼容性。
+            </summary>
+        </member>
+        <member name="P:Lattice.ECS.Core.ComponentSchemaManifest.IsSpecified">
+            <summary>
+            当前 manifest 是否已经明确指定。
+            旧兼容入口构造的快照可能不包含 schema 摘要，此时不强制执行 schema 校验。
+            </summary>
         </member>
         <member name="T:Lattice.ECS.Core.ComponentSerializationMode">
             <summary>
@@ -919,6 +947,27 @@
         <member name="F:Lattice.ECS.Core.Frame._owningGroupBindings">
             <summary>Owning Group 生命周期维护列表。</summary>
         </member>
+        <member name="F:Lattice.ECS.Core.Frame._structuralCommandBuffer">
+            <summary>结构性修改命令缓冲。</summary>
+        </member>
+        <member name="F:Lattice.ECS.Core.Frame._structuralCommandBufferInitialized">
+            <summary>结构性修改命令缓冲是否已初始化。</summary>
+        </member>
+        <member name="F:Lattice.ECS.Core.Frame._deferStructuralChanges">
+            <summary>当前是否正在延迟结构性修改。</summary>
+        </member>
+        <member name="F:Lattice.ECS.Core.Frame._isReplayingStructuralChanges">
+            <summary>当前是否正在回放结构性修改。</summary>
+        </member>
+        <member name="F:Lattice.ECS.Core.Frame._hasActiveSystemAuthoringContract">
+            <summary>当前是否处于系统作者契约守卫作用域。</summary>
+        </member>
+        <member name="F:Lattice.ECS.Core.Frame._activeSystemAuthoringContract">
+            <summary>当前执行系统的作者契约。</summary>
+        </member>
+        <member name="F:Lattice.ECS.Core.Frame._activeSystemName">
+            <summary>当前执行系统名称，仅用于守卫报错。</summary>
+        </member>
         <member name="P:Lattice.ECS.Core.Frame.Tick">
             <summary>当前帧号</summary>
         </member>
@@ -934,19 +983,55 @@
         <member name="P:Lattice.ECS.Core.Frame.PendingDeferredRemovalCount">
             <summary>待提交的延迟删除数量。</summary>
         </member>
+        <member name="P:Lattice.ECS.Core.Frame.HasPendingStructuralChanges">
+            <summary>
+            当前是否存在尚未提交的结构性修改。
+            主要用于运行时 Tick 管线与测试验证，不属于快照状态的一部分。
+            </summary>
+        </member>
         <member name="M:Lattice.ECS.Core.Frame.CreateSnapshot(Lattice.ECS.Core.ComponentSerializationMode)">
             <summary>
-            创建帧快照。
+            创建帧状态对象图快照。
+            该接口主要保留给兼容、调试和显式恢复测试，不用于 Session 热路径。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.Frame.CapturePackedSnapshot(Lattice.ECS.Core.ComponentSerializationMode)">
+            <summary>
+            创建紧凑字节帧快照。
+            主要用于 Session 的 checkpoint 与采样历史。
+            当前会同时记录 packed snapshot 格式版本和本次实际写出的组件 schema 摘要。
             </summary>
         </member>
         <member name="M:Lattice.ECS.Core.Frame.RestoreFromSnapshot(Lattice.ECS.Core.FrameSnapshot,Lattice.ECS.Core.ComponentSerializationMode)">
             <summary>
-            从快照恢复帧状态。
+            从对象图快照恢复帧状态。
+            该接口主要保留给兼容 API 与测试使用。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.Frame.RestoreFromPackedSnapshot(Lattice.ECS.Core.PackedFrameSnapshot,Lattice.ECS.Core.ComponentSerializationMode)">
+            <summary>
+            从紧凑字节帧快照恢复状态。
             </summary>
         </member>
         <member name="M:Lattice.ECS.Core.Frame.Clone(Lattice.ECS.Core.ComponentSerializationMode)">
             <summary>
             克隆当前帧。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.Frame.CloneState">
+            <summary>
+            克隆当前帧的完整运行时状态。
+            该路径保留所有组件状态，供预测推进、回滚和历史补帧复用。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.Frame.CopyFrom(Lattice.ECS.Core.Frame,Lattice.ECS.Core.ComponentSerializationMode)">
+            <summary>
+            从另一个帧复制状态到当前帧。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.Frame.CopyStateFrom(Lattice.ECS.Core.Frame)">
+            <summary>
+            从另一个帧直接复制完整运行时状态，避免热路径走托管快照分配。
             </summary>
         </member>
         <member name="M:Lattice.ECS.Core.Frame.CalculateChecksum(Lattice.ECS.Core.ComponentSerializationMode)">
@@ -956,7 +1041,8 @@
         </member>
         <member name="M:Lattice.ECS.Core.Frame.CreateEntity">
             <summary>
-            创建实体 - O(1)
+            创建实体 - O(1)。
+            若当前帧正处于运行时的结构性修改延迟阶段，则返回临时实体引用，并在后续提交阶段真正物化。
             </summary>
         </member>
         <member name="M:Lattice.ECS.Core.Frame.DestroyEntity(Lattice.Core.EntityRef)">
@@ -971,17 +1057,21 @@
         </member>
         <member name="M:Lattice.ECS.Core.Frame.Add``1(Lattice.Core.EntityRef,``0@)">
             <summary>
-            添加组件 - O(1) 均摊
+            添加组件 - O(1) 均摊。
+            若当前帧正处于运行时的结构性修改延迟阶段，则该操作会先排入结构提交缓冲，而不是立即影响查询拓扑。
             </summary>
         </member>
         <member name="M:Lattice.ECS.Core.Frame.Set``1(Lattice.Core.EntityRef,``0@)">
             <summary>
             设置组件值；若组件不存在则添加。
+            当运行时开启结构性修改延迟时，对已存在组件的字段写入仍会立即生效；
+            但对缺失组件或临时实体的写入会延迟到结构提交阶段统一生效。
             </summary>
         </member>
         <member name="M:Lattice.ECS.Core.Frame.Remove``1(Lattice.Core.EntityRef)">
             <summary>
-            移除组件 - O(1)
+            移除组件 - O(1)。
+            若当前帧正处于运行时的结构性修改延迟阶段，则移除会延迟到结构提交阶段统一生效。
             </summary>
         </member>
         <member name="M:Lattice.ECS.Core.Frame.Get``1(Lattice.Core.EntityRef)">
@@ -1004,19 +1094,42 @@
             检查是否有组件 - O(1)
             </summary>
         </member>
-        <member name="M:Lattice.ECS.Core.Frame.Filter``1">
+        <member name="M:Lattice.ECS.Core.Frame.HasGlobal``1">
             <summary>
-            获取单组件过滤器。
+            检查当前帧是否存在指定的全局 singleton 组件。
+            该 API 是玩法层正式推荐的全局状态入口，不再要求外部自己约定“特殊实体”。
             </summary>
         </member>
-        <member name="M:Lattice.ECS.Core.Frame.Filter``2">
+        <member name="M:Lattice.ECS.Core.Frame.GetGlobal``1">
             <summary>
-            获取双组件过滤器。
+            获取全局 singleton 组件引用。
             </summary>
         </member>
-        <member name="M:Lattice.ECS.Core.Frame.Filter``3">
+        <member name="M:Lattice.ECS.Core.Frame.TryGetGlobal``1(``0@)">
             <summary>
-            获取三组件过滤器。
+            尝试获取全局 singleton 组件值。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.Frame.GetGlobalEntity``1">
+            <summary>
+            获取全局 singleton 组件所在实体。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.Frame.TryGetGlobalEntity``1(Lattice.Core.EntityRef@)">
+            <summary>
+            尝试获取全局 singleton 组件所在实体。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.Frame.SetGlobal``1(``0@)">
+            <summary>
+            设置全局 singleton 组件。
+            若当前尚未存在对应全局状态，则会自动创建承载它的实体。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.Frame.RemoveGlobal``1">
+            <summary>
+            移除全局 singleton 组件。
+            若该组件是实体上唯一的组件，则会一并销毁其承载实体，避免留下空壳全局实体。
             </summary>
         </member>
         <member name="M:Lattice.ECS.Core.Frame.GetStorage``1(System.Int32)">
@@ -1046,6 +1159,34 @@
             提交所有延迟删除。
             </summary>
         </member>
+        <member name="M:Lattice.ECS.Core.Frame.BeginDeferredStructuralChanges">
+            <summary>
+            进入“结构性修改延迟提交”模式。
+            在该模式下，实体创建/销毁与组件增删会先进入命令缓冲，直到显式提交时才生效。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.Frame.CommitStructuralChanges">
+            <summary>
+            提交当前 Tick 累积的结构性修改。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.Frame.AbortStructuralChanges">
+            <summary>
+            中止当前 Tick 尚未提交的结构性修改。
+            仅供运行时在 Tick 失败或异常路径下回收临时状态。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.Frame.BeginSystemAuthoringScope(Lattice.ECS.Framework.ISystem)">
+            <summary>
+            进入系统作者契约守卫作用域。
+            仅供 `SystemScheduler` 在系统 `OnUpdate(...)` 执行前后使用。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.Frame.EndSystemAuthoringScope">
+            <summary>
+            退出系统作者契约守卫作用域。
+            </summary>
+        </member>
         <member name="M:Lattice.ECS.Core.Frame.GetComponentBlockIterator``1">
             <summary>
             获取组件块迭代器 - 批量遍历，最大化缓存命中率
@@ -1069,6 +1210,13 @@
         <member name="M:Lattice.ECS.Core.Frame.Query``3">
             <summary>
             获取三组件查询。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.Frame.Query``4">
+            <summary>
+            获取四组件查询。
+            这是当前正式公开的强类型 Query 上限；
+            更高维组合应优先考虑拆分系统职责，或结合 `MatchesFilter(...)` 做显式条件匹配。
             </summary>
         </member>
         <member name="M:Lattice.ECS.Core.Frame.RegisterOwningGroup``2">
@@ -1129,7 +1277,64 @@
         </member>
         <member name="T:Lattice.ECS.Core.FrameSnapshot">
             <summary>
-            帧状态快照。
+            帧状态对象图快照。
+            主要用于兼容 API、调试断言和显式恢复测试，不作为 Session 热路径 checkpoint 格式。
+            </summary>
+        </member>
+        <member name="P:Lattice.ECS.Core.FrameSnapshot.Checksum">
+            <summary>
+            基于当前对象图布局计算的校验和。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.FrameSnapshot.ToByteArray">
+            <summary>
+            将对象图快照编码为稳定字节布局。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.FrameSnapshot.CalculateChecksum(System.Byte[])">
+            <summary>
+            对已有快照字节布局计算校验和。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Core.FrameStateWriter">
+            <summary>
+            帧状态写入器基类。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Core.FrameStateBufferWriter">
+            <summary>
+            直接写入连续字节缓冲区的状态写入器。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Core.FrameStateSizingWriter">
+            <summary>
+            仅统计写入字节数的状态写入器。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Core.FrameStateChecksumWriter">
+            <summary>
+            仅计算校验和的状态写入器，不保留实际缓冲区。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Core.FrameStateReader">
+            <summary>
+            帧状态读取器。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Core.PackedFrameSnapshot">
+            <summary>
+            连续字节表示的帧快照。
+            主要供 Session 的 checkpoint、采样历史和其他运行时热路径使用。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Core.FrameStateBitStreamWriter">
+            <summary>
+            直接把位级序列化结果写入状态写入器，避免额外的 BitStream 中转缓冲区。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Core.FrameStateBitStreamReader">
+            <summary>
+            直接从状态读取器消费固定位长 payload，避免每个条目构造一个 BitStream 实例。
             </summary>
         </member>
         <member name="T:Lattice.ECS.Core.FullOwningGroup`2">
@@ -1475,6 +1680,11 @@
         <member name="T:Lattice.ECS.Core.Query`3">
             <summary>
             三组件查询。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Core.Query`4">
+            <summary>
+            四组件查询。
             </summary>
         </member>
         <member name="T:Lattice.ECS.Core.SIMDUtils">
@@ -1840,6 +2050,16 @@
             从快照恢复（用于回滚）
             </summary>
         </member>
+        <member name="M:Lattice.ECS.Core.Storage`1.Reset">
+            <summary>
+            重置存储内容但保留已分配容量，供热路径复用。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.Storage`1.CopyFrom(Lattice.ECS.Core.Storage{`0}*)">
+            <summary>
+            从同类型存储直接复制状态，避免走托管快照分配。
+            </summary>
+        </member>
         <member name="M:Lattice.ECS.Core.Storage`1.EnsureEntityCapacity(System.Int32)">
             <summary>
             确保有足够的实体容量
@@ -1975,14 +2195,29 @@
             将密集实体数组复制到托管缓冲区。
             </summary>
         </member>
+        <member name="M:Lattice.ECS.Core.Storage`1.WriteDenseEntities(Lattice.ECS.Core.FrameStateWriter)">
+            <summary>
+            将密集实体数组直接写入状态写入器。
+            </summary>
+        </member>
         <member name="M:Lattice.ECS.Core.Storage`1.CopyDenseComponentBytes(System.Byte[])">
             <summary>
             将密集组件数据复制到字节缓冲区。
             </summary>
         </member>
+        <member name="M:Lattice.ECS.Core.Storage`1.WriteDenseComponentBytes(Lattice.ECS.Core.FrameStateWriter)">
+            <summary>
+            将密集组件数据直接写入状态写入器。
+            </summary>
+        </member>
         <member name="M:Lattice.ECS.Core.Storage`1.RestoreDenseSnapshot(Lattice.Core.EntityRef[],System.Byte[])">
             <summary>
             使用原始密集快照恢复组件存储。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Core.Storage`1.RestoreDenseSnapshot(System.ReadOnlySpan{System.Byte},System.ReadOnlySpan{System.Byte})">
+            <summary>
+            使用连续字节片段恢复组件存储。
             </summary>
         </member>
         <member name="M:Lattice.ECS.Core.Storage`1.GetEntityRefByGlobalIndex(System.Int32)">
@@ -2149,32 +2384,73 @@
         </member>
         <member name="T:Lattice.ECS.Framework.ISystem">
             <summary>
-            ECS 系统接口。
+            最小系统接口。
+            当前主干正式支持的是“平面 `SystemScheduler` + 轻量 phase + 显式生命周期”模型，
+            不要求系统派生自 `SystemBase`，也不引入 group / enable-disable / dependency graph 等更重系统家族语义。
             </summary>
         </member>
-        <member name="P:Lattice.ECS.Framework.ISystem.Name">
-            <summary>系统名称，用于日志与调试。</summary>
+        <member name="P:Lattice.ECS.Framework.ISystem.Phase">
+            <summary>
+            系统所属的执行阶段。
+            默认落在 `Simulation`，调度器会先按 phase 排序，再在 phase 内保持注册顺序稳定。
+            </summary>
         </member>
-        <member name="P:Lattice.ECS.Framework.ISystem.Metadata">
-            <summary>系统元数据。</summary>
-        </member>
-        <member name="P:Lattice.ECS.Framework.ISystem.EnabledByDefault">
-            <summary>系统默认是否启用。</summary>
+        <member name="P:Lattice.ECS.Framework.ISystem.Contract">
+            <summary>
+            当前系统的轻量作者契约。
+            默认允许读写普通组件数据，但不默认开放 global state 与结构性修改；
+            若系统需要这些更强能力，应显式声明，而不是继续依赖隐式约定。
+            </summary>
         </member>
         <member name="M:Lattice.ECS.Framework.ISystem.OnInit(Lattice.ECS.Core.Frame)">
-            <summary>系统初始化。</summary>
-        </member>
-        <member name="M:Lattice.ECS.Framework.ISystem.OnEnabled(Lattice.ECS.Core.Frame)">
-            <summary>系统变为有效启用状态时触发。</summary>
-        </member>
-        <member name="M:Lattice.ECS.Framework.ISystem.OnDisabled(Lattice.ECS.Core.Frame)">
-            <summary>系统失去有效启用状态时触发。</summary>
+            <summary>
+            系统初始化时调用。
+            </summary>
         </member>
         <member name="M:Lattice.ECS.Framework.ISystem.OnUpdate(Lattice.ECS.Core.Frame,Lattice.Math.FP)">
-            <summary>系统逐帧更新。</summary>
+            <summary>
+            每帧更新时调用。
+            </summary>
         </member>
-        <member name="M:Lattice.ECS.Framework.ISystem.OnDispose(Lattice.ECS.Core.Frame)">
-            <summary>系统销毁。</summary>
+        <member name="M:Lattice.ECS.Framework.ISystem.OnDestroy(Lattice.ECS.Core.Frame)">
+            <summary>
+            系统销毁时调用。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Framework.SystemFrameAccess">
+            <summary>
+            系统对普通帧状态的访问意图。
+            当前主要用于声明系统作者契约，而不是提供一套更重的系统基类家族。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Framework.SystemGlobalAccess">
+            <summary>
+            系统对全局状态 API 的访问意图。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Framework.SystemStructuralChangeAccess">
+            <summary>
+            系统是否允许发起结构性修改。
+            当前正式语义只有“不允许”与“允许发起延迟结构性修改”两档。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Framework.SystemAuthoringContract">
+            <summary>
+            轻量系统作者契约。
+            用于声明系统在 `OnUpdate(...)` 中允许使用的状态访问能力，
+            让 phase、global state 与结构性修改规则不再只靠团队默契维持。
+            </summary>
+        </member>
+        <member name="P:Lattice.ECS.Framework.SystemAuthoringContract.Default">
+            <summary>
+            默认系统契约：
+            允许读写普通组件数据，但不默认开放 global state 与结构性修改。
+            </summary>
+        </member>
+        <member name="P:Lattice.ECS.Framework.SystemAuthoringContract.ReadOnly">
+            <summary>
+            只读系统默认契约。
+            </summary>
         </member>
         <member name="T:Lattice.ECS.Framework.SystemBase">
             <summary>
@@ -2213,6 +2489,11 @@
         <member name="M:Lattice.ECS.Framework.SystemBase.OnDispose(Lattice.ECS.Core.Frame)">
             <summary>
             系统销毁。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Framework.SystemBase.OnDestroy(Lattice.ECS.Core.Frame)">
+            <summary>
+            与当前最小 `ISystem` 生命周期契约对齐的销毁入口。
             </summary>
         </member>
         <member name="T:Lattice.ECS.Framework.SystemGroup">
@@ -2263,109 +2544,168 @@
             系统节点只读快照。
             </summary>
         </member>
-        <member name="T:Lattice.ECS.Framework.SystemSchedulerState">
+        <member name="T:Lattice.ECS.Framework.SystemPhase">
             <summary>
-            调度器运行状态。
+            当前 Lattice 正式支持的轻量系统阶段。
+            该阶段模型保持平面，不引入 `SystemGroup`、树状层级或依赖图。
             </summary>
         </member>
         <member name="T:Lattice.ECS.Framework.SystemScheduler">
             <summary>
-            单线程 ECS 系统调度器。
+            最小系统调度器。
+            当前正式支持的是单线程、平面、按 phase 再按注册顺序执行的系统集合；
+            不提供 enable / disable、依赖排序或 `SystemGroup` 层级模型。
+            </summary>
+        </member>
+        <member name="P:Lattice.ECS.Framework.SystemScheduler.Count">
+            <summary>
+            当前已注册系统数量。
             </summary>
         </member>
         <member name="P:Lattice.ECS.Framework.SystemScheduler.IsInitialized">
-            <summary>当前是否已初始化。</summary>
+            <summary>
+            当前是否已完成初始化。
+            </summary>
         </member>
-        <member name="P:Lattice.ECS.Framework.SystemScheduler.State">
-            <summary>当前调度器状态。</summary>
-        </member>
-        <member name="P:Lattice.ECS.Framework.SystemScheduler.CurrentSystem">
-            <summary>当前正在执行生命周期或更新回调的系统。</summary>
-        </member>
-        <member name="P:Lattice.ECS.Framework.SystemScheduler.Trace">
-            <summary>调度 trace 钩子，可用于 profiler 或调试观察。</summary>
-        </member>
-        <member name="P:Lattice.ECS.Framework.SystemScheduler.Count">
-            <summary>已注册系统数量（包含组）。</summary>
+        <member name="P:Lattice.ECS.Framework.SystemScheduler.Boundary">
+            <summary>
+            当前系统层正式支持与不支持的调度边界。
+            </summary>
         </member>
         <member name="M:Lattice.ECS.Framework.SystemScheduler.Add(Lattice.ECS.Framework.ISystem)">
             <summary>
-            添加系统。
+            注册系统。
+            初始化后不允许再动态增删系统；若需要调整系统集合，请先 `Shutdown(frame)`。
             </summary>
         </member>
-        <member name="M:Lattice.ECS.Framework.SystemScheduler.AddRange(System.Collections.Generic.IEnumerable{Lattice.ECS.Framework.ISystem})">
+        <member name="M:Lattice.ECS.Framework.SystemScheduler.Remove(Lattice.ECS.Framework.ISystem)">
             <summary>
-            批量添加系统。
+            移除系统。
+            初始化后不允许再动态增删系统；若需要调整系统集合，请先 `Shutdown(frame)`。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Framework.SystemScheduler.Clear">
+            <summary>
+            清空系统列表。
+            必须在未初始化状态下调用；若系统已初始化，请先执行 Shutdown(frame)。
             </summary>
         </member>
         <member name="M:Lattice.ECS.Framework.SystemScheduler.Initialize(Lattice.ECS.Core.Frame)">
             <summary>
-            初始化已注册系统。
+            初始化所有系统。
+            初始化后，当前系统集合会被冻结，直到显式执行 `Shutdown(frame)`。
             </summary>
         </member>
         <member name="M:Lattice.ECS.Framework.SystemScheduler.Update(Lattice.ECS.Core.Frame,Lattice.Math.FP)">
             <summary>
-            执行一次系统更新。
+            按 phase 再按注册顺序更新所有系统。
             </summary>
         </member>
-        <member name="M:Lattice.ECS.Framework.SystemScheduler.Dispose(Lattice.ECS.Core.Frame)">
+        <member name="M:Lattice.ECS.Framework.SystemScheduler.Shutdown(Lattice.ECS.Core.Frame)">
             <summary>
-            销毁所有已初始化系统。
+            关闭所有系统。
             </summary>
         </member>
-        <member name="M:Lattice.ECS.Framework.SystemScheduler.Enable(Lattice.ECS.Framework.ISystem)">
+        <member name="T:Lattice.ECS.Framework.SystemSchedulerKind">
             <summary>
-            启用指定系统实例。
+            当前 `SystemScheduler` 的正式调度模型类型。
             </summary>
         </member>
-        <member name="M:Lattice.ECS.Framework.SystemScheduler.Disable(Lattice.ECS.Framework.ISystem)">
+        <member name="F:Lattice.ECS.Framework.SystemSchedulerKind.FlatOrdered">
             <summary>
-            禁用指定系统实例。
+            单线程、平面、按注册顺序执行的最小系统调度模型。
             </summary>
         </member>
-        <member name="M:Lattice.ECS.Framework.SystemScheduler.IsEnabled(Lattice.ECS.Framework.ISystem)">
+        <member name="F:Lattice.ECS.Framework.SystemSchedulerKind.FlatPhasedOrdered">
             <summary>
-            判断指定系统实例当前是否在层级内启用。
+            单线程、平面、按 phase 再按注册顺序执行的轻量系统调度模型。
             </summary>
         </member>
-        <member name="M:Lattice.ECS.Framework.SystemScheduler.GetNodes">
+        <member name="T:Lattice.ECS.Framework.SystemSchedulerCapability">
             <summary>
-            导出当前系统树的稳定快照（注册顺序）。
+            当前 `SystemScheduler` 公开承诺的调度能力。
             </summary>
         </member>
-        <member name="M:Lattice.ECS.Framework.SystemScheduler.GetExecutionOrder">
+        <member name="F:Lattice.ECS.Framework.SystemSchedulerCapability.OrderedExecution">
             <summary>
-            导出当前系统执行序列快照（仅非组系统）。
+            支持按注册顺序稳定执行系统。
             </summary>
         </member>
-        <member name="M:Lattice.ECS.Framework.SystemScheduler.TryGetNode(Lattice.ECS.Framework.ISystem,Lattice.ECS.Framework.SystemNodeInfo@)">
+        <member name="F:Lattice.ECS.Framework.SystemSchedulerCapability.ExplicitLifecycle">
             <summary>
-            按实例查询系统节点。
+            支持显式初始化与关闭生命周期。
             </summary>
         </member>
-        <member name="M:Lattice.ECS.Framework.SystemScheduler.GetNodes(System.String)">
+        <member name="F:Lattice.ECS.Framework.SystemSchedulerCapability.StaticRegistrationBeforeInitialize">
             <summary>
-            按名称查询系统节点。
+            支持在初始化前静态注册系统集合。
             </summary>
         </member>
-        <member name="M:Lattice.ECS.Framework.SystemScheduler.GetNodes``1">
+        <member name="F:Lattice.ECS.Framework.SystemSchedulerCapability.PhasedExecution">
             <summary>
-            按类型查询系统节点。
+            支持轻量 phase 执行语义。
             </summary>
         </member>
-        <member name="M:Lattice.ECS.Framework.SystemScheduler.Enable``1">
+        <member name="F:Lattice.ECS.Framework.SystemSchedulerCapability.AuthoringContractValidation">
             <summary>
-            启用所有指定类型系统。
+            支持对系统作者契约进行显式校验与执行期守卫。
             </summary>
         </member>
-        <member name="M:Lattice.ECS.Framework.SystemScheduler.Disable``1">
+        <member name="T:Lattice.ECS.Framework.UnsupportedSystemSchedulerCapability">
             <summary>
-            禁用所有指定类型系统。
+            当前 `SystemScheduler` 明确不承诺的调度能力。
             </summary>
         </member>
-        <member name="M:Lattice.ECS.Framework.SystemScheduler.IsEnabled``1">
+        <member name="F:Lattice.ECS.Framework.UnsupportedSystemSchedulerCapability.RuntimeMutation">
             <summary>
-            判断指定类型系统是否全部处于层级启用状态。
+            不支持初始化后的动态系统增删。
+            </summary>
+        </member>
+        <member name="F:Lattice.ECS.Framework.UnsupportedSystemSchedulerCapability.SystemPhase">
+            <summary>
+            不支持 phase / stage 调度。
+            该标记保留用于描述旧边界或其他不支持 phase 的调度器。
+            </summary>
+        </member>
+        <member name="F:Lattice.ECS.Framework.UnsupportedSystemSchedulerCapability.EnableDisable">
+            <summary>
+            不支持系统 enable / disable 开关。
+            </summary>
+        </member>
+        <member name="F:Lattice.ECS.Framework.UnsupportedSystemSchedulerCapability.DependencyOrdering">
+            <summary>
+            不支持显式依赖排序图。
+            </summary>
+        </member>
+        <member name="F:Lattice.ECS.Framework.UnsupportedSystemSchedulerCapability.HierarchicalGrouping">
+            <summary>
+            不支持 `SystemGroup` 一类的层级分组。
+            </summary>
+        </member>
+        <member name="F:Lattice.ECS.Framework.UnsupportedSystemSchedulerCapability.ThreadedExecution">
+            <summary>
+            不支持多线程系统调度。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Framework.SystemSchedulerBoundary">
+            <summary>
+            `SystemScheduler` 的正式调度边界描述。
+            用于把“当前系统层正式支持什么、不支持什么”显式暴露在代码层。
+            </summary>
+        </member>
+        <member name="P:Lattice.ECS.Framework.SystemSchedulerBoundary.SchedulerKind">
+            <summary>
+            当前调度模型类型。
+            </summary>
+        </member>
+        <member name="P:Lattice.ECS.Framework.SystemSchedulerBoundary.SupportedCapabilities">
+            <summary>
+            当前正式支持的调度能力。
+            </summary>
+        </member>
+        <member name="P:Lattice.ECS.Framework.SystemSchedulerBoundary.UnsupportedCapabilities">
+            <summary>
+            当前明确不承诺的调度能力。
             </summary>
         </member>
         <member name="T:Lattice.ECS.Framework.SystemSchedulerTracePhase">
@@ -2378,9 +2718,50 @@
             调度器 trace 只读事件。
             </summary>
         </member>
-        <member name="M:Lattice.ECS.Framework.SystemSchedulerTraceEvent.#ctor(Lattice.ECS.Framework.SystemNodeInfo,Lattice.ECS.Framework.SystemSchedulerTracePhase,Lattice.ECS.Framework.SystemSchedulerState)">
+        <member name="M:Lattice.ECS.Framework.SystemSchedulerTraceEvent.#ctor(Lattice.ECS.Framework.SystemNodeInfo,Lattice.ECS.Framework.SystemSchedulerTracePhase,Lattice.ECS.Framework.SystemSchedulerBoundary)">
             <summary>
             调度器 trace 只读事件。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Framework.Systems.Position2D">
+            <summary>
+            最小联调用二维位置组件。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Framework.Systems.Velocity2D">
+            <summary>
+            最小联调用二维速度组件。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Framework.Systems.Lifetime">
+            <summary>
+            最小联调用生命周期组件。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Framework.Systems.Spawner">
+            <summary>
+            最小联调用生成器组件。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Framework.Systems.ProjectileTag">
+            <summary>
+            最小联调用投射物标记。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Framework.Systems.LifetimeSystem">
+            <summary>
+            最小样例生命周期系统。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Framework.Systems.MovementSystem">
+            <summary>
+            最小样例移动系统。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Framework.Systems.SpawnerSystem">
+            <summary>
+            最小样例生成系统。
+            用于验证“实体在系统更新中创建，再参与后续系统处理”的链路。
             </summary>
         </member>
         <member name="T:Lattice.ECS.Serialization.IFrameSerializer">
@@ -2494,6 +2875,1275 @@
         <member name="P:Lattice.ECS.Serialization.IUnsafeFrameSerializable.SerializedSize">
             <summary>
             序列化后的字节大小
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Session.LocalAuthoritativeSession">
+            <summary>
+            纯 C#、单线程、固定顺序的本地权威运行时。
+            该模式用于承载只前推的本地 authoritative 模拟链路：
+            保留固定帧推进与显式 checkpoint，但不支持预测验证与 rewind。
+            </summary>
+        </member>
+        <member name="P:Lattice.ECS.Session.LocalAuthoritativeSession.RuntimeBoundary">
+            <summary>
+            当前模式的正式运行边界。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Session.MinimalPredictionSession">
+            <summary>
+            纯 C#、单线程、固定顺序、可回滚的最小预测运行时。
+            这是当前主干正式承诺的 Session 运行模式。
+            </summary>
+        </member>
+        <member name="P:Lattice.ECS.Session.MinimalPredictionSession.RuntimeBoundary">
+            <summary>
+            当前模式的正式运行边界。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Session.SessionRuntime">
+            <summary>
+            共享 Session 运行时内核。
+            该类型承载固定帧推进、系统驱动、输入缓冲、历史帧、检查点与回滚相关的通用机制，
+            具体运行模式通过派生类决定，不直接假定自己就是唯一的正式 Session 形态。
+            </summary>
+        </member>
+        <member name="P:Lattice.ECS.Session.SessionRuntime.RuntimeOptions">
+            <summary>运行时配置。</summary>
+        </member>
+        <member name="P:Lattice.ECS.Session.SessionRuntime.Context">
+            <summary>
+            当前运行时上下文。
+            用于承载运行期共享对象与稳定公开的运行元信息。
+            </summary>
+        </member>
+        <member name="P:Lattice.ECS.Session.SessionRuntime.RuntimeBoundary">
+            <summary>
+            当前 Session 的正式运行边界描述。
+            用于明确当前主干承诺的能力面，而不是把 Session 误读为完整联机会话产品层。
+            </summary>
+        </member>
+        <member name="P:Lattice.ECS.Session.SessionRuntime.DataBoundary">
+            <summary>
+            当前运行时的输入 / 历史 / checkpoint 数据策略边界。
+            用于明确哪些是稳定公开契约，哪些 sizing 仍属于内部实现。
+            </summary>
+        </member>
+        <member name="P:Lattice.ECS.Session.SessionRuntime.TickPipeline">
+            <summary>
+            当前运行时的 Tick 管线边界。
+            用于明确 Tick 阶段与结构性修改的正式语义，而不是继续依赖系统注册顺序和调用约定。
+            </summary>
+        </member>
+        <member name="P:Lattice.ECS.Session.SessionRuntime.InputBoundary">
+            <summary>
+            当前运行时的正式输入契约边界。
+            用于明确输入按什么模型聚合、缺失输入如何处理、重复写入如何收敛，以及输入模型是否与传输序列化解耦。
+            </summary>
+        </member>
+        <member name="P:Lattice.ECS.Session.SessionRuntime.RuntimeKind">
+            <summary>
+            当前运行时类型。
+            </summary>
+        </member>
+        <member name="P:Lattice.ECS.Session.SessionRuntime.DeltaTime">
+            <summary>固定时间步长</summary>
+        </member>
+        <member name="P:Lattice.ECS.Session.SessionRuntime.LocalPlayerId">
+            <summary>本地玩家 ID</summary>
+        </member>
+        <member name="P:Lattice.ECS.Session.SessionRuntime.CurrentTick">
+            <summary>当前帧号（Verified 帧号）</summary>
+        </member>
+        <member name="P:Lattice.ECS.Session.SessionRuntime.CurrentTickStage">
+            <summary>
+            当前 Tick 正在执行的阶段。
+            正常空闲态为 `Idle`；运行中的单步推进、回滚重模拟与历史 materialize 都会复用同一套阶段语义。
+            </summary>
+        </member>
+        <member name="P:Lattice.ECS.Session.SessionRuntime.VerifiedFrame">
+            <summary>最新验证帧（服务器确认）</summary>
+        </member>
+        <member name="P:Lattice.ECS.Session.SessionRuntime.PredictedFrame">
+            <summary>预测帧（本地模拟）</summary>
+        </member>
+        <member name="P:Lattice.ECS.Session.SessionRuntime.PreviousFrame">
+            <summary>上一帧（用于插值）</summary>
+        </member>
+        <member name="F:Lattice.ECS.Session.SessionRuntime._frameHistory">
+            <summary>SessionRuntime 内部历史帧与帧池管理。</summary>
+        </member>
+        <member name="P:Lattice.ECS.Session.SessionRuntime.IsRollingBack">
+            <summary>是否正在回滚中</summary>
+        </member>
+        <member name="P:Lattice.ECS.Session.SessionRuntime.IsRunning">
+            <summary>是否已启动</summary>
+        </member>
+        <member name="F:Lattice.ECS.Session.SessionRuntime._systemScheduler">
+            <summary>系统调度器</summary>
+        </member>
+        <member name="F:Lattice.ECS.Session.SessionRuntime._inputStore">
+            <summary>SessionRuntime 内部输入保留与聚合管理。</summary>
+        </member>
+        <member name="F:Lattice.ECS.Session.SessionRuntime._tickProcessor">
+            <summary>SessionRuntime 内部 Tick 管线执行器。</summary>
+        </member>
+        <member name="E:Lattice.ECS.Session.SessionRuntime.OnFrameUpdate">
+            <summary>帧更新事件</summary>
+        </member>
+        <member name="E:Lattice.ECS.Session.SessionRuntime.OnRollback">
+            <summary>发生回滚事件</summary>
+        </member>
+        <member name="E:Lattice.ECS.Session.SessionRuntime.OnFrameVerified">
+            <summary>帧验证事件</summary>
+        </member>
+        <member name="M:Lattice.ECS.Session.SessionRuntime.Start">
+            <summary>
+            启动会话。
+            该方法是幂等的；若会话已在运行，则直接返回。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Session.SessionRuntime.Stop">
+            <summary>
+            停止会话。
+            该方法是幂等的；若会话未运行，则直接返回。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Session.SessionRuntime.Update">
+            <summary>
+            单步更新（FixedUpdate）。
+            这是当前最小本地推进入口：基于已知输入推进 `PredictedFrame`，并写入历史。
+            只能在会话运行期间调用。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Session.SessionRuntime.RegisterSystem(Lattice.ECS.Framework.ISystem)">
+            <summary>
+            注册系统。
+            运行中的会话不允许动态修改系统集合，避免 Verified / Predicted / History 之间出现不一致。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Session.SessionRuntime.UnregisterSystem(Lattice.ECS.Framework.ISystem)">
+            <summary>
+            注销系统。
+            运行中的会话不允许动态修改系统集合，避免 Verified / Predicted / History 之间出现不一致。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Session.SessionRuntime.UpdateSystems(Lattice.ECS.Core.Frame,Lattice.Math.FP)">
+            <summary>
+            执行系统更新
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Session.SessionRuntime.CleanupFrame(Lattice.ECS.Core.Frame)">
+            <summary>
+            Tick 末尾清理阶段。
+            当前默认只保留显式阶段语义，不额外引入新的运行逻辑。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Session.SessionRuntime.CaptureHistory(Lattice.ECS.Core.Frame)">
+            <summary>
+            Tick 历史写入阶段。
+            默认把当前帧写入运行时历史；保留显式 hook 仅用于测试与后续边界扩展。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Session.SessionRuntime.SetPlayerInput(System.Int32,System.Int32,Lattice.ECS.Session.IPlayerInput)">
+            <summary>
+            设置玩家输入。
+            稳定公开契约是按 `(playerId, tick)` 读写输入；
+            具体窗口大小、ring buffer sizing 与淘汰细节仍属于内部策略，可通过 `DataBoundary` 了解当前承诺的能力边界。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Session.SessionRuntime.GetPlayerInput(System.Int32,System.Int32)">
+            <summary>
+            获取玩家输入。
+            若请求 tick 已超出当前内部保留窗口，则返回 `null`；窗口大小本身不属于稳定公开 API。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Session.SessionRuntime.CollectInputSet(System.Int32)">
+            <summary>
+            为指定 tick 聚合输入集合。
+            当前正式语义为：
+            - 只聚合实际写入的玩家输入
+            - 缺失玩家不会自动生成默认输入
+            - 遍历顺序按玩家 ID 升序稳定排列
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Session.SessionRuntime.ApplyInputSet(Lattice.ECS.Core.Frame,Lattice.ECS.Session.SessionInputSet@)">
+            <summary>
+            将聚合后的输入集合应用到当前帧。
+            这是当前正式推荐的输入扩展点，新玩法 Session 默认应优先重写该方法，而不是直接操作底层输入缓冲。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Session.SessionRuntime.ApplyInputs(Lattice.ECS.Core.Frame)">
+            <summary>
+            应用输入到帧。
+            默认实现会先构建正式 `SessionInputSet`，再调用 `ApplyInputSet(frame, inputSet)`。
+            保留该 hook 仅用于兼容现有派生类；新代码应优先重写 `ApplyInputSet(...)`。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Session.SessionRuntime.VerifyFrame(System.Int32,System.Int64,System.Byte[])">
+            <summary>
+            验证帧（服务器确认）。
+            该接口属于“预测/验证”语义：用于比较某个历史 Tick 的校验和，
+            不匹配时触发回滚与重模拟；它不是本地单机玩法推进所必需的入口。
+            只能在会话运行期间调用。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Session.SessionRuntime.RollbackTo(System.Int32,System.Byte[])">
+            <summary>
+            回滚到指定帧。
+            该接口属于“预测修正”语义：它会把 `PredictedFrame` 回退到历史基线后再重模拟，
+            主要服务于校验失败后的状态修正，而不是普通本地 rewind 玩法。
+            只能在会话运行期间调用；该操作只回退帧状态，不重新初始化系统。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Session.SessionRuntime.Resimulate(System.Int32,System.Int32)">
+            <summary>
+            重新模拟帧
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Session.SessionRuntime.GetHistoricalFrame(System.Int32)">
+            <summary>
+            获取历史帧。
+            返回结果可能来自 live history，也可能来自 sampled snapshot 的按需 materialize；
+            具体保留数量与采样间隔属于内部策略，不作为稳定公开 API 承诺。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Session.SessionRuntime.UpdateHistory(Lattice.ECS.Core.Frame)">
+            <summary>
+            更新历史中的帧
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Session.SessionRuntime.Rewind(System.Int32)">
+            <summary>
+            回退指定帧数（单机时光倒流）。
+            该接口更偏“本地玩法语义”：直接恢复历史帧，不做额外重模拟，
+            与 `RollbackTo()` 的预测修正语义不同。
+            只能在会话运行期间调用。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Session.SessionRuntime.CreateCheckpoint">
+            <summary>
+            创建检查点。
+            该接口更偏“本地工具/运行时管理”语义：保存当前 Verified / Predicted 帧状态，
+            便于显式恢复、热重载或外层玩法工具使用，不负责系统集合装配。
+            当前公开契约是“可保存并恢复运行态帧状态，并携带正式 checkpoint 协议 metadata”；
+            底层 packed payload 细节仍通过显式版本号治理，而不是默认承诺永远隐式兼容。
+            需要当前已经存在有效帧状态。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Session.SessionRuntime.RestoreFromCheckpoint(Lattice.ECS.Session.SessionCheckpoint)">
+            <summary>
+            从检查点恢复。
+            该接口更偏“本地工具/运行时管理”语义：只恢复帧状态，
+            不重建系统集合，也不切换 Session 的运行模式。
+            该操作只恢复帧状态，不会重建系统集合，也不会重新初始化系统。
+            当前会先校验 checkpoint 协议、输入契约和组件 schema，再执行底层 snapshot restore。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Session.SessionRuntime.CreateFrame(System.Int32)">
+            <summary>
+            创建新帧
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Session.SessionRuntime.AdvanceFrame(Lattice.ECS.Core.Frame)">
+            <summary>
+            推进到下一帧
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Session.SessionRuntime.ApplyCorrectedInput(Lattice.ECS.Core.Frame,System.Byte[])">
+            <summary>
+            应用修正的输入
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Session.SessionRuntime.InvalidateHistoricalMaterializeCache">
+            <summary>
+            清空按需重建历史帧使用的临时缓存。
+            仅供派生类在测试或基准场景下显式控制冷/热路径使用。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Session.SessionCheckpoint">
+            <summary>
+            会话检查点
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Session.SessionCheckpointFactory">
+            <summary>
+            Session checkpoint 的捕获与恢复辅助。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Session.Session">
+            <summary>
+            `MinimalPredictionSession` 的兼容入口。
+            当前仍保留 `Session` 名称，避免现有调用面一次性迁移。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Session.SessionFrameHistory">
+            <summary>
+            SessionRuntime 的历史帧、采样快照、物化缓存与帧池管理。
+            负责保留策略与缓存复用，不直接决定运行时公开语义。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Session.IPlayerInput">
+            <summary>
+            当前运行时正式推荐的玩家输入模型。
+            输入对象本身只表达“哪个玩家、哪个 tick 的输入状态是什么”，
+            不再把传输层 payload 序列化职责直接绑进核心输入接口。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Session.IInputPayloadCodec`1">
+            <summary>
+            输入 payload 的外层编解码适配器。
+            当运行时需要把输入状态与网络 / 文件 / 回放 payload 对接时，应通过外层 codec 完成，
+            而不是把序列化职责重新塞回 `IPlayerInput` 主契约。
+            若该 codec 会形成稳定 payload 协议，请优先实现 `IVersionedInputPayloadCodec{TInput}`，
+            显式声明 codec 身份与版本。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Session.IInputCommand">
+            <summary>
+            兼容旧输入接口。
+            新代码默认应优先使用 `IPlayerInput` 与外层 `IInputPayloadCodec{TInput}`。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Session.SessionInputContractKind">
+            <summary>
+            当前运行时正式承诺的输入契约模型类型。
+            </summary>
+        </member>
+        <member name="F:Lattice.ECS.Session.SessionInputContractKind.TickScopedPlayerInputSet">
+            <summary>
+            以 tick 为范围聚合多个玩家输入，形成稳定 `SessionInputSet`。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Session.SessionMissingInputPolicy">
+            <summary>
+            缺失输入的正式语义。
+            </summary>
+        </member>
+        <member name="F:Lattice.ECS.Session.SessionMissingInputPolicy.OmitMissingPlayers">
+            <summary>
+            缺失输入不会自动补默认值或沿用上一帧输入，而是直接从当前 tick 的输入集中省略。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Session.SessionInputWritePolicy">
+            <summary>
+            同一 `(playerId, tick)` 被重复写入时的正式语义。
+            </summary>
+        </member>
+        <member name="F:Lattice.ECS.Session.SessionInputWritePolicy.LatestWriteWins">
+            <summary>
+            同一玩家同一 tick 的输入以最后一次写入为准。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Session.SessionInputOrder">
+            <summary>
+            当前运行时对 tick 内玩家输入遍历顺序的正式语义。
+            </summary>
+        </member>
+        <member name="F:Lattice.ECS.Session.SessionInputOrder.PlayerIdAscending">
+            <summary>
+            按玩家 ID 升序遍历输入，避免依赖字典枚举顺序。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Session.SessionRuntimeInputCapability">
+            <summary>
+            当前运行时正式承诺的输入契约能力。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Session.UnsupportedSessionRuntimeInputCapability">
+            <summary>
+            当前运行时明确不承诺的输入契约能力。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Session.SessionRuntimeInputBoundary">
+            <summary>
+            当前运行时的正式输入契约边界描述。
+            用于把“输入模型、聚合顺序、缺失语义、重复写入语义”显式暴露在代码层。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Session.SessionPlayerInput">
+            <summary>
+            单个玩家在某个 tick 内的输入条目。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Session.SessionInputSet">
+            <summary>
+            某个 tick 聚合后的输入集合。
+            当前正式语义是：仅包含实际写入的玩家输入，并按玩家 ID 升序稳定遍历。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Session.SessionInputStore">
+            <summary>
+            SessionRuntime 的输入保留与聚合存储。
+            负责 `(playerId, tick)` 输入写入、固定窗口保留以及 `SessionInputSet` 聚合。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Session.InputBuffer">
+            <summary>
+            按固定窗口保留玩家输入的 ring buffer。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Session.SessionPayloadCompatibilityMode">
+            <summary>
+            输入 payload 兼容规则。
+            当前第一轮正式协议采用“显式 codec 标识 + 显式版本号 + 精确匹配”策略，
+            避免 payload 格式继续依赖隐式约定演进。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Session.SessionInputPayloadFormat">
+            <summary>
+            输入 payload codec 的版本描述。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Session.IVersionedInputPayloadCodec`1">
+            <summary>
+            带显式 payload 版本声明的输入 codec。
+            当输入需要接入网络、回放或文件载荷时，应显式声明 codec 身份与版本，而不是只暴露裸序列化函数。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Session.SessionInputContractStamp">
+            <summary>
+            当前运行时输入契约的正式 stamp。
+            用于把输入模型、缺失语义、重复写入语义与协议版本一起收口。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Session.SessionInputProtocol">
+            <summary>
+            Session 输入协议治理入口。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Session.SessionCheckpointProtocol">
+            <summary>
+            当前 checkpoint 的正式协议 stamp。
+            第一轮治理采用精确匹配策略：
+            - 输入契约必须一致
+            - checkpoint 存储类型必须一致
+            - packed snapshot 格式版本必须一致
+            - 组件 schema 摘要必须一致
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Session.SessionRunner">
+            <summary>
+            会话运行器。
+            为纯 C# 环境提供统一的 Start / Step / Stop 驱动入口。
+            当前面向 `SessionRuntime` 工作，而不是绑定某一个具体运行模式。
+            </summary>
+        </member>
+        <member name="P:Lattice.ECS.Session.SessionRunner.Definition">
+            <summary>
+            当前运行定义。
+            由 `SessionRunnerBuilder` 构建的 runner 一定具备定义；手动传入 runtime 的兼容入口则没有。
+            </summary>
+        </member>
+        <member name="P:Lattice.ECS.Session.SessionRunner.Runtime">
+            <summary>
+            当前绑定的运行时实例。
+            </summary>
+        </member>
+        <member name="P:Lattice.ECS.Session.SessionRunner.Session">
+            <summary>
+            兼容入口：当前运行时实例。
+            </summary>
+        </member>
+        <member name="P:Lattice.ECS.Session.SessionRunner.Context">
+            <summary>
+            当前运行时上下文。
+            </summary>
+        </member>
+        <member name="P:Lattice.ECS.Session.SessionRunner.Name">
+            <summary>
+            运行器名称。
+            </summary>
+        </member>
+        <member name="P:Lattice.ECS.Session.SessionRunner.IsRunning">
+            <summary>
+            运行器当前是否处于运行状态。
+            </summary>
+        </member>
+        <member name="P:Lattice.ECS.Session.SessionRunner.State">
+            <summary>
+            当前运行器状态。
+            </summary>
+        </member>
+        <member name="P:Lattice.ECS.Session.SessionRunner.LastShutdownCause">
+            <summary>
+            最近一次停止原因。
+            </summary>
+        </member>
+        <member name="P:Lattice.ECS.Session.SessionRunner.LastResetReason">
+            <summary>
+            最近一次 runtime 重建原因。
+            </summary>
+        </member>
+        <member name="P:Lattice.ECS.Session.SessionRunner.LastFailure">
+            <summary>
+            最近一次生命周期失败信息。
+            </summary>
+        </member>
+        <member name="P:Lattice.ECS.Session.SessionRunner.RuntimeOptions">
+            <summary>
+            当前运行时的稳定公开参数。
+            </summary>
+        </member>
+        <member name="P:Lattice.ECS.Session.SessionRunner.RuntimeKind">
+            <summary>
+            当前运行时类型。
+            </summary>
+        </member>
+        <member name="P:Lattice.ECS.Session.SessionRunner.RuntimeBoundary">
+            <summary>
+            当前运行时边界。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Session.SessionRunner.Start">
+            <summary>
+            启动运行器。
+            该方法是幂等的。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Session.SessionRunner.Step">
+            <summary>
+            推进一步固定帧。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Session.SessionRunner.Step(System.Int32)">
+            <summary>
+            推进多个固定帧。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Session.SessionRunner.Stop">
+            <summary>
+            停止运行器。
+            该方法是幂等的。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Session.SessionRunner.ResetRuntime">
+            <summary>
+            依据当前定义重建一个新的运行时实例。
+            仅适用于由 `SessionRunnerDefinition` 创建的 runner。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Session.SessionRunnerBuilder">
+            <summary>
+            会话运行器构建器。
+            为代码侧提供最小但正式的运行时装配入口。
+            当前构建目标是 `SessionRuntime`，默认实例为 `MinimalPredictionSession`。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Session.SessionRunnerBuilder.WithRunnerName(System.String)">
+            <summary>
+            设置运行器名称。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Session.SessionRunnerBuilder.WithDeltaTime(Lattice.Math.FP)">
+            <summary>
+            设置固定时间步长。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Session.SessionRunnerBuilder.WithLocalPlayerId(System.Int32)">
+            <summary>
+            设置本地玩家 ID。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Session.SessionRunnerBuilder.WithRuntimeOptions(Lattice.ECS.Session.SessionRuntimeOptions)">
+            <summary>
+            设置运行时基础配置。
+            当前仅承载稳定公开的基础参数，不提前暴露历史窗口和采样策略等内部实现细节。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Session.SessionRunnerBuilder.WithRuntimeFactory(Lattice.ECS.Session.SessionRuntimeFactory)">
+            <summary>
+            设置自定义运行时工厂。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Session.SessionRunnerBuilder.WithSessionFactory(System.Func{Lattice.Math.FP,System.Int32,Lattice.ECS.Session.SessionRuntime})">
+            <summary>
+            设置自定义运行时工厂。
+            该重载保留旧的 `(deltaTime, localPlayerId)` 形式，内部会适配到 `SessionRuntimeOptions` 工厂。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Session.SessionRunnerBuilder.AddSystem(Lattice.ECS.Framework.ISystem)">
+            <summary>
+            注册系统。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Session.SessionRunnerBuilder.ConfigureContext(Lattice.ECS.Session.SessionRuntimeContextConfigurator)">
+            <summary>
+            配置运行时上下文。
+            用于挂载显式声明的 runtime shared service，
+            而不是继续侵入 `Frame` / `SessionRuntime` 或把 Context 当成万能对象包。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Session.SessionRunnerBuilder.ConfigureLifecycle(System.Action{Lattice.ECS.Session.SessionRunnerLifecycleHooks})">
+            <summary>
+            配置宿主生命周期钩子。
+            用于在 runtime 创建、启动、停止、重建与失败收敛时补齐明确的宿主责任边界。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Session.SessionRunnerBuilder.BuildDefinition">
+            <summary>
+            构建不可变运行定义。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Session.SessionRunnerBuilder.BuildRuntime">
+            <summary>
+            构建运行时实例。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Session.SessionRunnerBuilder.BuildSession">
+            <summary>
+            构建运行时实例。
+            保留 `BuildSession()` 名称作为兼容入口。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Session.SessionRunnerBuilder.Build">
+            <summary>
+            构建运行器。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Session.SessionRunnerDefinition">
+            <summary>
+            SessionRunner 的不可变运行定义。
+            承载稳定公开的启动参数、运行时工厂以及系统装配信息。
+            </summary>
+        </member>
+        <member name="P:Lattice.ECS.Session.SessionRunnerDefinition.RunnerName">
+            <summary>
+            运行器名称。
+            用于标识一个稳定的运行入口，而不是具体某一帧状态对象。
+            </summary>
+        </member>
+        <member name="P:Lattice.ECS.Session.SessionRunnerDefinition.RuntimeOptions">
+            <summary>
+            稳定公开的运行时参数。
+            </summary>
+        </member>
+        <member name="P:Lattice.ECS.Session.SessionRunnerDefinition.SystemCount">
+            <summary>
+            当前定义中注册的系统数量。
+            </summary>
+        </member>
+        <member name="P:Lattice.ECS.Session.SessionRunnerDefinition.ContextConfiguratorCount">
+            <summary>
+            当前定义中注册的上下文配置器数量。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Session.SessionRunnerDefinition.BuildRuntime">
+            <summary>
+            按定义创建一个新的运行时实例并完成系统装配。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Session.SessionRunnerDefinition.CreateRunner">
+            <summary>
+            按定义创建运行器。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Session.SessionRunnerShutdownCause">
+            <summary>
+            SessionRunner 的停止原因。
+            用于把宿主主动停止、重置停止和失败停止区分为正式生命周期语义。
+            </summary>
+        </member>
+        <member name="F:Lattice.ECS.Session.SessionRunnerShutdownCause.None">
+            <summary>
+            尚未发生正式停止。
+            </summary>
+        </member>
+        <member name="F:Lattice.ECS.Session.SessionRunnerShutdownCause.HostStopRequested">
+            <summary>
+            宿主显式调用 Stop()。
+            </summary>
+        </member>
+        <member name="F:Lattice.ECS.Session.SessionRunnerShutdownCause.RuntimeReset">
+            <summary>
+            因重建 runtime 而停止旧实例。
+            </summary>
+        </member>
+        <member name="F:Lattice.ECS.Session.SessionRunnerShutdownCause.RunnerDisposed">
+            <summary>
+            因释放 runner 而停止。
+            </summary>
+        </member>
+        <member name="F:Lattice.ECS.Session.SessionRunnerShutdownCause.StartupFailure">
+            <summary>
+            启动阶段失败后进入关闭收敛。
+            </summary>
+        </member>
+        <member name="F:Lattice.ECS.Session.SessionRunnerShutdownCause.StepFailure">
+            <summary>
+            固定帧推进失败后进入关闭收敛。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Session.SessionRunnerResetReason">
+            <summary>
+            SessionRunner 的 runtime 重建原因。
+            </summary>
+        </member>
+        <member name="F:Lattice.ECS.Session.SessionRunnerResetReason.None">
+            <summary>
+            尚未发生正式重建。
+            </summary>
+        </member>
+        <member name="F:Lattice.ECS.Session.SessionRunnerResetReason.HostRequested">
+            <summary>
+            宿主显式调用 ResetRuntime()。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Session.SessionRunnerFailureKind">
+            <summary>
+            SessionRunner 的失败类别。
+            </summary>
+        </member>
+        <member name="F:Lattice.ECS.Session.SessionRunnerFailureKind.Start">
+            <summary>
+            启动阶段失败。
+            </summary>
+        </member>
+        <member name="F:Lattice.ECS.Session.SessionRunnerFailureKind.Step">
+            <summary>
+            固定帧推进失败。
+            </summary>
+        </member>
+        <member name="F:Lattice.ECS.Session.SessionRunnerFailureKind.Stop">
+            <summary>
+            停止阶段失败。
+            </summary>
+        </member>
+        <member name="F:Lattice.ECS.Session.SessionRunnerFailureKind.Reset">
+            <summary>
+            重建阶段失败。
+            </summary>
+        </member>
+        <member name="F:Lattice.ECS.Session.SessionRunnerFailureKind.LifecycleHook">
+            <summary>
+            生命周期钩子失败。
+            </summary>
+        </member>
+        <member name="F:Lattice.ECS.Session.SessionRunnerFailureKind.Dispose">
+            <summary>
+            释放阶段失败。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Session.SessionRunnerFailureInfo">
+            <summary>
+            SessionRunner 的最后一次失败快照。
+            </summary>
+        </member>
+        <member name="P:Lattice.ECS.Session.SessionRunnerFailureInfo.Kind">
+            <summary>
+            失败类别。
+            </summary>
+        </member>
+        <member name="P:Lattice.ECS.Session.SessionRunnerFailureInfo.OperationName">
+            <summary>
+            失败所在操作名。
+            </summary>
+        </member>
+        <member name="P:Lattice.ECS.Session.SessionRunnerFailureInfo.Exception">
+            <summary>
+            原始异常。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Session.SessionRunnerLifecycleHooks">
+            <summary>
+            SessionRunner 的宿主生命周期钩子集合。
+            仅用于补齐纯 C# 宿主边界，不引入额外异步或平台外壳。
+            </summary>
+        </member>
+        <member name="P:Lattice.ECS.Session.SessionRunnerLifecycleHooks.RuntimeCreated">
+            <summary>
+            新 runtime 创建完成后调用。
+            此时 Context configurator 与系统装配已完成，适合挂接宿主级共享服务。
+            </summary>
+        </member>
+        <member name="P:Lattice.ECS.Session.SessionRunnerLifecycleHooks.BeforeStart">
+            <summary>
+            启动前调用。
+            </summary>
+        </member>
+        <member name="P:Lattice.ECS.Session.SessionRunnerLifecycleHooks.AfterStart">
+            <summary>
+            启动成功后调用。
+            </summary>
+        </member>
+        <member name="P:Lattice.ECS.Session.SessionRunnerLifecycleHooks.BeforeStop">
+            <summary>
+            停止前调用。
+            </summary>
+        </member>
+        <member name="P:Lattice.ECS.Session.SessionRunnerLifecycleHooks.AfterStop">
+            <summary>
+            停止成功后调用。
+            </summary>
+        </member>
+        <member name="P:Lattice.ECS.Session.SessionRunnerLifecycleHooks.BeforeReset">
+            <summary>
+            重建前调用。
+            </summary>
+        </member>
+        <member name="P:Lattice.ECS.Session.SessionRunnerLifecycleHooks.AfterReset">
+            <summary>
+            重建成功后调用。
+            </summary>
+        </member>
+        <member name="P:Lattice.ECS.Session.SessionRunnerLifecycleHooks.Failure">
+            <summary>
+            生命周期失败后调用。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Session.SessionRuntimeKind">
+            <summary>
+            当前 Session 的正式运行时类型。
+            </summary>
+        </member>
+        <member name="F:Lattice.ECS.Session.SessionRuntimeKind.MinimalPrediction">
+            <summary>
+            纯 C#、单线程、固定顺序、可回滚的最小预测运行时。
+            </summary>
+        </member>
+        <member name="F:Lattice.ECS.Session.SessionRuntimeKind.LocalAuthoritative">
+            <summary>
+            纯 C#、单线程、固定顺序的本地权威运行时。
+            该模式保留固定帧推进与显式 checkpoint，但不承诺预测验证与 rewind 玩法入口。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Session.SessionRuntimeCapability">
+            <summary>
+            当前 Session 公开承诺的运行能力。
+            </summary>
+        </member>
+        <member name="F:Lattice.ECS.Session.SessionRuntimeCapability.LocalPredictionStep">
+            <summary>
+            支持本地固定帧推进。
+            </summary>
+        </member>
+        <member name="F:Lattice.ECS.Session.SessionRuntimeCapability.PredictionVerification">
+            <summary>
+            支持最小验证与回滚修正。
+            </summary>
+        </member>
+        <member name="F:Lattice.ECS.Session.SessionRuntimeCapability.LocalRewind">
+            <summary>
+            支持本地 rewind 玩法入口。
+            </summary>
+        </member>
+        <member name="F:Lattice.ECS.Session.SessionRuntimeCapability.CheckpointRestore">
+            <summary>
+            支持显式 checkpoint 保存与恢复。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Session.UnsupportedSessionRuntimeCapability">
+            <summary>
+            当前 Session 未作为正式能力承诺的运行面。
+            </summary>
+        </member>
+        <member name="F:Lattice.ECS.Session.UnsupportedSessionRuntimeCapability.ThreadedScheduling">
+            <summary>
+            不支持多线程系统调度。
+            </summary>
+        </member>
+        <member name="F:Lattice.ECS.Session.UnsupportedSessionRuntimeCapability.ResourceConfiguredBoot">
+            <summary>
+            不支持资源化 / 配置化多模式启动。
+            </summary>
+        </member>
+        <member name="F:Lattice.ECS.Session.UnsupportedSessionRuntimeCapability.FullNetworkSession">
+            <summary>
+            不支持完整网络会话管理。
+            </summary>
+        </member>
+        <member name="F:Lattice.ECS.Session.UnsupportedSessionRuntimeCapability.PlayerMappingAndTransport">
+            <summary>
+            不支持玩家映射、房间态与传输层。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Session.SessionRuntimeBoundary">
+            <summary>
+            Session 运行边界描述。
+            用于把“当前正式支持什么、不支持什么”显式暴露在代码层，而不只停留在文档。
+            </summary>
+        </member>
+        <member name="P:Lattice.ECS.Session.SessionRuntimeBoundary.RuntimeKind">
+            <summary>
+            当前运行时类型。
+            </summary>
+        </member>
+        <member name="P:Lattice.ECS.Session.SessionRuntimeBoundary.SupportedCapabilities">
+            <summary>
+            当前正式支持的运行能力。
+            </summary>
+        </member>
+        <member name="P:Lattice.ECS.Session.SessionRuntimeBoundary.UnsupportedCapabilities">
+            <summary>
+            当前明确不承诺的运行能力。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Session.SessionRuntimeContext">
+            <summary>
+            很薄的 Session 运行时上下文。
+            只承载显式声明的 runtime shared service 与稳定公开的运行元信息，
+            避免继续侵入 `Frame` 或退化成万能对象包。
+            </summary>
+        </member>
+        <member name="P:Lattice.ECS.Session.SessionRuntimeContext.Boundary">
+            <summary>
+            当前运行时上下文边界。
+            </summary>
+        </member>
+        <member name="P:Lattice.ECS.Session.SessionRuntimeContext.Runtime">
+            <summary>
+            当前上下文所属的运行时实例。
+            </summary>
+        </member>
+        <member name="P:Lattice.ECS.Session.SessionRuntimeContext.RunnerName">
+            <summary>
+            当前运行器名称。
+            对于未接入 runner 的独立 runtime，默认使用 runtime 类型名。
+            </summary>
+        </member>
+        <member name="P:Lattice.ECS.Session.SessionRuntimeContext.RuntimeOptions">
+            <summary>
+            稳定公开的运行时参数。
+            </summary>
+        </member>
+        <member name="P:Lattice.ECS.Session.SessionRuntimeContext.RuntimeKind">
+            <summary>
+            当前运行时类型。
+            </summary>
+        </member>
+        <member name="P:Lattice.ECS.Session.SessionRuntimeContext.RuntimeBoundary">
+            <summary>
+            当前运行时边界。
+            </summary>
+        </member>
+        <member name="P:Lattice.ECS.Session.SessionRuntimeContext.SharedObjectCount">
+            <summary>
+            当前已注册的共享对象数量。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Session.SessionRuntimeContext.SetShared``1(``0,System.Boolean)">
+            <summary>
+            写入或替换一个按类型索引的共享对象。
+            只有显式声明为 runtime shared service 的类型才允许注册。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Session.SessionRuntimeContext.TryGetShared``1(``0@)">
+            <summary>
+            尝试获取一个按类型索引的共享对象。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Session.SessionRuntimeContext.GetRequiredShared``1">
+            <summary>
+            获取一个必须存在的共享对象。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Session.SessionRuntimeContext.RemoveShared``1">
+            <summary>
+            移除一个按类型索引的共享对象。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Session.SessionRuntimeContextKind">
+            <summary>
+            当前运行时上下文正式推荐的归属模型。
+            </summary>
+        </member>
+        <member name="F:Lattice.ECS.Session.SessionRuntimeContextKind.TypedRuntimeSharedServices">
+            <summary>
+            以类型为键挂载显式声明的运行时共享服务。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Session.SessionRuntimeContextCapability">
+            <summary>
+            当前运行时上下文正式承诺的能力。
+            </summary>
+        </member>
+        <member name="F:Lattice.ECS.Session.SessionRuntimeContextCapability.TypedSharedLookup">
+            <summary>
+            运行时共享对象按类型注册和读取。
+            </summary>
+        </member>
+        <member name="F:Lattice.ECS.Session.SessionRuntimeContextCapability.ExplicitRuntimeSharedServiceRegistration">
+            <summary>
+            共享对象必须显式声明为 runtime shared service。
+            </summary>
+        </member>
+        <member name="F:Lattice.ECS.Session.SessionRuntimeContextCapability.OwnedSharedObjectLifetime">
+            <summary>
+            共享对象可以由上下文托管释放。
+            </summary>
+        </member>
+        <member name="F:Lattice.ECS.Session.SessionRuntimeContextCapability.RuntimeMetadataExposure">
+            <summary>
+            上下文稳定暴露运行时元信息。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Session.UnsupportedSessionRuntimeContextCapability">
+            <summary>
+            当前运行时上下文明确不承诺的能力。
+            </summary>
+        </member>
+        <member name="F:Lattice.ECS.Session.UnsupportedSessionRuntimeContextCapability.ArbitraryObjectBag">
+            <summary>
+            不允许把上下文当成任意对象包。
+            </summary>
+        </member>
+        <member name="F:Lattice.ECS.Session.UnsupportedSessionRuntimeContextCapability.RollbackStateStorage">
+            <summary>
+            不允许把可回滚状态或历史载体塞进上下文。
+            </summary>
+        </member>
+        <member name="F:Lattice.ECS.Session.UnsupportedSessionRuntimeContextCapability.GameplayStateExchange">
+            <summary>
+            不允许把 gameplay 状态通信主链路挂到上下文。
+            </summary>
+        </member>
+        <member name="F:Lattice.ECS.Session.UnsupportedSessionRuntimeContextCapability.StringKeyedServiceLocator">
+            <summary>
+            不提供 string key / 名字查找式 service locator。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Session.SessionRuntimeContextBoundary">
+            <summary>
+            SessionRuntimeContext 的正式边界描述。
+            </summary>
+        </member>
+        <member name="P:Lattice.ECS.Session.SessionRuntimeContextBoundary.ContextKind">
+            <summary>
+            当前上下文归属模型。
+            </summary>
+        </member>
+        <member name="P:Lattice.ECS.Session.SessionRuntimeContextBoundary.SupportedCapabilities">
+            <summary>
+            当前正式支持的上下文能力。
+            </summary>
+        </member>
+        <member name="P:Lattice.ECS.Session.SessionRuntimeContextBoundary.UnsupportedCapabilities">
+            <summary>
+            当前明确不承诺的上下文能力。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Session.ISessionRuntimeSharedService">
+            <summary>
+            允许挂入 SessionRuntimeContext 的正式运行时共享服务标记。
+            该标记用于把上下文约束在 runtime service 归属面，而不是任意对象包。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Session.SessionInputStorageKind">
+            <summary>
+            当前运行时的输入存取策略类型。
+            </summary>
+        </member>
+        <member name="F:Lattice.ECS.Session.SessionInputStorageKind.PlayerTickFixedWindow">
+            <summary>
+            按 `(playerId, tick)` 访问的固定窗口输入存储。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Session.SessionHistoryStorageKind">
+            <summary>
+            当前运行时的历史帧策略类型。
+            </summary>
+        </member>
+        <member name="F:Lattice.ECS.Session.SessionHistoryStorageKind.BoundedLiveFramesWithSampledSnapshots">
+            <summary>
+            保留有限 live frame，并通过 sampled snapshot 按需重建更早历史。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Session.SessionCheckpointStorageKind">
+            <summary>
+            当前运行时的 checkpoint 存储策略类型。
+            </summary>
+        </member>
+        <member name="F:Lattice.ECS.Session.SessionCheckpointStorageKind.PackedSnapshot">
+            <summary>
+            使用 packed frame snapshot 作为 checkpoint 主格式。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Session.SessionRuntimeDataCapability">
+            <summary>
+            当前运行时公开承诺的数据策略能力。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Session.UnsupportedSessionRuntimeDataCapability">
+            <summary>
+            当前运行时明确不承诺的数据策略能力。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Session.SessionRuntimeDataBoundary">
+            <summary>
+            Session 运行时的数据策略边界描述。
+            用于把“输入 / 历史 / checkpoint 的稳定公开契约”和“内部 sizing 策略”分开。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Session.SessionRuntimeDataDefaults">
+            <summary>
+            当前运行时内部使用的输入 / 历史策略默认 sizing。
+            这些值用于实现调优，不属于稳定公开 API。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Session.SessionRuntimeFactory">
+            <summary>
+            Session 运行时工厂。
+            用于根据稳定公开的运行时参数创建具体运行模式实例。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Session.SessionRuntimeContextConfigurator">
+            <summary>
+            Session 运行时上下文配置器。
+            用于在运行时实例创建后，为其上下文挂载共享对象。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Session.SessionRunnerState">
+            <summary>
+            SessionRunner 的生命周期状态。
+            </summary>
+        </member>
+        <member name="F:Lattice.ECS.Session.SessionRunnerState.Created">
+            <summary>
+            已创建运行时，但尚未启动。
+            </summary>
+        </member>
+        <member name="F:Lattice.ECS.Session.SessionRunnerState.Running">
+            <summary>
+            正在运行。
+            </summary>
+        </member>
+        <member name="F:Lattice.ECS.Session.SessionRunnerState.Stopped">
+            <summary>
+            已停止，可再次启动。
+            </summary>
+        </member>
+        <member name="F:Lattice.ECS.Session.SessionRunnerState.Faulted">
+            <summary>
+            生命周期执行失败，当前 runner 进入故障态。
+            该状态保留最后一次失败信息，供宿主显式诊断或恢复。
+            </summary>
+        </member>
+        <member name="F:Lattice.ECS.Session.SessionRunnerState.Disposed">
+            <summary>
+            已释放，不可继续使用。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Session.SessionRuntimeOptions">
+            <summary>
+            Session 运行时配置。
+            该对象只承载当前已经稳定公开的基础参数，不提前暴露历史窗口和采样策略等内部实现细节。
+            </summary>
+        </member>
+        <member name="P:Lattice.ECS.Session.SessionRuntimeOptions.Default">
+            <summary>
+            默认运行配置。
+            </summary>
+        </member>
+        <member name="P:Lattice.ECS.Session.SessionRuntimeOptions.DeltaTime">
+            <summary>
+            固定时间步长。
+            </summary>
+        </member>
+        <member name="P:Lattice.ECS.Session.SessionRuntimeOptions.LocalPlayerId">
+            <summary>
+            本地玩家 ID。
+            主要用于本地输入读取和最小预测链路。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Session.SessionRuntimeOptions.WithDeltaTime(Lattice.Math.FP)">
+            <summary>
+            创建一个仅替换固定时间步长的新配置。
+            </summary>
+        </member>
+        <member name="M:Lattice.ECS.Session.SessionRuntimeOptions.WithLocalPlayerId(System.Int32)">
+            <summary>
+            创建一个仅替换本地玩家 ID 的新配置。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Session.SessionTickPipelineKind">
+            <summary>
+            当前 Session 的 Tick 管线模型。
+            </summary>
+        </member>
+        <member name="F:Lattice.ECS.Session.SessionTickPipelineKind.PhasedStructuralCommit">
+            <summary>
+            显式阶段驱动，结构性修改在 `Simulation` 后统一提交。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Session.SessionTickPipelineCapability">
+            <summary>
+            当前 Tick 管线正式承诺的能力。
+            </summary>
+        </member>
+        <member name="F:Lattice.ECS.Session.SessionTickPipelineCapability.ExplicitStageExposure">
+            <summary>
+            公开当前 Tick 阶段。
+            </summary>
+        </member>
+        <member name="F:Lattice.ECS.Session.SessionTickPipelineCapability.DeferredStructuralChanges">
+            <summary>
+            支持在 `Simulation` 阶段延迟结构性修改。
+            </summary>
+        </member>
+        <member name="F:Lattice.ECS.Session.SessionTickPipelineCapability.StructuralCommitStage">
+            <summary>
+            结构性修改在 `StructuralCommit` 阶段统一生效。
+            </summary>
+        </member>
+        <member name="F:Lattice.ECS.Session.SessionTickPipelineCapability.CleanupAndHistoryStages">
+            <summary>
+            支持显式的 `Cleanup` 与 `HistoryCapture` 阶段。
+            </summary>
+        </member>
+        <member name="F:Lattice.ECS.Session.SessionTickPipelineCapability.ImmediateComponentMutationDuringSimulation">
+            <summary>
+            允许在 `Simulation` 阶段直接修改已存在组件的数据字段。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Session.UnsupportedSessionTickPipelineCapability">
+            <summary>
+            当前 Tick 管线明确不承诺的能力。
+            </summary>
+        </member>
+        <member name="F:Lattice.ECS.Session.UnsupportedSessionTickPipelineCapability.ImmediateStructuralVisibilityDuringSimulation">
+            <summary>
+            不承诺结构性修改在 `Simulation` 阶段立即可见。
+            </summary>
+        </member>
+        <member name="F:Lattice.ECS.Session.UnsupportedSessionTickPipelineCapability.RuntimeReorderedStages">
+            <summary>
+            不承诺运行期任意重排 Tick 阶段。
+            </summary>
+        </member>
+        <member name="F:Lattice.ECS.Session.UnsupportedSessionTickPipelineCapability.PerSystemStructuralCommit">
+            <summary>
+            不承诺每个系统拥有独立的结构提交阶段。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Session.SessionTickStage">
+            <summary>
+            当前 Tick 正在执行的正式阶段。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Session.SessionTickPipelineBoundary">
+            <summary>
+            Tick 管线边界描述。
+            用于明确当前主干对 Tick 阶段和结构性修改可见性的正式承诺。
+            </summary>
+        </member>
+        <member name="P:Lattice.ECS.Session.SessionTickPipelineBoundary.PipelineKind">
+            <summary>
+            当前 Tick 管线模型。
+            </summary>
+        </member>
+        <member name="P:Lattice.ECS.Session.SessionTickPipelineBoundary.SupportedCapabilities">
+            <summary>
+            当前正式支持的 Tick 管线能力。
+            </summary>
+        </member>
+        <member name="P:Lattice.ECS.Session.SessionTickPipelineBoundary.UnsupportedCapabilities">
+            <summary>
+            当前明确不承诺的 Tick 管线能力。
+            </summary>
+        </member>
+        <member name="T:Lattice.ECS.Session.SessionTickProcessor">
+            <summary>
+            SessionRuntime 的 Tick 管线执行器。
+            负责统一驱动输入、系统模拟、结构提交、清理与历史写入阶段。
             </summary>
         </member>
         <member name="T:Lattice.ECS.Session.SimulationCommandBufferHost">

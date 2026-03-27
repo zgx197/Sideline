@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Sideline Authors. All rights reserved.
 // Licensed under GPL-3.0.
 
+using System.Runtime.CompilerServices;
 using Lattice.Math;
 
 namespace Lattice.ECS.Session
@@ -14,7 +15,14 @@ namespace Lattice.ECS.Session
         public int InitialTick { get; set; }
 
         /// <summary>固定时间步长。</summary>
-        public FP DeltaTime { get; set; } = FP.One;
+        public FP DeltaTime
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get;
+
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            set;
+        } = FP.One;
 
         /// <summary>实体容量。</summary>
         public int MaxEntities { get; set; } = 65536;

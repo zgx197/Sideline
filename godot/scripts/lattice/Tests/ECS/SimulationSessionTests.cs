@@ -30,7 +30,7 @@ namespace Lattice.Tests.ECS
             EntityRef target = frame.CreateEntity();
             frame.Add(target, new Position { Value = FP._10 });
 
-            FrameSnapshot snapshot = frame.CreateSnapshot();
+            PackedFrameSnapshot snapshot = frame.CapturePackedSnapshot();
             ulong checksumBefore = frame.CalculateChecksum();
 
             frame.Get<Position>(mover).Value = FP._10 - FP.One;
@@ -38,10 +38,9 @@ namespace Lattice.Tests.ECS
             frame.DestroyEntity(target);
             frame.CreateEntity();
 
-            frame.RestoreFromSnapshot(snapshot);
+            frame.RestoreFromPackedSnapshot(snapshot);
 
             Assert.Equal(checksumBefore, frame.CalculateChecksum());
-            Assert.Equal(snapshot.Checksum, frame.CalculateChecksum());
             Assert.True(frame.IsValid(mover));
             Assert.True(frame.IsValid(target));
             Assert.True(frame.Has<Velocity>(mover));
@@ -177,8 +176,7 @@ namespace Lattice.Tests.ECS
         {
             public override void OnUpdate(Frame frame, FP deltaTime)
             {
-                var filter = frame.Filter<Position, Velocity>();
-                var enumerator = filter.GetEnumerator();
+                var enumerator = frame.Query<Position, Velocity>().GetEnumerator();
 
                 while (enumerator.MoveNext())
                 {

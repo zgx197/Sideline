@@ -11,6 +11,15 @@ description: Sideline 技术文档、API 参考和开发指南
 
 <div class="content-container">
 
+> 说明：
+>
+> 本页中的 Godot 层说明仍可作为概念参考，但 Lattice API 示例目前偏早期草图，和当前主干中的 `SessionRuntime / MinimalPredictionSession / SessionRunner` 命名并不完全一致。
+>
+> 当前 Lattice 真实 API 与边界请优先参考：
+>
+> - `godot/scripts/lattice/README.md`
+> - `godot/scripts/lattice/ECS/Framework/SystemDesignNotes.md`
+
 ## 📚 文档导航
 
 <div class="features-grid" style="margin-top: 40px;">

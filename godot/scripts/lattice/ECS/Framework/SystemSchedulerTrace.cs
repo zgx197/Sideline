@@ -26,7 +26,7 @@ namespace Lattice.ECS.Framework
     public readonly record struct SystemSchedulerTraceEvent(
         SystemNodeInfo Node,
         SystemSchedulerTracePhase Phase,
-        SystemSchedulerState SchedulerState)
+        SystemSchedulerBoundary SchedulerBoundary)
     {
         public ISystem System => Node.System;
 

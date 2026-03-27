@@ -202,6 +202,7 @@ namespace Lattice.Math
         /// </summary>
         /// <param name="magnitude">输出原始长度</param>
         /// <returns>归一化后的向量</returns>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public readonly FPVector3 NormalizedWithMagnitude(out FP magnitude)
         {
             return Normalize(this, out magnitude);
@@ -418,6 +419,7 @@ namespace Lattice.Math
         /// Slerp 在球面上进行插值，保持恒定角速度。
         /// 适用于相机旋转、球面移动等场景。
         /// </remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static FPVector3 Slerp(FPVector3 a, FPVector3 b, FP t)
         {
             t = FPMath.Clamp01(t);

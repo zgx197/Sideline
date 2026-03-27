@@ -1,5 +1,9 @@
 # Lattice ECS 性能优化总结
 
+> 历史归档文档：
+> 本文反映的是较早阶段的性能改造背景，其中关于 `FrameBase`、序列化适配和待完成项的描述已与当前主干不一致。
+> 当前性能热点与优化结果请优先参考 `godot/scripts/lattice/README.md`、`godot/scripts/lattice/ECS/Framework/SystemDesignNotes.md` 与现有 benchmark/test。
+
 ## 完成的工作
 
 ### 1. Entity → EntityRef 重命名
@@ -86,10 +90,12 @@ public bool TryGetPointer<T>(EntityRef entity, out T* value) where T : unmanaged
 
 ## 待完成工作
 
-1. **Query 系统**: 需要基于新架构重写
-2. **System 更新**: ISystem 接口需要适配 FrameBase
-3. **序列化**: FrameSnapshot 需要适配新架构
-4. **性能测试**: 需要编写基准测试验证性能提升
+以下待办属于历史阶段背景，不再直接代表当前主干：
+
+1. **Query 系统**: 当前主干已正式提供 `Frame.Query<T...>()`
+2. **System 更新**: 当前主干已正式提供 `ISystem` 与 `SystemScheduler`
+3. **序列化**: 当前 Session 热路径已切到 `PackedFrameSnapshot`
+4. **性能测试**: 当前已存在 benchmark 与运行时回归入口
 
 ## 使用示例
 

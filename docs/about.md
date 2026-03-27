@@ -11,6 +11,10 @@ description: 了解 Sideline 的核心玩法、设计理念和开发计划
 
 <div class="content-container">
 
+> 说明：
+>
+> 本页中的玩法介绍保持有效，但涉及 Lattice 运行时命名、桥接层与模拟底座的技术表述，当前以 `godot/scripts/lattice/README.md` 和 `godot/scripts/lattice/ECS/Framework/SystemDesignNotes.md` 为准。
+
 ## 🎮 游戏理念
 
 **Sideline** 是一款专为"打工人"设计的 2D 俯视角独立游戏。
@@ -73,9 +77,10 @@ description: 了解 Sideline 的核心玩法、设计理念和开发计划
 ### Phase 0 — 技术验证 <span class="tag tag-green">当前阶段</span>
 
 - [x] Godot 4 无边框窗口原型
-- [ ] 最小 ECS 框架（Entity / Component / System）
-- [ ] FP 定点数库验证
-- [ ] 状态快照与回放系统
+- [x] FP 定点数库验证
+- [x] 最小 ECS 运行时闭环
+- [x] Session / Runner / checkpoint / rollback 主链路验证
+- [ ] 更完整的玩法层与产品层建设
 
 ### Phase 1 — 核心玩法
 
@@ -112,13 +117,12 @@ description: 了解 Sideline 的核心玩法、设计理念和开发计划
 │          渲染层（Godot 4）            │
 │  Node2D 纯渲染，无游戏逻辑            │
 ├──────────────────────────────────────┤
-│       GodotRenderBridge              │
-│  每帧同步 SimulationWorld 状态到 Node │
+│   Godot 桥接层 / 宿主层（持续演进）   │
+│  同步 Lattice SessionRuntime 状态到 Node │
 ├──────────────────────────────────────┤
-│       SimulationWorld（Lattice）      │
-│  Entity / Component / System         │
-│  FixedPoint Math / 确定性物理         │
-│  StateSnapshot / InputBuffer         │
+│        Lattice（确定性运行时）        │
+│  Frame / Entity / System / Session   │
+│  FixedPoint Math / Checkpoint / History │
 ├──────────────────────────────────────┤
 │       网络层（Phase 3）               │
 │  Lockstep / Steam Relay              │

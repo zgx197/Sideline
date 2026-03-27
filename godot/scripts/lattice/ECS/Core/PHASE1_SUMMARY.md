@@ -1,4 +1,13 @@
-# Phase 1 实现完成总结
+# Phase 1 实现完成总结（历史归档）
+
+> 历史归档文档：
+>
+> 本文档记录的是 Lattice ECS Core 早期阶段性实现总结，包含大量已被后续主干重构、收口或替换的设计与命名。
+>
+> 当前主干能力请优先参考：
+>
+> - `godot/scripts/lattice/README.md`
+> - `godot/scripts/lattice/ECS/Framework/SystemDesignNotes.md`
 
 ## 新增文件
 

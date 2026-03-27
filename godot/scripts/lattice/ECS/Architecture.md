@@ -1,17 +1,13 @@
-# Lattice ECS 底座架构总览（Phase D0 已完成）
+# Lattice ECS 架构设计（历史归档）
 
-## 文档目的
+> 历史归档文档：
+> 本文反映的是较早阶段对“完整游戏框架版 ECS”的设想，其中大量 `SystemGroup`、多线程、旧快照与完整产品层能力描述不等同于当前主干。
+> 当前实现状态请优先以 `godot/scripts/lattice/README.md` 和 `godot/scripts/lattice/ECS/Framework/SystemDesignNotes.md` 为准。
 
-本文档是 Lattice ECS 底座的统一总览入口。
-
-它只回答下面四类问题：
-
-- 当前 Lattice 底座到底包含哪些模块
-- 这些模块之间的依赖方向是什么
-- 当前哪些能力已经落地
-- 后续应该沿着什么顺序继续收敛
-
-本文档**不是**完整游戏框架文档，也**不是** Godot 运行时文档，更**不是**性能技巧总表。
+## 文档版本
+- **Version**: 1.0（历史归档）
+- **Last Updated**: 2026-03-18
+- **Status**: Archived / 非当前主干实现说明
 
 ---
 

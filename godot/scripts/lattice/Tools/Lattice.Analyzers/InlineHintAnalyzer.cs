@@ -203,8 +203,21 @@ namespace Lattice.Analyzers
 
         private static bool HasAggressiveInlining(PropertyDeclarationSyntax property)
         {
-            return property.AttributeLists
+            if (property.AttributeLists
                 .SelectMany(a => a.Attributes)
+                .Any(IsAggressiveInliningAttribute))
+            {
+                return true;
+            }
+
+            if (property.AccessorList == null)
+            {
+                return false;
+            }
+
+            return property.AccessorList.Accessors
+                .SelectMany(accessor => accessor.AttributeLists)
+                .SelectMany(attributeList => attributeList.Attributes)
                 .Any(IsAggressiveInliningAttribute);
         }
 

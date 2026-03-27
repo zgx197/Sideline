@@ -1,6 +1,13 @@
-# 定点数（Fixed Point）完全指南
+# 定点数（Fixed Point）完全指南（历史归档）
 
-> 从零开始理解定点数原理与实现
+> 历史归档文档：
+>
+> 本文档主要面向早期“独立数学库教程”场景，仍可作为定点数原理参考，但不代表当前 Lattice 主干的完整模块边界、对外入口或工程集成方式。
+>
+> 当前主干文档入口请优先参考：
+>
+> - `godot/scripts/lattice/README.md`
+> - `godot/scripts/lattice/ECS/Framework/SystemDesignNotes.md`
 
 ---
 
