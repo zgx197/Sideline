@@ -87,6 +87,8 @@ dist/
 release/
 *.zip
 *.tar.gz
+!tools/release/
+!tools/release/**
 
 # ===========================
 # 日志 & 临时文件
