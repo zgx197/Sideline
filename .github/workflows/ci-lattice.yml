@@ -8,6 +8,7 @@ on:
       - 'godot/Sideline.sln'
       - 'godot/scripts/lattice/**'
       - 'godot/Lattice.Benchmarks/**'
+      - '.github/actions/**'
       - '.github/workflows/ci-lattice.yml'
   workflow_dispatch:
 
@@ -30,16 +31,31 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v5
 
-    - name: Setup .NET
-      uses: actions/setup-dotnet@v5
+    - name: Verify Lattice format
+      uses: ./.github/actions/dotnet-ci
       with:
         dotnet-version: ${{ env.DOTNET_VERSION }}
+        cache: 'true'
+        cache-dependency-path: |
+          godot/Sideline.sln
+          godot/scripts/lattice/Lattice.csproj
+        script: |
+          dotnet restore godot/scripts/lattice/Lattice.csproj
+          dotnet format godot/scripts/lattice/Lattice.csproj --verify-no-changes --verbosity detailed
 
-    - name: Restore Lattice project
-      run: dotnet restore godot/scripts/lattice/Lattice.csproj
+    - name: Summarize lattice format
+      if: always()
+      shell: pwsh
+      run: |
+        $summary = @"
+        ## Lattice Format Check
 
-    - name: Verify code format
-      run: dotnet format godot/scripts/lattice/Lattice.csproj --verify-no-changes --verbosity detailed
+        - Status: `${{ job.status }}`
+        - Cache: `enabled`
+        - Target: `godot/scripts/lattice/Lattice.csproj`
+        "@
+
+        Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value $summary
 
   lattice-build-test:
     name: Lattice Build & Test (${{ matrix.os }}, ${{ matrix.configuration }})
@@ -55,19 +71,33 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v5
 
-    - name: Setup .NET
-      uses: actions/setup-dotnet@v5
+    - name: Build and test Lattice suite
+      uses: ./.github/actions/dotnet-ci
       with:
         dotnet-version: ${{ env.DOTNET_VERSION }}
+        cache: 'true'
+        cache-dependency-path: |
+          godot/Sideline.sln
+          godot/scripts/lattice/Lattice.csproj
+          godot/scripts/lattice/Tests/Lattice.Tests.csproj
+        script: |
+          dotnet restore godot/scripts/lattice/Tests/Lattice.Tests.csproj
+          dotnet build godot/scripts/lattice/Tests/Lattice.Tests.csproj --no-restore --configuration ${{ matrix.configuration }} -nologo
+          dotnet test godot/scripts/lattice/Tests/Lattice.Tests.csproj --no-build --configuration ${{ matrix.configuration }} -nologo --verbosity normal --maxcpucount:1
 
-    - name: Restore Lattice tests
-      run: dotnet restore godot/scripts/lattice/Tests/Lattice.Tests.csproj
+    - name: Summarize lattice build and test
+      if: always()
+      shell: pwsh
+      run: |
+        $summary = @"
+        ## Lattice Build & Test (${{ matrix.os }}, ${{ matrix.configuration }})
 
-    - name: Build Lattice tests
-      run: dotnet build godot/scripts/lattice/Tests/Lattice.Tests.csproj --no-restore --configuration ${{ matrix.configuration }} -nologo
+        - Status: `${{ job.status }}`
+        - Cache: `enabled`
+        - Target: `godot/scripts/lattice/Tests/Lattice.Tests.csproj`
+        "@
 
-    - name: Run Lattice tests
-      run: dotnet test godot/scripts/lattice/Tests/Lattice.Tests.csproj --no-build --configuration ${{ matrix.configuration }} -nologo --verbosity normal --maxcpucount:1
+        Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value $summary
 
   lattice-determinism:
     name: Lattice Determinism Validation
@@ -78,19 +108,33 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v5
 
-    - name: Setup .NET
-      uses: actions/setup-dotnet@v5
+    - name: Validate Lattice determinism
+      uses: ./.github/actions/dotnet-ci
       with:
         dotnet-version: ${{ env.DOTNET_VERSION }}
+        cache: 'true'
+        cache-dependency-path: |
+          godot/Sideline.sln
+          godot/scripts/lattice/Lattice.csproj
+          godot/scripts/lattice/Tests/Lattice.Tests.csproj
+        script: |
+          dotnet restore godot/scripts/lattice/Tests/Lattice.Tests.csproj
+          dotnet build godot/scripts/lattice/Tests/Lattice.Tests.csproj --no-restore --configuration Release -nologo
+          dotnet test godot/scripts/lattice/Tests/Lattice.Tests.csproj --no-build --configuration Release -nologo --filter "FullyQualifiedName~Determinism" --verbosity normal --maxcpucount:1
 
-    - name: Restore Lattice tests
-      run: dotnet restore godot/scripts/lattice/Tests/Lattice.Tests.csproj
+    - name: Summarize lattice determinism
+      if: always()
+      shell: pwsh
+      run: |
+        $summary = @"
+        ## Lattice Determinism Validation
 
-    - name: Build Lattice tests
-      run: dotnet build godot/scripts/lattice/Tests/Lattice.Tests.csproj --no-restore --configuration Release -nologo
+        - Status: `${{ job.status }}`
+        - Cache: `enabled`
+        - Filter: `FullyQualifiedName~Determinism`
+        "@
 
-    - name: Run determinism suite
-      run: dotnet test godot/scripts/lattice/Tests/Lattice.Tests.csproj --no-build --configuration Release -nologo --filter "FullyQualifiedName~Determinism" --verbosity normal --maxcpucount:1
+        Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value $summary
 
   lattice-analyzers:
     name: Lattice Analyzer Validation
@@ -101,16 +145,31 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v5
 
-    - name: Setup .NET
-      uses: actions/setup-dotnet@v5
+    - name: Validate Lattice analyzers
+      uses: ./.github/actions/dotnet-ci
       with:
         dotnet-version: ${{ env.DOTNET_VERSION }}
+        cache: 'true'
+        cache-dependency-path: |
+          godot/Sideline.sln
+          godot/scripts/lattice/Lattice.csproj
+        script: |
+          dotnet restore godot/scripts/lattice/Lattice.csproj
+          dotnet build godot/scripts/lattice/Lattice.csproj --no-restore --configuration Release -p:TreatWarningsAsErrors=true -nologo
 
-    - name: Restore Lattice project
-      run: dotnet restore godot/scripts/lattice/Lattice.csproj
+    - name: Summarize lattice analyzers
+      if: always()
+      shell: pwsh
+      run: |
+        $summary = @"
+        ## Lattice Analyzer Validation
 
-    - name: Build with analyzers enabled
-      run: dotnet build godot/scripts/lattice/Lattice.csproj --no-restore --configuration Release -p:TreatWarningsAsErrors=true -nologo
+        - Status: `${{ job.status }}`
+        - Cache: `enabled`
+        - Mode: `TreatWarningsAsErrors=true`
+        "@
+
+        Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value $summary
 
   lattice-benchmark-smoke:
     name: Lattice Benchmark Smoke
@@ -121,13 +180,29 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v5
 
-    - name: Setup .NET
-      uses: actions/setup-dotnet@v5
+    - name: Run Lattice benchmark smoke
+      uses: ./.github/actions/dotnet-ci
       with:
         dotnet-version: ${{ env.DOTNET_VERSION }}
+        cache: 'true'
+        cache-dependency-path: |
+          godot/Sideline.sln
+          godot/scripts/lattice/Lattice.csproj
+          godot/Lattice.Benchmarks/Lattice.Benchmarks.csproj
+        script: |
+          dotnet restore godot/Lattice.Benchmarks/Lattice.Benchmarks.csproj
+          dotnet run --configuration Release --project godot/Lattice.Benchmarks/Lattice.Benchmarks.csproj -- --filter "*EntityMicroBenchmarks.SingleValidate*"
 
-    - name: Restore benchmark project
-      run: dotnet restore godot/Lattice.Benchmarks/Lattice.Benchmarks.csproj
+    - name: Summarize lattice benchmark smoke
+      if: always()
+      shell: pwsh
+      run: |
+        $summary = @"
+        ## Lattice Benchmark Smoke
 
-    - name: Run benchmark smoke
-      run: dotnet run --configuration Release --project godot/Lattice.Benchmarks/Lattice.Benchmarks.csproj -- --filter "*EntityMicroBenchmarks.SingleValidate*"
+        - Status: `${{ job.status }}`
+        - Cache: `enabled`
+        - Filter: `*EntityMicroBenchmarks.SingleValidate*`
+        "@
+
+        Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value $summary

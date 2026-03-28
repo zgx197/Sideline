@@ -1,0 +1,33 @@
+needs_format:
+  - '.github/workflows/**'
+  - '.github/actions/**'
+  - '.github/filters/**'
+  - 'godot/.editorconfig'
+  - 'godot/Sideline.sln'
+  - 'godot/scripts/lattice/**'
+  - 'godot/Lattice.Benchmarks/**'
+
+needs_lattice:
+  - '.github/workflows/**'
+  - '.github/actions/**'
+  - '.github/filters/**'
+  - 'godot/.editorconfig'
+  - 'godot/Sideline.sln'
+  - 'godot/scripts/lattice/**'
+  - 'godot/Lattice.Benchmarks/**'
+
+needs_sideline:
+  - '.github/workflows/**'
+  - '.github/actions/**'
+  - '.github/filters/**'
+  - 'godot/.editorconfig'
+  - 'godot/Sideline.csproj'
+  - 'godot/Sideline.sln'
+  - 'godot/project.godot'
+  - 'godot/addons/facet-tools/**'
+  - 'godot/scenes/main/**'
+  - 'godot/scenes/ui/**'
+  - 'godot/scripts/facet/**'
+  - 'godot/scripts/main/**'
+  - 'godot/scripts/ui/**'
+  - 'godot/scripts/window/**'

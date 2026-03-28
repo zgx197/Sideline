@@ -1,0 +1,33 @@
+name: Dotnet CI Template
+description: Setup the .NET SDK once and run a caller-provided CI script.
+
+inputs:
+  dotnet-version:
+    description: .NET SDK version passed to actions/setup-dotnet.
+    required: false
+    default: 8.0.x
+  cache:
+    description: Whether to enable NuGet caching in actions/setup-dotnet.
+    required: false
+    default: 'false'
+  cache-dependency-path:
+    description: Newline-separated dependency files used to build the NuGet cache key.
+    required: false
+    default: ''
+  script:
+    description: Multi-line shell script that performs restore/build/test/format/run commands.
+    required: true
+
+runs:
+  using: composite
+  steps:
+  - name: Setup .NET
+    uses: actions/setup-dotnet@v5
+    with:
+      dotnet-version: ${{ inputs.dotnet-version }}
+      cache: ${{ inputs.cache }}
+      cache-dependency-path: ${{ inputs.cache-dependency-path }}
+
+  - name: Run .NET CI script
+    shell: pwsh
+    run: ${{ inputs.script }}
