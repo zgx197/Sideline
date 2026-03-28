@@ -21,6 +21,13 @@ on:
       - '.github/workflows/ci-facet.yml'
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: facet-ci-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   DOTNET_VERSION: '8.0.x'
 

@@ -4,6 +4,13 @@ on:
   pull_request:
     branches: [ main ]
 
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-gate-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 env:
   DOTNET_VERSION: '8.0.x'
 
@@ -111,11 +118,15 @@ jobs:
       if: needs.change-classification.outputs.needs_format == 'true'
       run: dotnet format godot/scripts/lattice/Lattice.csproj --verify-no-changes --verbosity detailed
 
-  build-test-debug:
-    name: Build & Test (windows-latest, Debug)
+  build-test:
+    name: Build & Test (windows-latest, ${{ matrix.configuration }})
     needs: change-classification
     runs-on: windows-latest
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        configuration: [Debug, Release]
 
     steps:
     - name: Skip build and test
@@ -138,7 +149,7 @@ jobs:
 
     - name: Build Sideline project
       if: needs.change-classification.outputs.needs_sideline == 'true'
-      run: dotnet build godot/Sideline.csproj --no-restore --configuration Debug -nologo
+      run: dotnet build godot/Sideline.csproj --no-restore --configuration ${{ matrix.configuration }} -nologo
 
     - name: Restore Lattice tests
       if: needs.change-classification.outputs.needs_lattice == 'true'
@@ -146,49 +157,8 @@ jobs:
 
     - name: Build Lattice tests
       if: needs.change-classification.outputs.needs_lattice == 'true'
-      run: dotnet build godot/scripts/lattice/Tests/Lattice.Tests.csproj --no-restore --configuration Debug -nologo
+      run: dotnet build godot/scripts/lattice/Tests/Lattice.Tests.csproj --no-restore --configuration ${{ matrix.configuration }} -nologo
 
     - name: Test Lattice suite
       if: needs.change-classification.outputs.needs_lattice == 'true'
-      run: dotnet test godot/scripts/lattice/Tests/Lattice.Tests.csproj --no-build --configuration Debug -nologo --verbosity normal --maxcpucount:1
-
-  build-test-release:
-    name: Build & Test (windows-latest, Release)
-    needs: change-classification
-    runs-on: windows-latest
-    timeout-minutes: 20
-
-    steps:
-    - name: Skip build and test
-      if: needs.change-classification.outputs.docs_only == 'true'
-      run: echo "Docs-only change detected. Skipping build and test."
-
-    - name: Checkout
-      if: needs.change-classification.outputs.docs_only != 'true'
-      uses: actions/checkout@v5
-
-    - name: Setup .NET
-      if: needs.change-classification.outputs.docs_only != 'true'
-      uses: actions/setup-dotnet@v5
-      with:
-        dotnet-version: ${{ env.DOTNET_VERSION }}
-
-    - name: Restore Sideline project
-      if: needs.change-classification.outputs.needs_sideline == 'true'
-      run: dotnet restore godot/Sideline.csproj
-
-    - name: Build Sideline project
-      if: needs.change-classification.outputs.needs_sideline == 'true'
-      run: dotnet build godot/Sideline.csproj --no-restore --configuration Release -nologo
-
-    - name: Restore Lattice tests
-      if: needs.change-classification.outputs.needs_lattice == 'true'
-      run: dotnet restore godot/scripts/lattice/Tests/Lattice.Tests.csproj
-
-    - name: Build Lattice tests
-      if: needs.change-classification.outputs.needs_lattice == 'true'
-      run: dotnet build godot/scripts/lattice/Tests/Lattice.Tests.csproj --no-restore --configuration Release -nologo
-
-    - name: Test Lattice suite
-      if: needs.change-classification.outputs.needs_lattice == 'true'
-      run: dotnet test godot/scripts/lattice/Tests/Lattice.Tests.csproj --no-build --configuration Release -nologo --verbosity normal --maxcpucount:1
+      run: dotnet test godot/scripts/lattice/Tests/Lattice.Tests.csproj --no-build --configuration ${{ matrix.configuration }} -nologo --verbosity normal --maxcpucount:1

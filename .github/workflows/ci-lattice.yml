@@ -11,6 +11,13 @@ on:
       - '.github/workflows/ci-lattice.yml'
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: lattice-ci-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   DOTNET_VERSION: '8.0.x'
 

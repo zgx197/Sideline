@@ -6,7 +6,23 @@ name: Common CI
 on:
   push:
     branches: [ main ]
+    paths:
+      - 'godot/.editorconfig'
+      - 'godot/Sideline.csproj'
+      - 'godot/Sideline.sln'
+      - 'godot/project.godot'
+      - 'godot/addons/facet-tools/**'
+      - 'godot/scenes/**'
+      - 'godot/scripts/**'
+      - '.github/workflows/ci.yml'
   workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: common-ci-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   DOTNET_VERSION: '8.0.x'
