@@ -19,21 +19,7 @@ on:
       - 'godot/scripts/ui/**'
       - 'godot/scripts/window/**'
       - '.github/workflows/ci-facet.yml'
-  pull_request:
-    branches: [ main ]
-    paths:
-      - 'godot/.editorconfig'
-      - 'godot/Sideline.csproj'
-      - 'godot/Sideline.sln'
-      - 'godot/project.godot'
-      - 'godot/addons/facet-tools/**'
-      - 'godot/scenes/main/**'
-      - 'godot/scenes/ui/**'
-      - 'godot/scripts/facet/**'
-      - 'godot/scripts/main/**'
-      - 'godot/scripts/ui/**'
-      - 'godot/scripts/window/**'
-      - '.github/workflows/ci-facet.yml'
+  workflow_dispatch:
 
 env:
   DOTNET_VERSION: '8.0.x'
