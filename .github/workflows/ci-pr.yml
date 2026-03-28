@@ -1,0 +1,194 @@
+name: PR Gate
+
+on:
+  pull_request:
+    branches: [ main ]
+
+env:
+  DOTNET_VERSION: '8.0.x'
+
+jobs:
+  change-classification:
+    name: PR Gate / Change Classification
+    runs-on: ubuntu-latest
+    outputs:
+      docs_only: ${{ steps.classify.outputs.docs_only }}
+      needs_lattice: ${{ steps.classify.outputs.needs_lattice }}
+      needs_sideline: ${{ steps.classify.outputs.needs_sideline }}
+      needs_format: ${{ steps.classify.outputs.needs_format }}
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v5
+      with:
+        fetch-depth: 0
+
+    - name: Classify changes
+      id: classify
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        BASE_SHA="${{ github.event.pull_request.base.sha }}"
+        HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+
+        git diff --name-only "$BASE_SHA" "$HEAD_SHA" > changed_files.txt
+
+        echo "Changed files:"
+        cat changed_files.txt
+
+        docs_only=true
+        needs_lattice=false
+        needs_sideline=false
+        needs_format=false
+
+        while IFS= read -r file; do
+          [ -z "$file" ] && continue
+
+          case "$file" in
+            README.md|docs/*)
+              ;;
+            *)
+              docs_only=false
+              ;;
+          esac
+
+          case "$file" in
+            .github/workflows/*)
+              needs_lattice=true
+              needs_sideline=true
+              needs_format=true
+              ;;
+            godot/.editorconfig|godot/Sideline.sln|godot/scripts/lattice/*|godot/Lattice.Benchmarks/*)
+              needs_lattice=true
+              needs_format=true
+              ;;
+          esac
+
+          case "$file" in
+            godot/.editorconfig|godot/Sideline.csproj|godot/Sideline.sln|godot/project.godot|godot/addons/facet-tools/*|godot/scenes/main/*|godot/scenes/ui/*|godot/scripts/facet/*|godot/scripts/main/*|godot/scripts/ui/*|godot/scripts/window/*)
+              needs_sideline=true
+              ;;
+          esac
+        done < changed_files.txt
+
+        if [ "$docs_only" = false ] && [ "$needs_lattice" = false ] && [ "$needs_sideline" = false ]; then
+          needs_sideline=true
+        fi
+
+        {
+          echo "docs_only=$docs_only"
+          echo "needs_lattice=$needs_lattice"
+          echo "needs_sideline=$needs_sideline"
+          echo "needs_format=$needs_format"
+        } >> "$GITHUB_OUTPUT"
+
+  format-check:
+    name: Code Format Check
+    needs: change-classification
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Skip format verification
+      if: needs.change-classification.outputs.needs_format != 'true'
+      run: echo "No lattice or CI workflow changes detected. Skipping format verification."
+
+    - name: Checkout
+      if: needs.change-classification.outputs.needs_format == 'true'
+      uses: actions/checkout@v5
+
+    - name: Setup .NET
+      if: needs.change-classification.outputs.needs_format == 'true'
+      uses: actions/setup-dotnet@v5
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+
+    - name: Restore Lattice project
+      if: needs.change-classification.outputs.needs_format == 'true'
+      run: dotnet restore godot/scripts/lattice/Lattice.csproj
+
+    - name: Verify Lattice format
+      if: needs.change-classification.outputs.needs_format == 'true'
+      run: dotnet format godot/scripts/lattice/Lattice.csproj --verify-no-changes --verbosity detailed
+
+  build-test-debug:
+    name: Build & Test (windows-latest, Debug)
+    needs: change-classification
+    runs-on: windows-latest
+    timeout-minutes: 20
+
+    steps:
+    - name: Skip build and test
+      if: needs.change-classification.outputs.docs_only == 'true'
+      run: echo "Docs-only change detected. Skipping build and test."
+
+    - name: Checkout
+      if: needs.change-classification.outputs.docs_only != 'true'
+      uses: actions/checkout@v5
+
+    - name: Setup .NET
+      if: needs.change-classification.outputs.docs_only != 'true'
+      uses: actions/setup-dotnet@v5
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+
+    - name: Restore Sideline project
+      if: needs.change-classification.outputs.needs_sideline == 'true'
+      run: dotnet restore godot/Sideline.csproj
+
+    - name: Build Sideline project
+      if: needs.change-classification.outputs.needs_sideline == 'true'
+      run: dotnet build godot/Sideline.csproj --no-restore --configuration Debug -nologo
+
+    - name: Restore Lattice tests
+      if: needs.change-classification.outputs.needs_lattice == 'true'
+      run: dotnet restore godot/scripts/lattice/Tests/Lattice.Tests.csproj
+
+    - name: Build Lattice tests
+      if: needs.change-classification.outputs.needs_lattice == 'true'
+      run: dotnet build godot/scripts/lattice/Tests/Lattice.Tests.csproj --no-restore --configuration Debug -nologo
+
+    - name: Test Lattice suite
+      if: needs.change-classification.outputs.needs_lattice == 'true'
+      run: dotnet test godot/scripts/lattice/Tests/Lattice.Tests.csproj --no-build --configuration Debug -nologo --verbosity normal --maxcpucount:1
+
+  build-test-release:
+    name: Build & Test (windows-latest, Release)
+    needs: change-classification
+    runs-on: windows-latest
+    timeout-minutes: 20
+
+    steps:
+    - name: Skip build and test
+      if: needs.change-classification.outputs.docs_only == 'true'
+      run: echo "Docs-only change detected. Skipping build and test."
+
+    - name: Checkout
+      if: needs.change-classification.outputs.docs_only != 'true'
+      uses: actions/checkout@v5
+
+    - name: Setup .NET
+      if: needs.change-classification.outputs.docs_only != 'true'
+      uses: actions/setup-dotnet@v5
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+
+    - name: Restore Sideline project
+      if: needs.change-classification.outputs.needs_sideline == 'true'
+      run: dotnet restore godot/Sideline.csproj
+
+    - name: Build Sideline project
+      if: needs.change-classification.outputs.needs_sideline == 'true'
+      run: dotnet build godot/Sideline.csproj --no-restore --configuration Release -nologo
+
+    - name: Restore Lattice tests
+      if: needs.change-classification.outputs.needs_lattice == 'true'
+      run: dotnet restore godot/scripts/lattice/Tests/Lattice.Tests.csproj
+
+    - name: Build Lattice tests
+      if: needs.change-classification.outputs.needs_lattice == 'true'
+      run: dotnet build godot/scripts/lattice/Tests/Lattice.Tests.csproj --no-restore --configuration Release -nologo
+
+    - name: Test Lattice suite
+      if: needs.change-classification.outputs.needs_lattice == 'true'
+      run: dotnet test godot/scripts/lattice/Tests/Lattice.Tests.csproj --no-build --configuration Release -nologo --verbosity normal --maxcpucount:1
