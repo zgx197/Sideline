@@ -9,7 +9,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Compile Include="addons/facet-tools/**/*.cs" />
+    <!-- Stage 5 freeze: Sideline only compiles Godot host scripts and Facet's Godot-facing adapter layer. -->
     <Compile Include="scripts/main/**/*.cs" />
     <Compile Include="scripts/ui/**/*.cs" />
     <Compile Include="scripts/window/**/*.cs" />
@@ -22,20 +22,23 @@
     <Compile Include="scripts/facet/UI/**/*.cs" />
     <Compile Include="scripts/facet/Runtime/FacetHost.cs" />
     <Compile Include="scripts/facet/Runtime/FacetLogger.cs" />
+    <Compile Include="scripts/facet/Runtime/FacetRuntimeEnvironment.cs" />
     <Compile Include="scripts/facet/Runtime/FacetPlainTextLogEncoding.cs" />
     <Compile Include="scripts/facet/Runtime/FacetHotReloadLabBridge.cs" />
     <Compile Include="scripts/facet/Runtime/FacetLayoutLabBridge.cs" />
     <Compile Include="scripts/facet/Runtime/FacetRuntimeDiagnosticsBridge.cs" />
+    <Compile Include="scripts/facet/Runtime/ResourceLuaScriptSource.cs" />
     <Compile Include="scripts/facet/Runtime/LuaHotReloadTestService.cs" />
     <Compile Include="scripts/facet/Runtime/LuaReloadCoordinator.cs" />
     <Compile Include="scripts/facet/Runtime/Pages/UIManager.cs" />
     <Compile Include="scripts/facet/Runtime/Pages/UIPageLoader.cs" />
     <Compile Include="scripts/facet/Runtime/Pages/UIPageRuntime.cs" />
+    <Compile Include="scripts/facet/RuntimeDebug/**/*.cs" />
   </ItemGroup>
 
-  <ItemGroup>
-    <ProjectReference Include="scripts/lattice/Lattice.csproj" />
-    <ProjectReference Include="scripts/facet/Facet.Core.csproj" />
+  <ItemGroup Condition=" '$(Configuration)' == 'Debug' ">
+    <!-- Editor plugin scripts remain in the root Godot assembly until Facet.Editor extraction is validated end-to-end. -->
+    <Compile Include="addons/facet-tools/**/*.cs" />
   </ItemGroup>
 
   <ItemGroup>
@@ -43,3 +46,5 @@
     <ProjectReference Include="scripts/facet/Facet.Core.csproj" />
   </ItemGroup>
 </Project>
+
+

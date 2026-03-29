@@ -13,6 +13,8 @@ using Sideline.Facet.Runtime;
 /// </summary>
 public partial class Main : Node
 {
+    private FacetHost? _facetHost;
+
     /// <summary>
     /// 窗口管理器，负责挂机/地下城模式下的窗口尺寸与样式切换。
     /// </summary>
@@ -34,6 +36,7 @@ public partial class Main : Node
     /// </summary>
     public override void _Ready()
     {
+        _facetHost = GetNodeOrNull<FacetHost>("FacetHost");
         _windowManager = GetNode<WindowManager>("WindowManager");
         _pageMountRoot = GetNode<CanvasLayer>("CanvasLayer");
 
@@ -43,9 +46,23 @@ public partial class Main : Node
             _windowManager.Connect("ModeChanged", modeChangedCallable);
         }
 
+        if (_facetHost != null)
+        {
+            Callable initializedCallable = Callable.From(OnFacetHostInitialized);
+            if (!_facetHost.IsConnected(FacetHost.SignalName.Initialized, initializedCallable))
+            {
+                _facetHost.Connect(FacetHost.SignalName.Initialized, initializedCallable);
+            }
+
+            if (_facetHost.IsInitialized)
+            {
+                ClientLog.BindLogger(_facetHost.Logger);
+            }
+        }
+
         BindPageRuntime();
-        OpenPageForMode(WindowManager.GameMode.Idle, pushHistory: false);
-        PublishClientShellProjection(WindowManager.GameMode.Idle);
+        OpenPageForMode(_windowManager.CurrentMode, pushHistory: false);
+        PublishClientShellProjection(_windowManager.CurrentMode);
 
         ClientLog.Info(
             "Main",
@@ -53,7 +70,7 @@ public partial class Main : Node
             new Dictionary<string, object?>
             {
                 ["scenePath"] = GetPath().ToString(),
-                ["currentMode"] = WindowManager.GameMode.Idle.ToString(),
+                ["currentMode"] = _windowManager.CurrentMode.ToString(),
                 ["currentPageId"] = _uiManager?.CurrentPageId,
                 ["backStackDepth"] = _uiManager?.BackStackDepth,
                 ["currentPageState"] = _uiManager?.CurrentRuntime?.State.ToString(),
@@ -82,20 +99,50 @@ public partial class Main : Node
             });
     }
 
+    public override void _ExitTree()
+    {
+        Callable modeChangedCallable = Callable.From<int>(OnModeChanged);
+        if (_windowManager != null && _windowManager.IsConnected("ModeChanged", modeChangedCallable))
+        {
+            _windowManager.Disconnect("ModeChanged", modeChangedCallable);
+        }
+
+        if (_facetHost != null)
+        {
+            Callable initializedCallable = Callable.From(OnFacetHostInitialized);
+            if (_facetHost.IsConnected(FacetHost.SignalName.Initialized, initializedCallable))
+            {
+                _facetHost.Disconnect(FacetHost.SignalName.Initialized, initializedCallable);
+            }
+        }
+
+        ClientLog.UnbindLogger();
+        _uiManager = null;
+        _facetHost = null;
+    }
+
     /// <summary>
     /// 绑定 Facet 页面运行时。
     /// 如果宿主尚未初始化，则退回旧的可见性切换路径，保证主场景仍然可用。
     /// </summary>
     private void BindPageRuntime()
     {
-        if (FacetHost.Instance?.IsInitialized != true)
+        if (_facetHost?.IsInitialized != true)
         {
             ClientLog.Warning("Main", "FacetHost \u5c1a\u672a\u521d\u59cb\u5316\uff0cUIManager \u7ed1\u5b9a\u8df3\u8fc7\uff0c\u5c06\u4f7f\u7528\u53ef\u89c1\u6027\u515c\u5e95\u903b\u8f91\u3002", null);
             return;
         }
 
-        _uiManager = FacetHost.Instance.GetRequired<UIManager>();
+        ClientLog.BindLogger(_facetHost.Logger);
+        _uiManager = _facetHost.GetRequired<UIManager>();
         _uiManager.AttachMountRoot(_pageMountRoot);
+    }
+
+    private void OnFacetHostInitialized()
+    {
+        BindPageRuntime();
+        OpenPageForMode(_windowManager.CurrentMode, pushHistory: false);
+        PublishClientShellProjection(_windowManager.CurrentMode);
     }
 
     /// <summary>
@@ -250,7 +297,7 @@ public partial class Main : Node
     /// </summary>
     private void PublishClientShellProjection(WindowManager.GameMode mode)
     {
-        if (FacetHost.Instance?.IsInitialized != true)
+        if (_facetHost?.IsInitialized != true)
         {
             return;
         }
@@ -273,7 +320,7 @@ public partial class Main : Node
                 showRuntimeSummary: false,
                 showMetricsList: true);
 
-        ProjectionStore projectionStore = FacetHost.Instance.Context.ProjectionStore;
+        ProjectionStore projectionStore = _facetHost.Context.ProjectionStore;
         projectionStore.Set(FacetProjectionKeys.ClientShell, projection, "Main.ModeChanged");
 
         ClientLog.Info(

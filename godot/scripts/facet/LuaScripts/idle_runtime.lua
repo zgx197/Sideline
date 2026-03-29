@@ -1,11 +1,9 @@
-local reload_key = "facet.idle.reload_count"
+﻿local reload_key = "facet.idle.reload_count"
 local title_key = "facet.idle.title"
 local status_key = "facet.idle.status"
 local primary_action_label_key = "facet.idle.primary_action_label"
 local primary_action_enabled_key = "facet.idle.primary_action_enabled"
 local resource_text_key = "facet.idle.resource_text"
-local show_runtime_summary_key = "facet.idle.show_runtime_summary"
-local runtime_summary_text_key = "facet.idle.runtime_summary_text"
 local page_red_dot_path = "client.idle"
 
 local function register_bindings(api)
@@ -20,13 +18,6 @@ local function register_bindings(api)
     page:BindStateText("SwitchButton", primary_action_label_key, "进入地下城 / Dungeon")
     page:BindStateInteractable("SwitchButton", primary_action_enabled_key, true)
     page:BindStateText("ResourceLabel", resource_text_key, "金币 / Gold: 0")
-
-    local runtime_summary = api:GetComponentBindings("runtime-summary", "FacetProjectionPanel")
-    if runtime_summary ~= nil then
-        runtime_summary:BindStateVisibility("FacetProjectionPanel", show_runtime_summary_key, true)
-        runtime_summary:BindStateText("FacetProjectionLabel", runtime_summary_text_key, "Facet Runtime / 等待数据")
-    end
-
     page:Refresh("lua.idle.bindings_registered")
 end
 
@@ -44,8 +35,8 @@ end
 
 function OnRefresh(api)
     local current = api:GetStateNumber(reload_key, 0) + 1
-    api:SetStateNumber(reload_key, current)
     local page = api:GetPageBindings()
+    api:SetStateNumber(reload_key, current)
     if page ~= nil then
         page:Refresh("lua.idle.refresh")
     end

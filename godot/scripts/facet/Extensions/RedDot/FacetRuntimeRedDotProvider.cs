@@ -9,9 +9,7 @@ using Sideline.Facet.Runtime;
 namespace Sideline.Facet.Extensions.RedDot
 {
     /// <summary>
-    /// 基于 Facet 运行时 Projection 的红点 Provider。
-    /// 当前先用运行时探针与指标 Projection 构造阶段 10 的真实样例路径。
-    /// </summary>
+    /// 閸╄桨绨?Facet 鏉╂劘顢戦弮?Projection 閻ㄥ嫮瀛╅悙?Provider閵?    /// 瑜版挸澧犻崗鍫㈡暏鏉╂劘顢戦弮鑸靛赴闁藉牅绗岄幐鍥ㄧ垼 Projection 閺嬪嫰鈧娀妯佸▓?10 閻ㄥ嫮婀＄€圭偞鐗辨笟瀣熅瀵板嫨鈧?    /// </summary>
     public sealed class FacetRuntimeRedDotProvider : IRedDotProvider
     {
         private readonly ProjectionStore _projectionStore;
@@ -63,6 +61,9 @@ namespace Sideline.Facet.Extensions.RedDot
 
             _runtimeProbeSubscription.Dispose();
             _runtimeMetricsSubscription.Dispose();
+            Changed = null;
+            _runtimeProbeProjection = null;
+            _runtimeMetricsProjection = null;
             _disposed = true;
         }
 
@@ -72,7 +73,7 @@ namespace Sideline.Facet.Extensions.RedDot
 
             _logger?.Debug(
                 "RedDot.Provider",
-                "运行时探针红点源已更新。",
+                "Runtime probe red dot source updated.",
                 new Dictionary<string, object?>
                 {
                     ["providerId"] = ProviderId,
@@ -91,7 +92,7 @@ namespace Sideline.Facet.Extensions.RedDot
 
             _logger?.Debug(
                 "RedDot.Provider",
-                "运行时指标红点源已更新。",
+                "Runtime metrics red dot source updated.",
                 new Dictionary<string, object?>
                 {
                     ["providerId"] = ProviderId,

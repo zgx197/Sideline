@@ -6,7 +6,24 @@ name: Common CI
 on:
   push:
     branches: [ main ]
+    paths:
+      - 'godot/.editorconfig'
+      - 'godot/Sideline.csproj'
+      - 'godot/Sideline.sln'
+      - 'godot/project.godot'
+      - 'godot/addons/facet-tools/**'
+      - 'godot/scenes/**'
+      - 'godot/scripts/**'
+      - '.github/actions/**'
+      - '.github/workflows/ci.yml'
   workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: common-ci-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   DOTNET_VERSION: '8.0.x'
@@ -20,13 +37,29 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v5
 
-    - name: Setup .NET
-      uses: actions/setup-dotnet@v5
+    - name: Build Sideline Project
+      uses: ./.github/actions/dotnet-ci
       with:
         dotnet-version: ${{ env.DOTNET_VERSION }}
+        cache: 'true'
+        cache-dependency-path: |
+          godot/Sideline.sln
+          godot/Sideline.csproj
+        script: |
+          dotnet restore godot/Sideline.csproj
+          dotnet build godot/Sideline.csproj --no-restore --configuration Debug -nologo
 
-    - name: Restore Sideline Project
-      run: dotnet restore godot/Sideline.csproj
+    - name: Summarize common build
+      if: always()
+      shell: pwsh
+      run: |
+        $summary = @"
+        ## Common Build
 
-    - name: Build Sideline Project
-      run: dotnet build godot/Sideline.csproj --no-restore --configuration Debug -nologo
+        - Status: `${{ job.status }}`
+        - Role: `main branch minimum Sideline health check`
+        - Cache: `enabled`
+        - Target: `godot/Sideline.csproj`
+        "@
+
+        Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value $summary

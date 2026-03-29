@@ -16,7 +16,7 @@ using Sideline.Facet.UI;
 namespace Sideline.Facet.Runtime
 {
     /// <summary>
-    /// Facet 全局宿主入口。
+    /// Facet 闂備胶顭堢换鍫ュ礉瀹€鍕剳妞ゆ帒鍊甸崑鎾绘偡閼割兛绮ч柣搴ㄦ涧閻倸鐣峰Δ鍛ㄩ柕澶堝劤缁嬪姊?
     /// </summary>
     public partial class FacetHost : Node
     {
@@ -31,12 +31,13 @@ namespace Sideline.Facet.Runtime
         private string? _lastHandledHotReloadLabRequestId;
         private string? _lastHandledLayoutLabRequestId;
         private string? _lastRuntimeDiagnosticsFingerprint;
+        private FacetRuntimeEnvironment _runtimeEnvironment = null!;
 
         /// <summary>
-        /// 最小启动验证标记。
-        /// 启动主场景后可以直接搜索该文本，确认 Facet 宿主已接入。
+        /// 闂備礁鎼悧鍐磻閹剧粯鍊堕煫鍥ㄦ尵缁犱即鏌熼姘跺弰鐎规洘绻堟俊鎼佸煛閸愩劎鐓戦梺鑽ゅТ濞诧綁鎮為敃鍌涘亯闁挎繂娲︽刊濂告煠閸撴彃鍘撮柛?
+        /// 闂備礁鎲￠崙褰掑垂閻楀牊鍙忛柍鍝勫€婚埢鏃堟偣閸パ冪骇缂併劍宀搁弻锟犲椽娴ｅ摜浠╅梺璇″枟椤ㄥ﹤鐣烽敐澶樻晬婵炲棗娴烽棄宥夋⒑閻戔晜娅呴柣掳鍔庨弫顕€骞橀鑲╊啇濠电姴锕ら幊搴ㄥ磻瀹ュ鍋ｉ柛銉ｅ劚閸旀粓鏌＄€ｎ亜鏆ｇ€殿喚鏁婚、妤佺節閸曨収妲风紓浣鸿檸閸欏酣宕板☉銏╂晣?Facet 闂佽娴烽幊鎾诲Φ濡皷鍋撻棃娑滃妞ゆ柨绻樺畷锝嗗緞婵犲偆妲婚梻浣侯焾缁诲牓宕曢鐐茬劦?
         /// </summary>
-        public const string StartupVerificationMarker = "FacetHost 启动验证成功";
+        public const string StartupVerificationMarker = "FacetHost 闂備礁鎲￠崙褰掑垂閻楀牊鍙忛柍鍝勫亞濞堢晫鈧厜鍋撻柛鎰典簼椤秹姊洪悷鎵憼闁告梹娲橀幈?";
 
         [Signal]
         public delegate void InitializedEventHandler();
@@ -84,37 +85,37 @@ namespace Sideline.Facet.Runtime
         public int DefaultPageCacheCapacity { get; set; } = 8;
 
         /// <summary>
-        /// 当前宿主实例。
+        /// 闁荤喐绮庢晶妤呭箰閸涘﹥娅犻柣妯碱暯閸嬫捇鎮烽懜顑跨钵闁诲酣娼ч惉濂稿焵椤掆偓濠€閬嶅磻濡吋顐介柕澶嗘櫅杩?
         /// </summary>
         public static FacetHost? Instance { get; private set; }
 
         /// <summary>
-        /// 是否已完成初始化。
+        /// 闂備礁鎼€氱兘宕规导鏉戠畾濞达絽澹婇崯鍛存煙缂佹ê绗ч柡鍡樺哺閺岀喓鈧稒锚婵洭鏌涢妸銉т粵闁逛究鍔庨埀顒婄秵娴滄粓顢氳閺?
         /// </summary>
         public bool IsInitialized { get; private set; }
 
         /// <summary>
-        /// 当前运行会话标识。
+        /// 闁荤喐绮庢晶妤呭箰閸涘﹥娅犻柣妯挎珪娴溿倝鏌熼柇锕€鐏遍柡鈧挊澹濆綊宕楅梻缈犲闂佷紮缂氱划娆忣嚕娴犲鐐婃い蹇撴椤岸姊?
         /// </summary>
         public string CurrentSessionId => Logger is FacetLogger facetLogger ? facetLogger.SessionId : string.Empty;
 
         /// <summary>
-        /// Facet 当前配置。
+        /// Facet 闁荤喐绮庢晶妤呭箰閸涘﹥娅犻柣妯肩帛閻撯偓閻庡箍鍎卞ú銊╁几閸岀偞鐓?
         /// </summary>
         public FacetConfig Config { get; private set; } = FacetConfig.Default;
 
         /// <summary>
-        /// Facet 当前服务容器。
+        /// Facet 闁荤喐绮庢晶妤呭箰閸涘﹥娅犻柣妯款嚙鐎氬鈧箍鍎遍幊搴綖閵堝鍊甸柛锔诲幗閸も偓濠电偛鎳忕敮鈩冧繆?
         /// </summary>
         public FacetServices Services { get; private set; } = new();
 
         /// <summary>
-        /// Facet 当前日志器。
+        /// Facet 闁荤喐绮庢晶妤呭箰閸涘﹥娅犻柣妯款嚙缁秹鏌曟径鍫濆姢缂佺姴鐖奸弻娑㈡晲閸愩劌惟闂?
         /// </summary>
         public IFacetLogger Logger { get; private set; } = CreateLogger(FacetConfig.Default);
 
         /// <summary>
-        /// Facet 当前运行时上下文。
+        /// Facet 闁荤喐绮庢晶妤呭箰閸涘﹥娅犻柣妯挎珪娴溿倝鏌熼柇锕€鐏遍柡鈧禒瀣厸闁告劏鏅滈弸鍕磼濡も偓閸婂湱绮欐径灞稿亾閿濆骸浜濋柣搴櫍閺?
         /// </summary>
         public FacetRuntimeContext Context { get; private set; } = null!;
 
@@ -122,10 +123,20 @@ namespace Sideline.Facet.Runtime
         {
             if (Instance != null && Instance != this)
             {
-                GD.PushWarning("[Facet][Host] 检测到多个 FacetHost 实例，后进入的实例将覆盖前一个引用。");
+                GD.PushWarning("[Facet][Host] 婵犵妲呴崑鈧柛瀣尰缁绘盯寮堕幋顓炲壈闂佺硶鏅涢張顒€顕ラ崟顐僵妞ゆ劧绠戝▓?FacetHost 闂佽楠稿﹢閬嶅磻濡吋顐介柕澶嗘櫆閺咁剟鎮橀悙璺盒撻柛濠勬暬瀵爼鍩￠崒婧炬闂佸憡鐟ュΛ婵嬪箚閸愵喖绀嬫い鎰╁€栧鏍ㄧ箾閹剧澹樻い鎴濇嚇閹啴濮€閵忊€虫毇闂佺硶鍓濋悷锔惧娴煎瓨鐓曢柟鎯х－灏忕紓浣规煥閻°劎绮欐径鎰垫晜闁告洦鍘鹃埞娑㈡⒑濞茬粯濞囬柛鏂匡躬閸┾偓?");
             }
 
             Instance = this;
+        }
+
+        public override void _ExitTree()
+        {
+            if (Instance == this)
+            {
+                Instance = null;
+            }
+
+            ResetHost();
         }
 
         public override void _Ready()
@@ -134,11 +145,11 @@ namespace Sideline.Facet.Runtime
 
             if (!AutoInitialize)
             {
-                GD.Print($"[Facet][Bootstrap] FacetHost 已加载，等待手动初始化。Path={GetPath()}");
+                GD.Print($"[Facet][Bootstrap] FacetHost 闁诲海鎳撻幉陇銇愰崘鈺傚弿闁绘劕鐡ㄦ慨婊堟煛閸屾ê鈧绮堟径宀€纾兼繛鎴烇供濡插摜绱掗崜浣告灈妤犵偛绉堕埀顒婄秵娴滄粏顤勯梻浣告啞鐢鎹㈤崒鐑囩稏闁圭増婢樼粈宀勬煛瀹ュ啫鍔楅柛瀣尰缁楃喓绱炵槐鍗?{GetPath()}");
                 return;
             }
 
-            GD.Print($"[Facet][Bootstrap] FacetHost 自动初始化开始。Path={GetPath()}");
+            GD.Print($"[Facet][Bootstrap] FacetHost 闂備胶鍘ч〃搴㈢濠婂嫭鍙忛柍鍝勬噹缁€鍡樼節闂堟稒锛嶆繛鍏碱殜閺屾盯寮介妸褍鈪圭紓浣介哺閸ㄥ爼骞堥妸褉鍋撻敐鍐ㄥΨ闁稿鎸荤粭鐔虹礊缁卞崣={GetPath()}");
             Initialize();
         }
 
@@ -203,16 +214,17 @@ namespace Sideline.Facet.Runtime
         }
 
         /// <summary>
-        /// 初始化 Facet 宿主。
+        /// 闂備礁鎲＄敮妤冩崲閸岀儑缍栭柟鐗堟緲缁€?Facet 闂佽娴烽幊鎾诲Φ濡皷鍋撻棃娑氱劯濠?
         /// </summary>
         public void Initialize()
         {
             if (IsInitialized)
             {
-                Logger.Warning("Host", "FacetHost 重复初始化请求已忽略。", null);
+                Logger.Warning("Host", "FacetHost 闂傚倷鐒﹁ぐ鍐矓閹绢啟鍥蓟閵夈儳顦┑鐘绘涧濡厼顭囧Δ鍛厱闁哄秲鍔庢晶铏亜閺囥劌澧弫鍫ユ煕鐏炴崘澹橀柛銈嗗浮閻擃偊宕堕埡鍌涚彧闂佸搫妫欓崝娆愪繆?, null");
                 return;
             }
 
+            _runtimeEnvironment = FacetRuntimeEnvironment.Detect();
             Config = BuildConfig();
             Services = new FacetServices();
             Logger = CreateLogger(Config);
@@ -237,7 +249,7 @@ namespace Sideline.Facet.Runtime
         }
 
         /// <summary>
-        /// 重置宿主运行时状态。
+        /// 闂傚倷鐒﹁ぐ鍐矓閸洘鍋柛鈩冪憿閸嬫捇鎮烽懜顑跨钵闁诲酣娼ч張顒€顭囨繝姘疀妞ゆ牭绲鹃弬鈧梻浣告惈閸燁偅鏅舵惔銏″弿闁归棿绀佺粻鎴澝归敐鍥舵毌闁?
         /// </summary>
         public void ResetHost()
         {
@@ -251,13 +263,14 @@ namespace Sideline.Facet.Runtime
             _lastHandledHotReloadLabRequestId = null;
             _lastHandledLayoutLabRequestId = null;
             _lastRuntimeDiagnosticsFingerprint = null;
+            _runtimeEnvironment = FacetRuntimeEnvironment.Detect();
             SetProcess(false);
             SetProcessUnhandledInput(false);
         }
 
         /// <summary>
-        /// 主动执行一次 Lua 热重载往返测试。
-        /// 默认优先使用当前页面运行时所绑定的 Lua 控制器脚本。
+        /// 濠电偞鍨堕幑渚€顢氳閹便劑鍩￠崨顓狀吋閻熸粍鍨块妴渚€骞嬮悙纰樻灃闂侀€炲苯澧柍?Lua 闂備胶绮崺鍫ュ矗閸愵喖闂柛娑橈攻婵粓鏌﹀Ο渚Ш缂佹劖妫冨鍫曞煛閸屾稈鎷圭紓浣风椤曨參骞忛悩璇插嵆婵☆垰鍢叉禍?
+        /// 濠殿喗甯楃粙鎺椻€﹂崼銉晣缂備焦锚椤曡鲸淇婇姘儓閻㈩垬鍎遍湁闁挎繂鐗婄涵鍫曟煛娴ｉ潧鈧盯濡甸幇鏉跨闁告劕妯婇弸鈧┑锛勫亼閸婃寮拠宸劷闁绘鐗婃禍銈夋煙闁箑鐏遍柡鈧禒瀣厸闁告劦鍘奸悡鎰熆瑜嶇粔鍓佹閹烘绠ｆ繝闈涚墛濮ｅ酣姊?Lua 闂備胶顢婇惌鍥礃閵娧冨箑闂備線娼荤徊濠氬礉韫囨稑绀堝┑鍌滎焾鐎氬銇勯幋锔芥殰闁?
         /// </summary>
         public bool TryRunLuaHotReloadRoundTripTest(string? scriptId = null, string reason = "manual")
         {
@@ -265,7 +278,7 @@ namespace Sideline.Facet.Runtime
             {
                 Logger.Warning(
                     "Lua.HotReload.Test",
-                    "Lua 热重载测试请求被忽略，测试服务尚未就绪。",
+                    "Lua 闂備胶绮崺鍫ュ矗閸愵喖闂柛娑橈攻婵粓鏌ら幁鎺戝姢闁靛牊鎸抽幃褰掑炊閵婏妇顦銈嗘处閸撴瑦鏅ラ梺绋挎湰缁诲秴顭囬崼鏇犲彄闁搞儮鏅滃▍鏇㈡煛閸℃ê濮嶉柡浣哥Ф娴狅箓宕滆閸嬬偤鏌ｉ悩鍙夊婵炲弶锚閿曘垽宕堕鈧粈澶愭煃閵夈儳锛嶆慨锝忕秮閺岋繝宕奸锛勭泿濠殿喗菧閸斿海妲愰幒妤婃晜闁稿本顨呮禍?",
                     new Dictionary<string, object?>
                     {
                         ["requestedScriptId"] = scriptId,
@@ -284,7 +297,7 @@ namespace Sideline.Facet.Runtime
         }
 
         /// <summary>
-        /// 获取必须存在的 Facet 服务。
+        /// 闂備礁鍚嬮崕鎶藉床閼艰翰浜归柛銉簽閻も偓闂佸憡绋掗悾顏堝焵椤掆偓缁绘帡鍩€椤掍胶鈯曢柨姘節閳ь剟顢旈崼鐔峰壄?Facet 闂備礁鎼悧鍡欑矓鐎涙ɑ鍙忛柣鏃傚帶杩?
         /// </summary>
         public TService GetRequired<TService>() where TService : class
         {
@@ -297,11 +310,11 @@ namespace Sideline.Facet.Runtime
             {
                 EnableDebugLogging = EnableDebugLogging,
                 EnableStructuredLogging = EnableStructuredLogging,
-                StructuredLogPath = StructuredLogPath,
+                StructuredLogPath = _runtimeEnvironment.ResolveLogPath(StructuredLogPath, "facet-structured.jsonl"),
                 StructuredLogBufferCapacity = StructuredLogBufferCapacity,
                 StructuredLogHistoryLimit = StructuredLogHistoryLimit,
                 EnableConsoleMirrorLogging = EnableConsoleMirrorLogging,
-                ConsoleMirrorLogPath = ConsoleMirrorLogPath,
+                ConsoleMirrorLogPath = _runtimeEnvironment.ResolveLogPath(ConsoleMirrorLogPath, "facet-console.log"),
                 ConsoleMirrorLogHistoryLimit = ConsoleMirrorLogHistoryLimit,
                 EnableHotReload = EnableHotReload,
                 HotReloadPollIntervalSeconds = HotReloadPollIntervalSeconds,
@@ -309,6 +322,7 @@ namespace Sideline.Facet.Runtime
                 DefaultPageCacheCapacity = DefaultPageCacheCapacity,
             };
         }
+
 
         private void RegisterCoreServices()
         {
@@ -338,8 +352,7 @@ namespace Sideline.Facet.Runtime
             UIBindingService bindingService = new(Logger);
             UIRouteService routeService = new();
             UIManager uiManager = new(pageRegistry, pageLoader, routeService, Context, Logger);
-            string projectRootPath = ProjectSettings.GlobalizePath("res://");
-            ILuaScriptSource luaScriptSource = new FileSystemLuaScriptSource(projectRootPath, FacetLuaScriptIds.All);
+            ILuaScriptSource luaScriptSource = _runtimeEnvironment.CreateLuaScriptSource(FacetLuaScriptIds.All);
             RedDotService redDotService = new(Logger);
             FacetRuntimeRedDotProvider runtimeRedDotProvider = new(projectionStore, Logger);
             ManualRedDotProvider manualRedDotProvider = new();
@@ -356,6 +369,7 @@ namespace Sideline.Facet.Runtime
             Services.RegisterSingleton(Logger);
             Services.RegisterSingleton((FacetLogger)Logger);
             Services.RegisterSingleton(Context);
+            Services.RegisterSingleton(_runtimeEnvironment);
             Services.RegisterSingleton<ICommandBus>(commandBus);
             Services.RegisterSingleton(commandBus);
             Services.RegisterSingleton<IQueryBus>(queryBus);
@@ -418,6 +432,9 @@ namespace Sideline.Facet.Runtime
                     ["consoleMirrorLogging"] = Config.EnableConsoleMirrorLogging,
                     ["consoleMirrorLogPath"] = Config.ConsoleMirrorLogPath,
                     ["consoleMirrorLogHistoryLimit"] = Config.ConsoleMirrorLogHistoryLimit,
+                    ["runtimeEnvironment"] = _runtimeEnvironment.IsEditor ? "editor" : "runtime",
+                    ["usesPackagedResources"] = _runtimeEnvironment.UsesPackagedResources,
+                    ["projectRootPathAvailable"] = !string.IsNullOrWhiteSpace(_runtimeEnvironment.ProjectRootPath),
                     ["commandBus"] = nameof(LocalCommandBus),
                     ["queryBus"] = nameof(LocalQueryBus),
                     ["projectionStore"] = nameof(ProjectionStore),
@@ -444,8 +461,8 @@ namespace Sideline.Facet.Runtime
         private void PublishHotReloadLabIdleStatus()
         {
             string message = Config.EnableHotReload
-                ? "运行时已就绪，等待 Hot Reload Lab 请求。"
-                : "运行时已启动，但当前未开启热重载。";
+                ? "Hot reload lab is idle and waiting for requests."
+                : "Hot reload is disabled in the current runtime configuration.";
 
             FacetHotReloadLabBridge.SaveStatus(new FacetHotReloadLabStatus
             {
@@ -464,7 +481,7 @@ namespace Sideline.Facet.Runtime
             {
                 State = FacetLayoutLabBridge.StateIdle,
                 Success = null,
-                Message = "运行时已就绪，等待 Layout Lab 请求。",
+                Message = "Layout Lab 当前空闲，等待新的打开请求。",
                 UpdatedAtUtc = DateTimeOffset.UtcNow.ToString("O"),
                 RuntimeSessionId = CurrentSessionId,
                 RuntimePageId = Services.TryGet(out UIManager? uiManager) ? uiManager?.CurrentPageId ?? string.Empty : string.Empty,
@@ -489,7 +506,7 @@ namespace Sideline.Facet.Runtime
             {
                 Logger.Error(
                     "Tooling.Diagnostics",
-                    "运行时诊断快照写入失败。",
+                    "Failed to publish runtime diagnostics snapshot.",
                     new Dictionary<string, object?>
                     {
                         ["exceptionType"] = exception.GetType().FullName,
@@ -630,22 +647,22 @@ namespace Sideline.Facet.Runtime
                 "page_registry.not_empty",
                 isSuccess: registeredPages.Count > 0,
                 subject: "UIPageRegistry",
-                successMessage: $"已注册 {registeredPages.Count} 个页面。",
-                failureMessage: "页面注册表为空。"));
+                successMessage: $"Registered pages snapshot contains {registeredPages.Count} entries.",
+                failureMessage: "Registered pages snapshot is empty."));
 
             results.Add(CreateValidationResult(
                 "projection.count_consistent",
                 isSuccess: projectionStore.Count == projectionKeys.Count,
                 subject: "ProjectionStore",
-                successMessage: $"Projection 数量与键快照一致：{projectionStore.Count}。",
-                failureMessage: $"Projection 数量与键快照不一致：count={projectionStore.Count}, keys={projectionKeys.Count}。"));
+                successMessage: $"Projection key count matches store count: {projectionStore.Count}.",
+                failureMessage: $"Projection key count mismatch. count={projectionStore.Count}, keys={projectionKeys.Count}."));
 
             results.Add(CreateValidationResult(
                 "red_dot.count_consistent",
                 isSuccess: redDotService.RegisteredPathCount == redDotPaths.Count,
                 subject: "RedDotService",
-                successMessage: $"红点路径数量一致：{redDotPaths.Count}。",
-                failureMessage: $"红点路径数量不一致：registered={redDotService.RegisteredPathCount}, snapshot={redDotPaths.Count}。"));
+                successMessage: $"Red dot snapshot count matches registered count: {redDotPaths.Count}.",
+                failureMessage: $"Red dot snapshot count mismatch. registered={redDotService.RegisteredPathCount}, snapshot={redDotPaths.Count}."));
 
             foreach (FacetRuntimeRegisteredPageSnapshot page in registeredPages)
             {
@@ -660,8 +677,8 @@ namespace Sideline.Facet.Runtime
                     "page.layout_resolved",
                     isSuccess: layoutResolved,
                     subject: page.PageId,
-                    successMessage: $"布局已解析：{page.LayoutPath}。",
-                    failureMessage: $"布局未注册：{page.LayoutPath}。"));
+                    successMessage: $"Layout path resolved: {page.LayoutPath}.",
+                    failureMessage: $"Layout path could not be resolved: {page.LayoutPath}."));
 
                 if (!string.IsNullOrWhiteSpace(page.ControllerScript))
                 {
@@ -670,8 +687,8 @@ namespace Sideline.Facet.Runtime
                         "page.lua_script_registered",
                         isSuccess: scriptRegistered,
                         subject: page.PageId,
-                        successMessage: $"Lua 脚本已注册：{page.ControllerScript}。",
-                        failureMessage: $"Lua 脚本未注册：{page.ControllerScript}。"));
+                        successMessage: $"Lua controller script is registered: {page.ControllerScript}.",
+                        failureMessage: $"Lua controller script is missing: {page.ControllerScript}."));
                 }
                 else
                 {
@@ -679,7 +696,7 @@ namespace Sideline.Facet.Runtime
                         "page.lua_script_optional",
                         isSuccess: true,
                         subject: page.PageId,
-                        successMessage: "页面未绑定 Lua 脚本。",
+                        successMessage: "Page does not require a Lua controller script.",
                         failureMessage: string.Empty,
                         severity: "Info"));
                 }
@@ -692,16 +709,16 @@ namespace Sideline.Facet.Runtime
                     "runtime.page_registered",
                     isSuccess: pageRegistered,
                     subject: runtime.PageId,
-                    successMessage: "活动运行时对应页面已注册。",
-                    failureMessage: "活动运行时对应页面未注册。"));
+                    successMessage: "Runtime page is still registered in the page registry.",
+                    failureMessage: "Runtime page is no longer registered in the page registry."));
 
                 bool bindingScopePresent = runtime.BindingScope != null;
                 results.Add(CreateValidationResult(
                     "runtime.binding_scope_present",
                     status: bindingScopePresent ? "Pass" : "Warning",
                     subject: runtime.PageId,
-                    successMessage: $"BindingScope 已就绪：{runtime.BindingScope?.ScopeId}。",
-                    failureMessage: "活动运行时缺少 BindingScope。",
+                    successMessage: $"Binding scope is available: {runtime.BindingScope?.ScopeId}.",
+                    failureMessage: "Binding scope is missing for the runtime page.",
                     severity: "Warning"));
             }
 
@@ -711,8 +728,8 @@ namespace Sideline.Facet.Runtime
                 "runtime.current_page_observed",
                 status: currentPageMatchesRuntime ? "Pass" : "Warning",
                 subject: uiManager.CurrentPageId ?? "<empty>",
-                successMessage: "当前页面已出现在活动运行时快照中。",
-                failureMessage: "当前页面未出现在活动运行时快照中。",
+                successMessage: "Current page id is represented by the observed runtimes.",
+                failureMessage: "Current page id is not represented by the observed runtimes.",
                 severity: "Warning"));
 
             results.Sort(static (left, right) =>
@@ -966,7 +983,7 @@ namespace Sideline.Facet.Runtime
                 Command = request.Command,
                 State = FacetHotReloadLabBridge.StateRunning,
                 Success = null,
-                Message = "运行时已接收请求，正在执行 Lua 热重载往返测试。",
+                Message = "闂佸搫顦弲婊堝礉濮椻偓閵嗕線骞嬮敃鈧猾宥夋偣閸濆嫭鎯堥柛銈嗗浮閺岀喖骞侀幒鎴濆闂佽桨绀佸﹢閬嶅箯閻樼粯鐓ラ悗锝庡墯閸曢箖姊洪幐搴ｂ槈闁哄牜鍓熼、妤€顭ㄩ崼婵囧祶闂侀潧顭粻鎴﹀煕閺冨牊鍋?Lua 闂備胶绮崺鍫ュ矗閸愵喖闂柛娑橈攻婵粓鏌﹀Ο渚Ш缂佹劖妫冨鍫曞煛閸屾稈鎷圭紓浣风椤曨參骞忛悩璇插嵆婵☆垰鍢叉禍?",
                 IssuedBy = request.IssuedBy,
                 IssuedAtUtc = request.IssuedAtUtc,
                 UpdatedAtUtc = DateTimeOffset.UtcNow.ToString("O"),
@@ -984,7 +1001,7 @@ namespace Sideline.Facet.Runtime
                         Command = request.Command,
                         State = FacetHotReloadLabBridge.StateIgnored,
                         Success = false,
-                        Message = "运行时未开启热重载，无法执行阶段 9 测试。",
+                        Message = "闂佸搫顦弲婊堝礉濮椻偓閵嗕線骞嬮敃鈧猾宥夋煠缁嬭法浠涚€殿喗鎸鹃埀顒侇問閸犳帡宕戦幘缁樼厱婵鍘ч悘锝夋煕鎼达紕绉洪柡灞借嫰椤撳ジ宕奸悢鎭掑仒闂備焦瀵х粙鎴﹀嫉椤掆偓铻為柕鍫濇噳閺嬫牠鏌￠崶鈺佹瀻闁抽攱妫冮幃璺衡槈濡偐鍔┑鈽嗗灟缁€渚€鍩?9 婵犵數鍋炲娆擃敄閸儲鍎婃い鏍仜杩?",
                         IssuedBy = request.IssuedBy,
                         IssuedAtUtc = request.IssuedAtUtc,
                         UpdatedAtUtc = DateTimeOffset.UtcNow.ToString("O"),
@@ -1012,11 +1029,11 @@ namespace Sideline.Facet.Runtime
 
                 string message = request.Command switch
                 {
-                    FacetHotReloadLabBridge.CommandCurrentPageRoundTrip when success => "当前页 Lua 热重载往返测试已通过。",
-                    FacetHotReloadLabBridge.CommandDungeonRoundTrip when success => "地下城页 Lua 热重载往返测试已通过。",
-                    FacetHotReloadLabBridge.CommandCurrentPageRoundTrip => "当前页 Lua 热重载往返测试未通过，请查看 Lua.HotReload.Test 日志。",
-                    FacetHotReloadLabBridge.CommandDungeonRoundTrip => "地下城页 Lua 热重载往返测试未通过，请查看 Lua.HotReload.Test 日志。",
-                    _ => "收到未知的 Hot Reload Lab 命令，已忽略。",
+                    FacetHotReloadLabBridge.CommandCurrentPageRoundTrip when success => "闁荤喐绮庢晶妤呭箰閸涘﹥娅犻柣妯煎仺娴?Lua 闂備胶绮崺鍫ュ矗閸愵喖闂柛娑橈攻婵粓鏌﹀Ο渚Ш缂佹劖妫冨鍫曞煛閸屾稈鎷圭紓浣风椤曨參骞忛悩璇插嵆闁绘劖褰冨▓銉╂⒒娓氬洤浜濆ǎ鍥閹广垽宕橀鍢?",
+                    FacetHotReloadLabBridge.CommandDungeonRoundTrip when success => "闂備線娼荤粻鎾汇€傞敂鍓х當闁告稒娼欓弰銉╁箹濞ｎ剙濡搁柍?Lua 闂備胶绮崺鍫ュ矗閸愵喖闂柛娑橈攻婵粓鏌﹀Ο渚Ш缂佹劖妫冨鍫曞煛閸屾稈鎷圭紓浣风椤曨參骞忛悩璇插嵆闁绘劖褰冨▓銉╂⒒娓氬洤浜濆ǎ鍥閹广垽宕橀鍢?",
+                    FacetHotReloadLabBridge.CommandCurrentPageRoundTrip => "闁荤喐绮庢晶妤呭箰閸涘﹥娅犻柣妯煎仺娴?Lua 闂備胶绮崺鍫ュ矗閸愵喖闂柛娑橈攻婵粓鏌﹀Ο渚Ш缂佹劖妫冨鍫曞煛閸屾稈鎷圭紓浣风椤曨參骞忛悩璇插嵆闁绘梻顭堢槐锕傛⒒娓氬洤浜濆ǎ鍥閹广垽宕橀鑺ユ珫閻庡厜鍋撻柛鎰劤濞堟煡姊洪崫鍕潶闁稿骸鍟块敃?Lua.HotReload.Test 闂備礁鎼崯銊╁磿鏉堚晜宕查柡鍐ㄧ墕杩?",
+                    FacetHotReloadLabBridge.CommandDungeonRoundTrip => "闂備線娼荤粻鎾汇€傞敂鍓х當闁告稒娼欓弰銉╁箹濞ｎ剙濡搁柍?Lua 闂備胶绮崺鍫ュ矗閸愵喖闂柛娑橈攻婵粓鏌﹀Ο渚Ш缂佹劖妫冨鍫曞煛閸屾稈鎷圭紓浣风椤曨參骞忛悩璇插嵆闁绘梻顭堢槐锕傛⒒娓氬洤浜濆ǎ鍥閹广垽宕橀鑺ユ珫閻庡厜鍋撻柛鎰劤濞堟煡姊洪崫鍕潶闁稿骸鍟块敃?Lua.HotReload.Test 闂備礁鎼崯銊╁磿鏉堚晜宕查柡鍐ㄧ墕杩?",
+                    _ => "闂備浇銆€閸嬫捇鎮归崫鍕儓闁绘挸鍊块弻锟犲醇椤愶紕鏁栭梺缁樻惈缁绘繈骞?Hot Reload Lab 闂備礁鎲＄粙鎺楀垂濠靛绠柕鍫濐槹閺咁剟鎮橀悙鑸殿棄闁搞倖甯￠悡顐﹀炊閳哄倹鐝梺鍝勬閸旀瑦淇?",
                 };
 
                 currentPageId = Services.TryGet(out uiManager)
@@ -1055,7 +1072,7 @@ namespace Sideline.Facet.Runtime
                 Command = request.Command,
                 State = FacetLayoutLabBridge.StateRunning,
                 Success = null,
-                Message = "运行时已接收请求，正在打开阶段 11 布局实验页面。",
+                Message = "Layout Lab 请求处理中，正在切换目标页面。",
                 IssuedBy = request.IssuedBy,
                 IssuedAtUtc = request.IssuedAtUtc,
                 UpdatedAtUtc = DateTimeOffset.UtcNow.ToString("O"),
@@ -1080,7 +1097,7 @@ namespace Sideline.Facet.Runtime
                         Command = request.Command,
                         State = FacetLayoutLabBridge.StateIgnored,
                         Success = false,
-                        Message = "收到未知的 Layout Lab 命令，已忽略。",
+                        Message = "Layout Lab 请求未被处理，请检查命令和目标页面配置。",
                         IssuedBy = request.IssuedBy,
                         IssuedAtUtc = request.IssuedAtUtc,
                         UpdatedAtUtc = DateTimeOffset.UtcNow.ToString("O"),
@@ -1098,7 +1115,7 @@ namespace Sideline.Facet.Runtime
                         Command = request.Command,
                         State = FacetLayoutLabBridge.StateFailed,
                         Success = false,
-                        Message = "运行时 UIManager 尚未就绪，无法打开布局实验页面。",
+                        Message = "Layout Lab 请求执行失败，UIManager 未就绪。",
                         IssuedBy = request.IssuedBy,
                         IssuedAtUtc = request.IssuedAtUtc,
                         UpdatedAtUtc = DateTimeOffset.UtcNow.ToString("O"),
@@ -1113,7 +1130,7 @@ namespace Sideline.Facet.Runtime
 
                 Logger.Info(
                     "UI.Layout",
-                    "布局实验室页面打开完成。",
+                    "闂佹眹鍩勯崹浼村疮椤愶附鍎戞い鎺戝€甸崑鎾诲捶椤撶偘妲愰梺缁樼⊕閻熝囧焵椤掆偓缁犲秹宕愬┑瀣ュ鑸靛姈椤ュ牓鏌曡箛濞惧亾閺傘儱寰嶉柣搴㈩問閸犳帡宕戦幘缁樺€甸柣鐔哄濠€浼存煕閵婏箑鍝哄┑?",
                     new Dictionary<string, object?>
                     {
                         ["requestId"] = request.RequestId,
@@ -1131,7 +1148,7 @@ namespace Sideline.Facet.Runtime
                     Command = request.Command,
                     State = FacetLayoutLabBridge.StateCompleted,
                     Success = true,
-                    Message = $"已打开布局实验页面：{runtime.Definition.PageId}",
+                    Message = $"Layout lab request completed for page {runtime.Definition.PageId}.",
                     IssuedBy = request.IssuedBy,
                     IssuedAtUtc = request.IssuedAtUtc,
                     UpdatedAtUtc = DateTimeOffset.UtcNow.ToString("O"),
@@ -1143,7 +1160,7 @@ namespace Sideline.Facet.Runtime
             {
                 Logger.Error(
                     "UI.Layout",
-                    "布局实验室页面打开失败。",
+                    "Layout lab request execution failed.",
                     new Dictionary<string, object?>
                     {
                         ["requestId"] = request.RequestId,
@@ -1160,7 +1177,7 @@ namespace Sideline.Facet.Runtime
                     Command = request.Command,
                     State = FacetLayoutLabBridge.StateFailed,
                     Success = false,
-                    Message = $"打开布局实验页面失败：{exception.Message}",
+                    Message = $"Layout lab request failed: {exception.Message}",
                     IssuedBy = request.IssuedBy,
                     IssuedAtUtc = request.IssuedAtUtc,
                     UpdatedAtUtc = DateTimeOffset.UtcNow.ToString("O"),
@@ -1241,7 +1258,7 @@ namespace Sideline.Facet.Runtime
                 {
                     Logger.Warning(
                         "Application",
-                        "Facet 阶段 2 当前快照查询失败。",
+                        "Facet 闂傚倸鍊搁崯鎶藉春閺嶎収鏁?2 闁荤喐绮庢晶妤呭箰閸涘﹥娅犻柣妯挎閻も偓濡炪倖鍔戦崐鏇烆嚕妤ｅ啯鐓涢悘鐐额嚙閸斻儲銇勯弴鐕佹畷鐎垫澘瀚蹇涱敃閵夋劖娲熼弻?",
                         new Dictionary<string, object?>
                         {
                             ["errorCode"] = currentProbeResult.ErrorCode,
@@ -1260,7 +1277,7 @@ namespace Sideline.Facet.Runtime
                 {
                     Logger.Warning(
                         "Application",
-                        "Facet 阶段 2 探针记录命令失败。",
+                        "Facet 闂傚倸鍊搁崯鎶藉春閺嶎収鏁?2 闂備浇顫夋禍浠嬪垂娴犲绠柨娑樺婵ジ鏌℃径搴㈢《缂佸娼￠弻娑樷槈濞嗗繒浜伴梺纭呯堪閸婃牕顕ラ崟顒佺秶妞ゆ劑鍎涢弴銏＄厪?",
                         new Dictionary<string, object?>
                         {
                             ["errorCode"] = recordResult.ErrorCode,
@@ -1278,7 +1295,7 @@ namespace Sideline.Facet.Runtime
                 {
                     Logger.Warning(
                         "Application",
-                        "Facet 阶段 2 探针状态查询失败。",
+                        "Facet 闂傚倸鍊搁崯鎶藉春閺嶎収鏁?2 闂備浇顫夋禍浠嬪垂娴犲绠柨鐔哄У閸嬫劙鏌ら崫銉毌闁稿鎸婚幏鍛村捶椤撶偛缁╅梺鑽ゅТ濞层垽宕硅ぐ鎺懳﹂柟瀵稿У鐎氬鏌曟径娑氬矝闁?",
                         new Dictionary<string, object?>
                         {
                             ["errorCode"] = statusResult.ErrorCode,
@@ -1290,7 +1307,7 @@ namespace Sideline.Facet.Runtime
                 FacetRuntimeProbeStatusSnapshot status = statusResult.Value;
                 Logger.Info(
                     "Application",
-                    "Facet 阶段 2 应用边界闭环验证成功。",
+                    "Facet 闂傚倸鍊搁崯鎶藉春閺嶎収鏁?2 闂佸湱鍘ч悺銊ヮ潖婵犳艾鏋侀柕鍫濇缂嶅洭鏌涢敂璇插箺婵炲懏娲熷濠氬磼閵堝懎绠诲Δ鐘靛仜濡瑩銆冮妷銉ф殕闁告劦浜濋～宥夋⒑閻熸壆鎽犻柛鏃€娲橀幈銊モ槈閵忕姈?",
                     new Dictionary<string, object?>
                     {
                         ["sessionId"] = snapshot.SessionId,
@@ -1310,7 +1327,7 @@ namespace Sideline.Facet.Runtime
             {
                 Logger.Error(
                     "Application",
-                    "Facet 阶段 2 应用边界自检抛出异常。",
+                    "Facet 闂傚倸鍊搁崯鎶藉春閺嶎収鏁?2 闂佸湱鍘ч悺銊ヮ潖婵犳艾鏋侀柕鍫濇缂嶅洭鏌涢敂璇插箺婵炲懏娲熼弻銈嗙附婢跺鍑瑰銈冨劚閹虫﹢鐛惔鈾€妲堟俊顖滃劋閻︽棃鎮楀▓鍨灈闁稿﹥鎮傞幃銉╁醇閺囩倣?",
                     new Dictionary<string, object?>
                     {
                         ["exceptionType"] = exception.GetType().FullName,
@@ -1354,7 +1371,7 @@ namespace Sideline.Facet.Runtime
 
                 Logger.Info(
                     "Projection",
-                    "Facet 阶段 3 Projection 骨架验证成功。",
+                    "Facet 闂傚倸鍊搁崯鎶藉春閺嶎収鏁?3 Projection 濠德板€楁慨浼村礉瀹ュ鍊堕柨鏃傜摂濞堢晫鈧厜鍋撻柛鎰典簼椤秹姊洪悷鎵憼闁告梹娲橀幈銊モ槈閵忕姈?",
                     new Dictionary<string, object?>
                     {
                         ["registeredUpdaters"] = Context.ProjectionRefreshCoordinator.Count,
@@ -1377,7 +1394,7 @@ namespace Sideline.Facet.Runtime
             {
                 Logger.Error(
                     "Projection",
-                    "Facet 阶段 3 Projection 骨架验证抛出异常。",
+                    "Facet 闂傚倸鍊搁崯鎶藉春閺嶎収鏁?3 Projection 濠德板€楁慨浼村礉瀹ュ鍊堕柨鏃傜摂濞堢晫鈧厜鍋撻柛鎰典簼椤秹姊虹涵鍛厫缂佸鍨垮畷鐢割敇閻戝棗娈ㄩ梺绋挎湰濮樸劑宕哄Δ鍛厪?",
                     new Dictionary<string, object?>
                     {
                         ["exceptionType"] = exception.GetType().FullName,
@@ -1394,7 +1411,7 @@ namespace Sideline.Facet.Runtime
 
                 Logger.Info(
                     "UI.Page",
-                    "Facet 阶段 4 页面定义注册完成。",
+                    "Facet 闂傚倸鍊搁崯鎶藉春閺嶎収鏁?4 濠碉紕鍋戦崐妤呭极鐠囧樊鐒介柟娈垮枓閸嬫挾鎲撮崟顓犲彎缂備胶濮烽崰搴ㄥ煝閺冨牆惟闁靛鍎查弶鎼佹煟鎼达絾鍤€闁哄牜鍓熷畷鐟邦潩鐠轰綍?",
                     new Dictionary<string, object?>
                     {
                         ["registeredPages"] = pageRegistry.Count,
@@ -1409,7 +1426,7 @@ namespace Sideline.Facet.Runtime
             {
                 Logger.Error(
                     "UI.Page",
-                    "Facet 阶段 4 页面定义注册验证失败。",
+                    "Facet 闂傚倸鍊搁崯鎶藉春閺嶎収鏁?4 濠碉紕鍋戦崐妤呭极鐠囧樊鐒介柟娈垮枓閸嬫挾鎲撮崟顓犲彎缂備胶濮烽崰搴ㄥ煝閺冨牆惟闁靛鍎查弶鍛婁繆閵堝洤孝闁活厺绶氶幆浣瑰緞鐎ｎ亞绐為柡澶婄墱閸嬪顤傞梻?",
                     new Dictionary<string, object?>
                     {
                         ["exceptionType"] = exception.GetType().FullName,
@@ -1425,7 +1442,7 @@ namespace Sideline.Facet.Runtime
                 ILuaScriptSource scriptSource = Services.GetRequired<ILuaScriptSource>();
                 Logger.Info(
                     "Lua.Runtime",
-                    "Facet 阶段 8 真实 Lua 宿主已就绪。",
+                    "Facet 闂傚倸鍊搁崯鎶藉春閺嶎収鏁?8 闂備焦妞挎禍鐐哄窗鎼淬劍鍋?Lua 闂佽娴烽幊鎾诲Φ濡皷鍋撻棃娑滃妞ゆ柨绻橀獮鎾诲箳閹捐埖顓荤紓鍌氬€风欢鈩冪濡ゅ懎鐒?",
                     new Dictionary<string, object?>
                     {
                         ["scriptSourceType"] = scriptSource.GetType().Name,
@@ -1448,7 +1465,7 @@ namespace Sideline.Facet.Runtime
             {
                 Logger.Error(
                     "Lua.Runtime",
-                    "Facet 阶段 8 Lua 宿主验证失败。",
+                    "Facet 闂傚倸鍊搁崯鎶藉春閺嶎収鏁?8 Lua 闂佽娴烽幊鎾诲Φ濡皷鍋撻棃娑欐拱妞ゃ劊鍎遍悾婵嬪礃椤忓拋娼斿┑鐘灪閸庤偐鍒掗崜褎鍠嗛柨鏇炲€歌繚?",
                     new Dictionary<string, object?>
                     {
                         ["exceptionType"] = exception.GetType().FullName,
@@ -1464,7 +1481,7 @@ namespace Sideline.Facet.Runtime
                 IRedDotService redDotService = Services.GetRequired<IRedDotService>();
                 Logger.Info(
                     "RedDot.Runtime",
-                    "Facet 阶段 10 红点树运行时已接入。",
+                    "Facet 闂傚倸鍊搁崯鎶藉春閺嶎収鏁?10 缂傚倷妞掗崟姗€宕规繝姘；闁挎繂顦崘鈧梺纭呮彧缁茶法绮婚妷鈺傚仩婵炴垶蓱濠€鐗堜繆閻愭彃鈧悂顢欒箛娑樼煑濠㈣泛锕らˇ鏌ユ⒑缁嬭法绠為柛搴灦閸┾偓?",
                     new Dictionary<string, object?>
                     {
                         ["serviceType"] = redDotService.GetType().Name,
@@ -1480,7 +1497,7 @@ namespace Sideline.Facet.Runtime
             {
                 Logger.Error(
                     "RedDot.Runtime",
-                    "Facet 阶段 10 红点树运行时验证失败。",
+                    "Facet 闂傚倸鍊搁崯鎶藉春閺嶎収鏁?10 缂傚倷妞掗崟姗€宕规繝姘；闁挎繂顦崘鈧梺纭呮彧缁茶法绮婚妷鈺傚仩婵炴垶蓱濠€鐗堜繆閻愭彃鈧綊銆冮妷銉ф殕闁告劦浜濋～宥嗙節閵忊€冲姸缂侇喖澧介幉鎾晝閸屾?",
                     new Dictionary<string, object?>
                     {
                         ["exceptionType"] = exception.GetType().FullName,
@@ -1521,7 +1538,7 @@ namespace Sideline.Facet.Runtime
 
                 Logger.Info(
                     "UI.Layout",
-                    "Facet 阶段 11 模板布局与自动布局验证成功。",
+                    "Facet 闂傚倸鍊搁崯鎶藉春閺嶎収鏁?11 婵犵妲呴崹顏堝礈濠靛棭鐔嗘俊顖氬悑閺嗘粓鏌涢幇鈺佸婵犫偓閺夊簱妲堥柟鎹愭珪閸炲鏌涢妶鍡欑煉鐎规洘绻堟俊鎼佸Ψ瑜滄导宀勬煟韫囨洖浜归柛瀣尭铻栭柣妯垮皺閻掔兘鏌ｉ敃鈧ˇ鐢哥嵁鐎ｎ喖绠涙い鎺嗗亾妞ゎ偆濞€閺?",
                     new Dictionary<string, object?>
                     {
                         ["generatedPageId"] = UIPageIds.GeneratedLayoutLab,
@@ -1539,7 +1556,7 @@ namespace Sideline.Facet.Runtime
             {
                 Logger.Error(
                     "UI.Layout",
-                    "Facet 阶段 11 模板布局与自动布局验证失败。",
+                    "Facet 闂傚倸鍊搁崯鎶藉春閺嶎収鏁?11 婵犵妲呴崹顏堝礈濠靛棭鐔嗘俊顖氬悑閺嗘粓鏌涢幇鈺佸婵犫偓閺夊簱妲堥柟鎹愭珪閸炲鏌涢妶鍡欑煉鐎规洘绻堟俊鎼佸Ψ瑜滄导宀勬煟韫囨洖浜归柛瀣尭铻栭柣妯垮皺閻掔兘鏌ｉ敃鈧ˇ鏉款嚗閸曨剚缍囨い鎰╁剾閺囥垺鐓?",
                     new Dictionary<string, object?>
                     {
                         ["exceptionType"] = exception.GetType().FullName,
@@ -1564,7 +1581,7 @@ namespace Sideline.Facet.Runtime
 
                 Logger.Info(
                     "Tooling.Diagnostics",
-                    "Facet 阶段 12 运行时诊断快照已接入。",
+                    "Facet 闂傚倸鍊搁崯鎶藉春閺嶎収鏁?12 闂佸搫顦弲婊堝礉濮椻偓閵嗕線骞嬮敃鈧猾宥夋煙椤栨稑顥嬫俊鍙夊哺閺岋繝宕掗妶鍛闂佸湱鍎甸弲鐘诲箖闄囬ˇ鏌ユ煕閹搭垳绡€妤犵偞甯℃俊鐑藉Ψ閵夈儲杈堥梻?",
                     new Dictionary<string, object?>
                     {
                         ["snapshotPath"] = FacetRuntimeDiagnosticsBridge.GetSnapshotPath(),
@@ -1579,7 +1596,7 @@ namespace Sideline.Facet.Runtime
             {
                 Logger.Error(
                     "Tooling.Diagnostics",
-                    "Facet 阶段 12 运行时诊断快照验证失败。",
+                    "Facet 闂傚倸鍊搁崯鎶藉春閺嶎収鏁?12 闂佸搫顦弲婊堝礉濮椻偓閵嗕線骞嬮敃鈧猾宥夋煙椤栨稑顥嬫俊鍙夊哺閺岋繝宕掗妶鍛闂佸湱鍎甸弲鐘诲箖闄囬ˇ褰掓煟濞戞瑧鎳呴柟椋庡У閹峰懘骞栭悙鐗堟線闂佽崵濮甸崝鎴﹀磿椤栫偛鐒?",
                     new Dictionary<string, object?>
                     {
                         ["exceptionType"] = exception.GetType().FullName,

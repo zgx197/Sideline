@@ -26,7 +26,6 @@ public partial class FacetToolsPlugin : EditorPlugin
     /// 插件进入编辑器树时创建，退出时销毁。
     /// </summary>
     private FacetMainScreen? _mainScreen;
-    private bool _loadFailed;
 
     /// <summary>
     /// 插件进入编辑器树时初始化主工作区，并把入口挂到编辑器主界面与工具菜单。
@@ -34,16 +33,14 @@ public partial class FacetToolsPlugin : EditorPlugin
     public override void _EnterTree()
     {
         FacetEditorDiagnostics.Info("Plugin", "EnterTree");
-        _loadFailed = false;
 
         try
         {
-            CleanupMainScreen();
+            ReleaseMainScreen();
         }
         catch (Exception exception)
         {
             FacetEditorDiagnostics.Error("Plugin", "EnterTree failed.", exception);
-            _loadFailed = true;
         }
     }
 
@@ -56,7 +53,7 @@ public partial class FacetToolsPlugin : EditorPlugin
 
         try
         {
-            CleanupMainScreen();
+            ReleaseMainScreen();
         }
         catch (Exception exception)
         {
@@ -99,69 +96,72 @@ public partial class FacetToolsPlugin : EditorPlugin
 
         if (!visible)
         {
-            CleanupMainScreen();
+            ReleaseMainScreen();
             return;
         }
 
         try
         {
-            EnsureMainScreenCreated();
-            if (_mainScreen == null)
-            {
-                return;
-            }
-
-            _mainScreen.Visible = visible;
-            _mainScreen.EnsureViewportLayout();
-            _mainScreen.RefreshNow();
-            _mainScreen.LogLayoutSnapshot();
+            FacetMainScreen mainScreen = RecreateMainScreen();
+            mainScreen.Visible = true;
+            mainScreen.EnsureViewportLayout();
+            mainScreen.RefreshNow();
+            mainScreen.LogLayoutSnapshot();
         }
         catch (Exception exception)
         {
             FacetEditorDiagnostics.Error("Plugin", $"MakeVisible failed. visible={visible}", exception);
             _mainScreen?.ShowToolError("Facet 主工作区刷新失败，请查看 user://logs/facet-editor.log。", exception);
-            CleanupMainScreen();
+            ReleaseMainScreen();
         }
     }
 
-    private void EnsureMainScreenCreated()
+    public override bool _Build()
     {
-        if (_mainScreen != null)
-        {
-            if (GodotObject.IsInstanceValid(_mainScreen))
-            {
-                return;
-            }
+        FacetEditorDiagnostics.Info("Plugin", "Build requested, releasing main screen.");
+        ReleaseMainScreen();
+        return true;
+    }
 
-            _mainScreen = null;
-        }
+    private FacetMainScreen RecreateMainScreen()
+    {
+        ReleaseMainScreen();
+        return CreateMainScreen();
+    }
 
+    private FacetMainScreen CreateMainScreen()
+    {
         PackedScene mainScreenScene = GD.Load<PackedScene>(MainScreenScenePath)
             ?? throw new InvalidOperationException($"Facet main screen scene load failed: {MainScreenScenePath}");
 
-        _mainScreen = mainScreenScene.Instantiate<FacetMainScreen>();
-        _mainScreen.Name = "FacetMainScreen";
-        _mainScreen.SetAnchorsPreset(Control.LayoutPreset.FullRect);
-        _mainScreen.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-        _mainScreen.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
-        _mainScreen.CustomMinimumSize = Vector2.Zero;
-        _mainScreen.Hide();
-        EditorInterface.Singleton.GetEditorMainScreen().AddChild(_mainScreen);
+        FacetMainScreen mainScreen = mainScreenScene.Instantiate<FacetMainScreen>();
+        mainScreen.Name = "FacetMainScreen";
+        mainScreen.SetAnchorsPreset(Control.LayoutPreset.FullRect);
+        mainScreen.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+        mainScreen.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
+        mainScreen.CustomMinimumSize = Vector2.Zero;
+        mainScreen.Hide();
+        EditorInterface.Singleton.GetEditorMainScreen().AddChild(mainScreen);
+        _mainScreen = mainScreen;
+        return mainScreen;
     }
 
-    private void CleanupMainScreen()
+    private void ReleaseMainScreen()
     {
-        if (_mainScreen == null)
+        FacetMainScreen? mainScreen = _mainScreen;
+        _mainScreen = null;
+
+        if (mainScreen == null)
         {
             return;
         }
 
-        if (GodotObject.IsInstanceValid(_mainScreen))
+        if (GodotObject.IsInstanceValid(mainScreen))
         {
-            _mainScreen.GetParent()?.RemoveChild(_mainScreen);
-            _mainScreen.QueueFree();
+            mainScreen.Visible = false;
+            mainScreen.SetProcess(false);
+            mainScreen.GetParent()?.RemoveChild(mainScreen);
+            mainScreen.QueueFree();
         }
-
-        _mainScreen = null;
     }
 }

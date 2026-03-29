@@ -45,7 +45,7 @@ unique_name_in_owner = true
 visible = false
 layout_mode = 2
 size_flags_horizontal = 3
-text = "● HOT"
+text = "• HOT"
 horizontal_alignment = 1
 modulate = Color(0.96, 0.35, 0.31, 1)
 
@@ -60,201 +60,16 @@ text = "Projection 驱动战斗窗口 / Projection-driven battle panel"
 horizontal_alignment = 1
 autowrap_mode = 2
 
-[node name="MetricsPanel" type="PanelContainer" parent="ScrollContainer/MarginContainer/VBox"]
-unique_name_in_owner = true
-layout_mode = 2
-size_flags_horizontal = 3
-size_flags_vertical = 3
-
-[node name="MetricsMargin" type="MarginContainer" parent="ScrollContainer/MarginContainer/VBox/MetricsPanel"]
-layout_mode = 2
-theme_override_constants/margin_left = 12
-theme_override_constants/margin_top = 10
-theme_override_constants/margin_right = 12
-theme_override_constants/margin_bottom = 10
-
-[node name="MetricsVBox" type="VBoxContainer" parent="ScrollContainer/MarginContainer/VBox/MetricsPanel/MetricsMargin"]
-layout_mode = 2
-size_flags_horizontal = 3
-theme_override_constants/separation = 8
-
-[node name="MetricsTitleLabel" type="Label" parent="ScrollContainer/MarginContainer/VBox/MetricsPanel/MetricsMargin/MetricsVBox"]
-unique_name_in_owner = true
-layout_mode = 2
-size_flags_horizontal = 3
-text = "运行时指标 / Runtime Metrics"
-autowrap_mode = 2
-
-[node name="RedDotSummaryLabel" type="Label" parent="ScrollContainer/MarginContainer/VBox/MetricsPanel/MetricsMargin/MetricsVBox"]
-unique_name_in_owner = true
-layout_mode = 2
-size_flags_horizontal = 3
-text = "红点树 / 等待数据"
-autowrap_mode = 2
-
-[node name="RedDotLabPanel" type="PanelContainer" parent="ScrollContainer/MarginContainer/VBox/MetricsPanel/MetricsMargin/MetricsVBox"]
-unique_name_in_owner = true
-layout_mode = 2
-size_flags_horizontal = 3
-
-[node name="RedDotLabMargin" type="MarginContainer" parent="ScrollContainer/MarginContainer/VBox/MetricsPanel/MetricsMargin/MetricsVBox/RedDotLabPanel"]
-layout_mode = 2
-theme_override_constants/margin_left = 8
-theme_override_constants/margin_top = 6
-theme_override_constants/margin_right = 8
-theme_override_constants/margin_bottom = 6
-
-[node name="RedDotLabVBox" type="VBoxContainer" parent="ScrollContainer/MarginContainer/VBox/MetricsPanel/MetricsMargin/MetricsVBox/RedDotLabPanel/RedDotLabMargin"]
-layout_mode = 2
-size_flags_horizontal = 3
-theme_override_constants/separation = 6
-
-[node name="RedDotLabTitleRow" type="HBoxContainer" parent="ScrollContainer/MarginContainer/VBox/MetricsPanel/MetricsMargin/MetricsVBox/RedDotLabPanel/RedDotLabMargin/RedDotLabVBox"]
-layout_mode = 2
-theme_override_constants/separation = 6
-
-[node name="RedDotLabTitleLabel" type="Label" parent="ScrollContainer/MarginContainer/VBox/MetricsPanel/MetricsMargin/MetricsVBox/RedDotLabPanel/RedDotLabMargin/RedDotLabVBox/RedDotLabTitleRow"]
-layout_mode = 2
-size_flags_horizontal = 3
-text = "Facet 红点测试"
-
-[node name="RedDotLabCurrentBadgeLabel" type="Label" parent="ScrollContainer/MarginContainer/VBox/MetricsPanel/MetricsMargin/MetricsVBox/RedDotLabPanel/RedDotLabMargin/RedDotLabVBox/RedDotLabTitleRow"]
-unique_name_in_owner = true
-visible = false
-layout_mode = 2
-text = "● TEST"
-modulate = Color(0.95, 0.49, 0.19, 1)
-
-[node name="RedDotLabButtons" type="HBoxContainer" parent="ScrollContainer/MarginContainer/VBox/MetricsPanel/MetricsMargin/MetricsVBox/RedDotLabPanel/RedDotLabMargin/RedDotLabVBox"]
-layout_mode = 2
-size_flags_horizontal = 3
-theme_override_constants/separation = 6
-
-[node name="ToggleCurrentRedDotButton" type="Button" parent="ScrollContainer/MarginContainer/VBox/MetricsPanel/MetricsMargin/MetricsVBox/RedDotLabPanel/RedDotLabMargin/RedDotLabVBox/RedDotLabButtons"]
-unique_name_in_owner = true
-layout_mode = 2
-size_flags_horizontal = 3
-custom_minimum_size = Vector2(0, 30)
-text = "切换当前页"
-
-[node name="ToggleIdleRedDotButton" type="Button" parent="ScrollContainer/MarginContainer/VBox/MetricsPanel/MetricsMargin/MetricsVBox/RedDotLabPanel/RedDotLabMargin/RedDotLabVBox/RedDotLabButtons"]
-unique_name_in_owner = true
-layout_mode = 2
-size_flags_horizontal = 3
-custom_minimum_size = Vector2(0, 30)
-text = "切换挂机页"
-
-[node name="ClearRedDotLabButton" type="Button" parent="ScrollContainer/MarginContainer/VBox/MetricsPanel/MetricsMargin/MetricsVBox/RedDotLabPanel/RedDotLabMargin/RedDotLabVBox/RedDotLabButtons"]
-unique_name_in_owner = true
-layout_mode = 2
-size_flags_horizontal = 3
-custom_minimum_size = Vector2(0, 30)
-text = "清空测试"
-
-[node name="RedDotLabStatusLabel" type="Label" parent="ScrollContainer/MarginContainer/VBox/MetricsPanel/MetricsMargin/MetricsVBox/RedDotLabPanel/RedDotLabMargin/RedDotLabVBox"]
-unique_name_in_owner = true
-layout_mode = 2
-size_flags_horizontal = 3
-text = "测试红点 / Manual Lab"
-autowrap_mode = 2
-
-[node name="HotReloadTestPanel" type="PanelContainer" parent="ScrollContainer/MarginContainer/VBox/MetricsPanel/MetricsMargin/MetricsVBox"]
-unique_name_in_owner = true
-layout_mode = 2
-size_flags_horizontal = 3
-
-[node name="HotReloadTestMargin" type="MarginContainer" parent="ScrollContainer/MarginContainer/VBox/MetricsPanel/MetricsMargin/MetricsVBox/HotReloadTestPanel"]
-layout_mode = 2
-theme_override_constants/margin_left = 8
-theme_override_constants/margin_top = 6
-theme_override_constants/margin_right = 8
-theme_override_constants/margin_bottom = 6
-
-[node name="HotReloadTestVBox" type="VBoxContainer" parent="ScrollContainer/MarginContainer/VBox/MetricsPanel/MetricsMargin/MetricsVBox/HotReloadTestPanel/HotReloadTestMargin"]
-layout_mode = 2
-size_flags_horizontal = 3
-theme_override_constants/separation = 6
-
-[node name="HotReloadTestTitleLabel" type="Label" parent="ScrollContainer/MarginContainer/VBox/MetricsPanel/MetricsMargin/MetricsVBox/HotReloadTestPanel/HotReloadTestMargin/HotReloadTestVBox"]
-layout_mode = 2
-size_flags_horizontal = 3
-text = "Facet 热重载测试"
-
-[node name="HotReloadTestButtons" type="HBoxContainer" parent="ScrollContainer/MarginContainer/VBox/MetricsPanel/MetricsMargin/MetricsVBox/HotReloadTestPanel/HotReloadTestMargin/HotReloadTestVBox"]
-layout_mode = 2
-size_flags_horizontal = 3
-theme_override_constants/separation = 6
-
-[node name="CurrentPageReloadTestButton" type="Button" parent="ScrollContainer/MarginContainer/VBox/MetricsPanel/MetricsMargin/MetricsVBox/HotReloadTestPanel/HotReloadTestMargin/HotReloadTestVBox/HotReloadTestButtons"]
-unique_name_in_owner = true
-layout_mode = 2
-size_flags_horizontal = 3
-custom_minimum_size = Vector2(0, 30)
-text = "测试当前页"
-
-[node name="DungeonReloadTestButton" type="Button" parent="ScrollContainer/MarginContainer/VBox/MetricsPanel/MetricsMargin/MetricsVBox/HotReloadTestPanel/HotReloadTestMargin/HotReloadTestVBox/HotReloadTestButtons"]
-unique_name_in_owner = true
-layout_mode = 2
-size_flags_horizontal = 3
-custom_minimum_size = Vector2(0, 30)
-text = "测试地下城页"
-
-[node name="HotReloadTestStatusLabel" type="Label" parent="ScrollContainer/MarginContainer/VBox/MetricsPanel/MetricsMargin/MetricsVBox/HotReloadTestPanel/HotReloadTestMargin/HotReloadTestVBox"]
-unique_name_in_owner = true
-layout_mode = 2
-size_flags_horizontal = 3
-text = "等待测试触发"
-autowrap_mode = 2
-
-[node name="MetricsEmptyLabel" type="Label" parent="ScrollContainer/MarginContainer/VBox/MetricsPanel/MetricsMargin/MetricsVBox"]
-unique_name_in_owner = true
-layout_mode = 2
-size_flags_horizontal = 3
-text = "等待指标数据 / Waiting for metrics..."
-autowrap_mode = 2
-
-[node name="MetricsListContainer" type="VBoxContainer" parent="ScrollContainer/MarginContainer/VBox/MetricsPanel/MetricsMargin/MetricsVBox"]
-unique_name_in_owner = true
-layout_mode = 2
-size_flags_horizontal = 3
-theme_override_constants/separation = 6
-
-[node name="MetricsItemTemplate" type="PanelContainer" parent="ScrollContainer/MarginContainer/VBox/MetricsPanel/MetricsMargin/MetricsVBox/MetricsListContainer"]
-unique_name_in_owner = true
-visible = false
-layout_mode = 2
-size_flags_horizontal = 3
-
-[node name="MetricsItemMargin" type="MarginContainer" parent="ScrollContainer/MarginContainer/VBox/MetricsPanel/MetricsMargin/MetricsVBox/MetricsListContainer/MetricsItemTemplate"]
-layout_mode = 2
-theme_override_constants/margin_left = 10
-theme_override_constants/margin_top = 8
-theme_override_constants/margin_right = 10
-theme_override_constants/margin_bottom = 8
-
-[node name="MetricsItemRow" type="HBoxContainer" parent="ScrollContainer/MarginContainer/VBox/MetricsPanel/MetricsMargin/MetricsVBox/MetricsListContainer/MetricsItemTemplate/MetricsItemMargin"]
-layout_mode = 2
-theme_override_constants/separation = 12
-
-[node name="MetricLabel" type="Label" parent="ScrollContainer/MarginContainer/VBox/MetricsPanel/MetricsMargin/MetricsVBox/MetricsListContainer/MetricsItemTemplate/MetricsItemMargin/MetricsItemRow"]
-layout_mode = 2
-size_flags_horizontal = 3
-text = "Metric"
-autowrap_mode = 2
-
-[node name="MetricValueLabel" type="Label" parent="ScrollContainer/MarginContainer/VBox/MetricsPanel/MetricsMargin/MetricsVBox/MetricsListContainer/MetricsItemTemplate/MetricsItemMargin/MetricsItemRow"]
-layout_mode = 2
-horizontal_alignment = 2
-text = "Value"
-
-[node name="MetricStatusLabel" type="Label" parent="ScrollContainer/MarginContainer/VBox/MetricsPanel/MetricsMargin/MetricsVBox/MetricsListContainer/MetricsItemTemplate/MetricsItemMargin/MetricsItemRow"]
-layout_mode = 2
-modulate = Color(0.68, 0.74, 0.84, 1)
-text = "Key"
-
 [node name="SwitchButton" type="Button" parent="ScrollContainer/MarginContainer/VBox"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 custom_minimum_size = Vector2(0, 36)
 text = "返回挂机 / Idle"
+
+[node name="OpenRuntimeDebugButton" type="Button" parent="ScrollContainer/MarginContainer/VBox"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+custom_minimum_size = Vector2(0, 34)
+text = "Facet Runtime Debug"

@@ -2,25 +2,21 @@
 
 using System;
 using System.Collections.Generic;
-using System.IO;
-using System.Text;
 using Sideline.Facet.Lua;
 
 namespace Sideline.Facet.Runtime
 {
     /// <summary>
-    /// Lua 热重载开发测试服务。
-    /// 通过对目标脚本执行一次无语义影响的文件改动，再主动轮询热重载协调器，
-    /// 验证真实文件变更链路是否能够完成前向与回滚两次控制器重建。
-    /// </summary>
+    /// Lua 鐑噸杞藉紑鍙戞祴璇曟湇鍔°€?    /// 閫氳繃瀵圭洰鏍囪剼鏈墽琛屼竴娆℃棤璇箟褰卞搷鐨勬枃浠舵敼鍔紝鍐嶄富鍔ㄨ疆璇㈢儹閲嶈浇鍗忚皟鍣紝
+    /// 楠岃瘉鐪熷疄鏂囦欢鍙樻洿閾捐矾鏄惁鑳藉瀹屾垚鍓嶅悜涓庡洖婊氫袱娆℃帶鍒跺櫒閲嶅缓銆?    /// </summary>
     public sealed class LuaHotReloadTestService
     {
         private const string ProbePrefix = "-- facet_hot_reload_probe:";
-        private static readonly UTF8Encoding Utf8NoBom = new(false);
 
         private readonly UIManager _uiManager;
         private readonly LuaReloadCoordinator _reloadCoordinator;
         private readonly ILuaScriptSource _scriptSource;
+        private readonly ILuaWritableScriptSource? _writableScriptSource;
         private readonly IFacetLogger? _logger;
         private bool _isRunning;
 
@@ -37,25 +33,23 @@ namespace Sideline.Facet.Runtime
             _uiManager = uiManager;
             _reloadCoordinator = reloadCoordinator;
             _scriptSource = scriptSource;
+            _writableScriptSource = scriptSource as ILuaWritableScriptSource;
             _logger = logger;
         }
 
         /// <summary>
-        /// 当前是否已有正在执行中的热重载测试。
-        /// </summary>
+        /// 褰撳墠鏄惁宸叉湁姝ｅ湪鎵ц涓殑鐑噸杞芥祴璇曘€?        /// </summary>
         public bool IsRunning => _isRunning;
 
         /// <summary>
-        /// 主动执行一次 Lua 热重载往返测试。
-        /// 默认优先选择当前页面运行时所使用的 Lua 控制器脚本。
-        /// </summary>
+        /// 涓诲姩鎵ц涓€娆?Lua 鐑噸杞藉線杩旀祴璇曘€?        /// 榛樿浼樺厛閫夋嫨褰撳墠椤甸潰杩愯鏃舵墍浣跨敤鐨?Lua 鎺у埗鍣ㄨ剼鏈€?        /// </summary>
         public bool TryRunRoundTripTest(string? scriptId = null, string reason = "manual")
         {
             if (_isRunning)
             {
                 _logger?.Warning(
                     "Lua.HotReload.Test",
-                    "Lua 热重载测试请求被忽略，已有测试正在执行。",
+                    "Lua hot reload test request ignored because another test is already running.",
                     new Dictionary<string, object?>
                     {
                         ["requestedScriptId"] = scriptId,
@@ -77,82 +71,67 @@ namespace Sideline.Facet.Runtime
 
         private bool RunRoundTripTestCore(string? requestedScriptId, string reason)
         {
+            if (!string.IsNullOrWhiteSpace(requestedScriptId) &&
+                (_writableScriptSource == null || !_writableScriptSource.CanWriteScript(requestedScriptId)))
+            {
+                _logger?.Warning(
+                    "Lua.HotReload.Test",
+                    "Current script source cannot write the requested hot reload target.",
+                    new Dictionary<string, object?>
+                    {
+                        ["requestedScriptId"] = requestedScriptId,
+                        ["reason"] = reason,
+                        ["currentPageId"] = _uiManager.CurrentPageId,
+                        ["scriptSourceType"] = _scriptSource.GetType().Name,
+                    });
+                return false;
+            }
             if (!TryResolveTarget(requestedScriptId, out TargetResolution? target) ||
                 target == null)
             {
                 return false;
             }
-
-            UIPageRuntime runtime = target.Runtime;
-            LuaScriptAsset scriptAsset = target.ScriptAsset;
-            string scriptId = scriptAsset.ScriptId;
-            string sourcePath = scriptAsset.SourcePath;
-            string originalContent = scriptAsset.SourceCode;
-            string originalVersion = runtime.LuaControllerVersionToken ?? scriptAsset.VersionToken;
-            string forwardContent = CreateProbeVariant(originalContent);
-
-            if (string.Equals(originalContent, forwardContent, StringComparison.Ordinal))
-            {
-                _logger?.Error(
-                    "Lua.HotReload.Test",
-                    "Lua 热重载测试无法生成有效的前向脚本变体。",
-                    new Dictionary<string, object?>
-                    {
-                        ["pageId"] = runtime.Definition.PageId,
-                        ["scriptId"] = scriptId,
-                        ["sourcePath"] = sourcePath,
-                        ["reason"] = reason,
-                    });
-                return false;
-            }
-
-            _logger?.Info(
-                "Lua.HotReload.Test",
-                "Lua 热重载往返测试开始。",
-                new Dictionary<string, object?>
-                {
-                    ["pageId"] = runtime.Definition.PageId,
-                    ["scriptId"] = scriptId,
-                    ["sourcePath"] = sourcePath,
-                    ["reason"] = reason,
-                    ["originalVersionToken"] = originalVersion,
-                    ["currentPageId"] = _uiManager.CurrentPageId,
-                    ["currentPageState"] = runtime.State.ToString(),
-                });
-
-            LuaHotReloadTestPhaseResult? forward = null;
-            LuaHotReloadTestPhaseResult? rollback = null;
-            bool completed = false;
-
             try
             {
-                forward = ExecutePhase(
-                    runtime,
-                    scriptId,
-                    sourcePath,
-                    forwardContent,
-                    originalVersion,
-                    $"{reason}.test.forward",
-                    "forward");
-
-                rollback = ExecutePhase(
-                    runtime,
-                    scriptId,
-                    sourcePath,
-                    originalContent,
-                    forward.ActualVersion ?? runtime.LuaControllerVersionToken,
-                    $"{reason}.test.rollback",
-                    "rollback");
-
-                completed = forward.Success && rollback.Success;
-                LogRoundTripSummary(runtime, scriptId, sourcePath, reason, originalVersion, forward, rollback, completed);
-                return completed;
-            }
-            catch (Exception exception)
-            {
-                _logger?.Error(
+                UIPageRuntime runtime = target.Runtime;
+                LuaScriptAsset scriptAsset = target.ScriptAsset;
+                string scriptId = scriptAsset.ScriptId;
+                string sourcePath = scriptAsset.SourcePath;
+                string originalContent = scriptAsset.SourceCode;
+                string originalVersion = runtime.LuaControllerVersionToken ?? scriptAsset.VersionToken;
+                if (_writableScriptSource == null || !_writableScriptSource.CanWriteScript(scriptId))
+                {
+                    _logger?.Warning(
+                        "Lua.HotReload.Test",
+                        "Current script source cannot write the resolved hot reload target.",
+                        new Dictionary<string, object?>
+                        {
+                            ["pageId"] = runtime.Definition.PageId,
+                            ["scriptId"] = scriptId,
+                            ["sourcePath"] = sourcePath,
+                            ["reason"] = reason,
+                            ["scriptSourceType"] = _scriptSource.GetType().Name,
+                        });
+                    return false;
+                }
+                string forwardContent = CreateProbeVariant(originalContent);
+                if (string.Equals(originalContent, forwardContent, StringComparison.Ordinal))
+                {
+                    _logger?.Error(
+                        "Lua.HotReload.Test",
+                        "Unable to create a valid forward Lua script variant for hot reload testing.",
+                        new Dictionary<string, object?>
+                        {
+                            ["pageId"] = runtime.Definition.PageId,
+                            ["scriptId"] = scriptId,
+                            ["sourcePath"] = sourcePath,
+                            ["reason"] = reason,
+                        });
+                    return false;
+                }
+                _logger?.Info(
                     "Lua.HotReload.Test",
-                    "Lua 热重载往返测试抛出异常。",
+                    "Lua hot reload round-trip test started.",
                     new Dictionary<string, object?>
                     {
                         ["pageId"] = runtime.Definition.PageId,
@@ -160,18 +139,61 @@ namespace Sideline.Facet.Runtime
                         ["sourcePath"] = sourcePath,
                         ["reason"] = reason,
                         ["originalVersionToken"] = originalVersion,
-                        ["exceptionType"] = exception.GetType().FullName,
-                        ["message"] = exception.Message,
+                        ["currentPageId"] = _uiManager.CurrentPageId,
+                        ["currentPageState"] = runtime.State.ToString(),
                     });
-                return false;
+                LuaHotReloadTestPhaseResult? forward = null;
+                LuaHotReloadTestPhaseResult? rollback = null;
+                bool completed = false;
+                try
+                {
+                    forward = ExecutePhase(
+                        runtime,
+                        scriptId,
+                        sourcePath,
+                        forwardContent,
+                        originalVersion,
+                        $"{reason}.test.forward",
+                        "forward");
+                    rollback = ExecutePhase(
+                        runtime,
+                        scriptId,
+                        sourcePath,
+                        originalContent,
+                        forward.ActualVersion ?? runtime.LuaControllerVersionToken,
+                        $"{reason}.test.rollback",
+                        "rollback");
+                    completed = forward.Success && rollback.Success;
+                    LogRoundTripSummary(runtime, scriptId, sourcePath, reason, originalVersion, forward, rollback, completed);
+                    return completed;
+                }
+                catch (Exception exception)
+                {
+                    _logger?.Error(
+                        "Lua.HotReload.Test",
+                        "Lua hot reload round-trip test threw an exception.",
+                        new Dictionary<string, object?>
+                        {
+                            ["pageId"] = runtime.Definition.PageId,
+                            ["scriptId"] = scriptId,
+                            ["sourcePath"] = sourcePath,
+                            ["reason"] = reason,
+                            ["originalVersionToken"] = originalVersion,
+                            ["exceptionType"] = exception.GetType().FullName,
+                            ["message"] = exception.Message,
+                        });
+                    return false;
+                }
+                finally
+                {
+                    EnsureOriginalState(runtime, scriptId, sourcePath, originalContent, originalVersion, $"{reason}.test.restore", completed);
+                }
             }
             finally
             {
-                EnsureOriginalState(runtime, scriptId, sourcePath, originalContent, originalVersion, $"{reason}.test.restore", completed);
                 RestorePreviousPage(target, $"{reason}.test.restore_page");
             }
         }
-
         private LuaHotReloadTestPhaseResult ExecutePhase(
             UIPageRuntime runtime,
             string scriptId,
@@ -181,35 +203,31 @@ namespace Sideline.Facet.Runtime
             string pollReason,
             string phase)
         {
-            File.WriteAllText(sourcePath, nextContent, Utf8NoBom);
-
-            if (!_scriptSource.TryGetVersionToken(scriptId, out string? expectedVersion) ||
-                string.IsNullOrWhiteSpace(expectedVersion))
+            if (_writableScriptSource == null ||
+                !_writableScriptSource.TryWriteScript(scriptId, nextContent, out LuaScriptAsset? updatedScriptAsset) ||
+                updatedScriptAsset == null)
             {
-                LuaHotReloadTestPhaseResult missingVersionResult = new(
+                LuaHotReloadTestPhaseResult writeFailedResult = new(
                     phase,
                     false,
                     previousVersion,
                     null,
                     runtime.LuaControllerVersionToken,
                     0,
-                    "目标脚本版本标记读取失败。");
-
-                LogPhaseResult(runtime, scriptId, sourcePath, pollReason, missingVersionResult);
-                return missingVersionResult;
+                    "Failed to write the target Lua script during hot reload testing.");
+                LogPhaseResult(runtime, scriptId, sourcePath, pollReason, writeFailedResult);
+                return writeFailedResult;
             }
-
+            string expectedVersion = updatedScriptAsset.VersionToken;
             int reloadedCount = _reloadCoordinator.Poll(pollReason);
             string? actualVersion = runtime.LuaControllerVersionToken;
             bool versionChanged = !string.Equals(previousVersion, actualVersion, StringComparison.Ordinal);
             bool success = reloadedCount > 0 &&
                 versionChanged &&
                 string.Equals(expectedVersion, actualVersion, StringComparison.Ordinal);
-
             string? errorMessage = success
                 ? null
-                : "热重载轮询未能让运行时版本与脚本文件版本一致。";
-
+                : "Hot reload polling did not align runtime version with script version.";
             LuaHotReloadTestPhaseResult result = new(
                 phase,
                 success,
@@ -218,11 +236,9 @@ namespace Sideline.Facet.Runtime
                 actualVersion,
                 reloadedCount,
                 errorMessage);
-
             LogPhaseResult(runtime, scriptId, sourcePath, pollReason, result);
             return result;
         }
-
         private void EnsureOriginalState(
             UIPageRuntime runtime,
             string scriptId,
@@ -232,25 +248,36 @@ namespace Sideline.Facet.Runtime
             string restoreReason,
             bool alreadyRestored)
         {
-            if (!_scriptSource.TryGetVersionToken(scriptId, out string? currentFileVersion) ||
+            if (_writableScriptSource == null ||
+                !_scriptSource.TryGetVersionToken(scriptId, out string? currentFileVersion) ||
                 string.IsNullOrWhiteSpace(currentFileVersion))
             {
                 return;
             }
-
             if (alreadyRestored &&
                 string.Equals(currentFileVersion, originalVersion, StringComparison.Ordinal) &&
                 string.Equals(runtime.LuaControllerVersionToken, originalVersion, StringComparison.Ordinal))
             {
                 return;
             }
-
-            File.WriteAllText(sourcePath, originalContent, Utf8NoBom);
+            if (!_writableScriptSource.TryWriteScript(scriptId, originalContent, out _))
+            {
+                _logger?.Warning(
+                    "Lua.HotReload.Test",
+                    "Lua hot reload test failed to restore the original script content.",
+                    new Dictionary<string, object?>
+                    {
+                        ["pageId"] = runtime.Definition.PageId,
+                        ["scriptId"] = scriptId,
+                        ["sourcePath"] = sourcePath,
+                        ["reason"] = restoreReason,
+                    });
+                return;
+            }
             int reloadedCount = _reloadCoordinator.Poll(restoreReason);
-
             _logger?.Info(
                 "Lua.HotReload.Test",
-                "Lua 热重载测试已执行文件恢复校正。",
+                "Lua hot reload test applied a restore correction.",
                 new Dictionary<string, object?>
                 {
                     ["pageId"] = runtime.Definition.PageId,
@@ -260,10 +287,8 @@ namespace Sideline.Facet.Runtime
                     ["restoredVersionToken"] = originalVersion,
                     ["runtimeVersionToken"] = runtime.LuaControllerVersionToken,
                     ["reloadedRuntimeCount"] = reloadedCount,
-                    ["restoreSucceeded"] = string.Equals(runtime.LuaControllerVersionToken, originalVersion, StringComparison.Ordinal),
                 });
         }
-
         private bool TryResolveTarget(
             string? requestedScriptId,
             out TargetResolution? target)
@@ -313,7 +338,7 @@ namespace Sideline.Facet.Runtime
             {
                 _logger?.Warning(
                     "Lua.HotReload.Test",
-                    "Lua 热重载测试未找到可用的目标页面运行时。",
+                    "No suitable page runtime with a Lua controller was found for hot reload testing.",
                     new Dictionary<string, object?>
                     {
                         ["requestedScriptId"] = requestedScriptId,
@@ -327,7 +352,7 @@ namespace Sideline.Facet.Runtime
             {
                 _logger?.Error(
                     "Lua.HotReload.Test",
-                    "Lua 热重载测试未能读取目标脚本源文件。",
+                    "Failed to read the target Lua script for hot reload testing.",
                     new Dictionary<string, object?>
                     {
                         ["pageId"] = runtime.Definition.PageId,
@@ -354,7 +379,7 @@ namespace Sideline.Facet.Runtime
                     UIPageRuntime restoredRuntime = _uiManager.Open(target.PreviousPageId, target.PreviousArguments, pushHistory: false);
                     _logger?.Info(
                         "Lua.HotReload.Test",
-                        "Lua 热重载测试已恢复先前页面。",
+                        "Restored the page that was active before the hot reload test.",
                         new Dictionary<string, object?>
                         {
                             ["reason"] = reason,
@@ -368,7 +393,7 @@ namespace Sideline.Facet.Runtime
                 bool closed = _uiManager.CloseCurrent();
                 _logger?.Info(
                     "Lua.HotReload.Test",
-                    "Lua 热重载测试已关闭临时打开的页面。",
+                    "Closed the page that was opened temporarily for the hot reload test.",
                     new Dictionary<string, object?>
                     {
                         ["reason"] = reason,
@@ -380,7 +405,7 @@ namespace Sideline.Facet.Runtime
             {
                 _logger?.Warning(
                     "Lua.HotReload.Test",
-                    "Lua 热重载测试恢复先前页面时出现异常。",
+                    "An exception occurred while restoring the page opened for hot reload testing.",
                     new Dictionary<string, object?>
                     {
                         ["reason"] = reason,
@@ -417,11 +442,11 @@ namespace Sideline.Facet.Runtime
 
             if (result.Success)
             {
-                _logger?.Info("Lua.HotReload.Test", "Lua 热重载测试阶段已通过。", payload);
+                _logger?.Info("Lua.HotReload.Test", "Lua hot reload test phase passed.", payload);
                 return;
             }
 
-            _logger?.Warning("Lua.HotReload.Test", "Lua 热重载测试阶段未通过。", payload);
+            _logger?.Warning("Lua.HotReload.Test", "Lua hot reload test phase failed.", payload);
         }
 
         private void LogRoundTripSummary(
@@ -454,11 +479,11 @@ namespace Sideline.Facet.Runtime
 
             if (success)
             {
-                _logger?.Info("Lua.HotReload.Test", "Lua 热重载往返测试已完成。", payload);
+                _logger?.Info("Lua.HotReload.Test", "Lua hot reload round-trip test completed.", payload);
                 return;
             }
 
-            _logger?.Warning("Lua.HotReload.Test", "Lua 热重载往返测试未完全通过。", payload);
+            _logger?.Warning("Lua.HotReload.Test", "Lua hot reload round-trip test did not fully pass.", payload);
         }
 
         private static string CreateProbeVariant(string originalContent)

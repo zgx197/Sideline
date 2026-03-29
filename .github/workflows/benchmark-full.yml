@@ -5,6 +5,13 @@ on:
   schedule:
     - cron: '0 3 * * 1'
 
+permissions:
+  contents: read
+
+concurrency:
+  group: benchmark-full-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   DOTNET_VERSION: '8.0.x'
 
@@ -19,26 +26,23 @@ jobs:
       with:
         fetch-depth: 0
 
-    - name: Setup .NET
-      uses: actions/setup-dotnet@v5
+    - name: Run Full Benchmarks
+      uses: ./.github/actions/dotnet-ci
       with:
         dotnet-version: ${{ env.DOTNET_VERSION }}
+        cache: 'true'
+        cache-dependency-path: |
+          godot/Sideline.sln
+          godot/scripts/lattice/Lattice.csproj
+          godot/Lattice.Benchmarks/Lattice.Benchmarks.csproj
+        script: |
+          if (Test-Path 'godot/Lattice.Benchmarks/benchmark-results')
+          {
+              Remove-Item -LiteralPath 'godot/Lattice.Benchmarks/benchmark-results' -Recurse -Force
+          }
 
-    - name: Restore Benchmark Project
-      run: |
-        cd godot/Lattice.Benchmarks
-        dotnet restore
-
-    - name: Clean Benchmark Artifacts
-      shell: bash
-      run: |
-        rm -rf godot/Lattice.Benchmarks/benchmark-results
-
-    - name: Run Full Benchmarks
-      shell: bash
-      run: |
-        cd godot/Lattice.Benchmarks
-        dotnet run --configuration Release -- --filter "*" --exporters json html markdown
+          dotnet restore godot/Lattice.Benchmarks/Lattice.Benchmarks.csproj
+          dotnet run --configuration Release --project godot/Lattice.Benchmarks/Lattice.Benchmarks.csproj -- --filter "*" --exporters json html markdown
 
     - name: Debug Benchmark Output Paths
       if: always()
@@ -185,3 +189,19 @@ jobs:
         path: godot/Lattice.Benchmarks/benchmark-results/
         retention-days: 90
         if-no-files-found: error
+
+    - name: Summarize full benchmark
+      if: always()
+      shell: pwsh
+      run: |
+        $summary = @"
+        ## Full Benchmark Suite
+
+        - Status: `${{ job.status }}`
+        - Layer: `analysis`
+        - Responsibility: `benchmark only`
+        - Outputs: `benchmark reports + uploaded artifact`
+        - Explicitly excluded: `GitHub Pages publish`, `game release packaging`, `Godot export`
+        "@
+
+        Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value $summary

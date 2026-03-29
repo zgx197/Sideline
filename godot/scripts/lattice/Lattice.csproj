@@ -53,15 +53,17 @@
 
   <!-- Swizzle Source Generator -->
   <ItemGroup>
-    <ProjectReference 
-      Include="Tools\SwizzleGenerator\SwizzleGenerator.csproj" 
-      OutputItemType="Analyzer"
-      ReferenceOutputAssembly="false" />
-    <ProjectReference
-      Include="Tools\Lattice.Analyzers\Lattice.Analyzers.csproj"
-      OutputItemType="Analyzer"
-      ReferenceOutputAssembly="false" />
+    <Analyzer Include="Tools\SwizzleGenerator\bin\$(Configuration)\netstandard2.0\SwizzleGenerator.dll" />
+    <Analyzer Include="Tools\Lattice.Analyzers\bin\$(Configuration)\netstandard2.0\Lattice.Analyzers.dll" />
     <Compile Include="Tools\SwizzleGenerator\GenerateSwizzleAttribute.cs" />
   </ItemGroup>
+
+  <Target Name="BuildRoslynTooling" BeforeTargets="CoreCompile">
+    <MSBuild
+      Projects="Tools\SwizzleGenerator\SwizzleGenerator.csproj;Tools\Lattice.Analyzers\Lattice.Analyzers.csproj"
+      Targets="Build"
+      Properties="Configuration=$(Configuration)"
+      BuildInParallel="false" />
+  </Target>
 
 </Project>

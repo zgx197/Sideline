@@ -10,9 +10,7 @@ using Sideline.Facet.UI;
 namespace Sideline.Facet.Runtime
 {
     /// <summary>
-    /// 页面运行时壳子。
-    /// 负责持有页面根节点、节点注册表、上下文、C# 生命周期对象、Lua 控制器和统一日志。
-    /// </summary>
+    /// 妞ょ敻娼版潻鎰攽閺冭泛锛撶€涙劑鈧?    /// 鐠愮喕鐭楅幐浣规箒妞ょ敻娼伴弽纭呭Ν閻愬箍鈧浇濡悙瑙勬暈閸愬矁銆冮妴浣风瑐娑撳鏋冮妴涓? 閻㈢喎鎳￠崨銊︽埂鐎电钖勯妴涓﹗a 閹貉冨煑閸ｃ劌鎷扮紒鐔剁閺冦儱绻旈妴?    /// </summary>
     public sealed class UIPageRuntime
     {
         private readonly IFacetLogger? _logger;
@@ -166,6 +164,8 @@ namespace Sideline.Facet.Runtime
             InvokeLuaController("OnDispose", static controller => controller.OnDispose());
             _pageLifecycle?.OnPageDispose(Context);
             BindingScope?.Dispose();
+            _luaController = null;
+            Context.ClearRuntimeReferences();
 
             if (GodotObject.IsInstanceValid(PageRoot))
             {
@@ -185,8 +185,7 @@ namespace Sideline.Facet.Runtime
         }
 
         /// <summary>
-        /// 判断当前页面是否需要执行 Lua 热重载。
-        /// </summary>
+        /// 閸掋倖鏌囪ぐ鎾冲妞ょ敻娼伴弰顖氭儊闂団偓鐟曚焦澧界悰?Lua 閻戭參鍣告潪濮愨偓?        /// </summary>
         public bool NeedsLuaHotReload()
         {
             if (State == UIPageState.Disposed || _luaRuntimeHost == null || _luaController == null)
@@ -198,8 +197,7 @@ namespace Sideline.Facet.Runtime
         }
 
         /// <summary>
-        /// 尝试仅重建页面的 Lua 控制器，并复用现有页面上下文与状态袋。
-        /// </summary>
+        /// 鐏忔繆鐦禒鍛村櫢瀵ゆ椽銆夐棃銏㈡畱 Lua 閹貉冨煑閸ｎ煉绱濋獮璺侯槻閻劎骞囬張澶愩€夐棃顫瑐娑撳鏋冩稉搴ｅЦ閹浇顣伴妴?        /// </summary>
         public bool TryReloadLuaController(string reason, out LuaReloadResult? result)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(reason);
@@ -207,29 +205,29 @@ namespace Sideline.Facet.Runtime
             result = null;
             if (State == UIPageState.Disposed)
             {
-                result = CreateReloadResult(false, null, null, reason, "页面已销毁，无法热重载。");
+                result = CreateReloadResult(false, null, null, reason, "妞ょ敻娼板鏌ユ敘濮ｄ緤绱濋弮鐘崇《閻戭參鍣告潪濮愨偓?");
                 return false;
             }
 
             if (_luaRuntimeHost == null || _luaController == null)
             {
-                result = CreateReloadResult(false, null, null, reason, "页面当前没有可重载的 Lua 控制器。");
+                result = CreateReloadResult(false, null, null, reason, "妞ょ敻娼拌ぐ鎾冲濞屸剝婀侀崣顖炲櫢鏉炵晫娈?Lua 閹貉冨煑閸ｃ劊鈧?");
                 return false;
             }
 
             LuaControllerHandle currentController = _luaController;
             if (!_luaRuntimeHost.NeedsReload(currentController))
             {
-                result = CreateReloadResult(false, currentController.VersionToken, currentController.VersionToken, reason, "脚本版本未变化。");
+                result = CreateReloadResult(false, currentController.VersionToken, currentController.VersionToken, reason, "閼存碍婀伴悧鍫熸拱閺堫亜褰夐崠鏍モ偓?");
                 return false;
             }
 
             if (!_luaRuntimeHost.TryCreateController(Context, currentController.Api, out LuaControllerHandle? nextController) || nextController == null)
             {
-                result = CreateReloadResult(false, currentController.VersionToken, null, reason, "新 Lua 控制器创建失败。");
+                result = CreateReloadResult(false, currentController.VersionToken, null, reason, "閺?Lua 閹貉冨煑閸ｃ劌鍨卞鍝勩亼鐠愩儯鈧?");
                 _logger?.Error(
                     "Lua.HotReload",
-                    "Lua 热重载失败，新控制器未能创建。",
+                    "Lua 閻戭參鍣告潪钘夈亼鐠愩儻绱濋弬鐗堝付閸掕泛娅掗張顏囧厴閸掓稑缂撻妴?",
                     new Dictionary<string, object?>
                     {
                         ["pageId"] = Definition.PageId,
@@ -255,7 +253,7 @@ namespace Sideline.Facet.Runtime
 
                 _logger?.Error(
                     "Lua.HotReload",
-                    "Lua 热重载失败，新控制器恢复链路执行异常。",
+                    "Lua 閻戭參鍣告潪钘夈亼鐠愩儻绱濋弬鐗堝付閸掕泛娅掗幁銏狀槻闁炬崘鐭鹃幍褑顢戝鍌氱埗閵?",
                     new Dictionary<string, object?>
                     {
                         ["pageId"] = Definition.PageId,
@@ -276,13 +274,13 @@ namespace Sideline.Facet.Runtime
                 "OnDispose",
                 static controller => controller.OnDispose(),
                 "Lua.HotReload",
-                "旧 Lua 控制器释放失败。");
+                "閺?Lua 閹貉冨煑閸ｃ劑鍣撮弨鎯с亼鐠愩儯鈧?");
 
             result = CreateReloadResult(true, currentController.VersionToken, nextController.VersionToken, reason, null);
 
             _logger?.Info(
                 "Lua.HotReload",
-                "页面 Lua 控制器已热重载。",
+                "妞ょ敻娼?Lua 閹貉冨煑閸ｃ劌鍑￠悜顓㈠櫢鏉炲鈧?",
                 new Dictionary<string, object?>
                 {
                     ["pageId"] = Definition.PageId,
@@ -321,7 +319,7 @@ namespace Sideline.Facet.Runtime
                 return;
             }
 
-            InvokeLuaControllerHandle(_luaController, action, callback, "Lua.Runtime", "Lua 控制器生命周期执行失败。");
+            InvokeLuaControllerHandle(_luaController, action, callback, "Lua.Runtime", "Lua 閹貉冨煑閸ｃ劎鏁撻崨钘夋噯閺堢喐澧界悰灞姐亼鐠愩儯鈧?");
         }
 
         private void InvokeLuaControllerHandle(
@@ -375,7 +373,7 @@ namespace Sideline.Facet.Runtime
                 RecoverLuaController(controller);
                 _logger?.Warning(
                     "Lua.HotReload",
-                    "Lua 热重载失败，已回退到旧控制器。",
+                    "Lua 閻戭參鍣告潪钘夈亼鐠愩儻绱濆鎻掓礀闁偓閸掔増妫幒褍鍩楅崳銊ｂ偓?",
                     new Dictionary<string, object?>
                     {
                         ["pageId"] = Definition.PageId,
@@ -389,7 +387,7 @@ namespace Sideline.Facet.Runtime
             {
                 _logger?.Error(
                     "Lua.HotReload",
-                    "Lua 热重载失败，旧控制器回退链路也执行异常。",
+                    "Lua 閻戭參鍣告潪钘夈亼鐠愩儻绱濋弮褎甯堕崚璺烘珤閸ョ偤鈧偓闁炬崘鐭炬稊鐔稿⒔鐞涘苯绱撶敮鎼炩偓?",
                     new Dictionary<string, object?>
                     {
                         ["pageId"] = Definition.PageId,
@@ -427,7 +425,7 @@ namespace Sideline.Facet.Runtime
 
             _logger?.Info(
                 "UI.Page.Lifecycle",
-                $"页面生命周期 {action}。",
+                $"妞ょ敻娼伴悽鐔锋嚒閸涖劍婀?{action}閵?",
                 new Dictionary<string, object?>
                 {
                     ["pageId"] = Definition.PageId,

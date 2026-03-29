@@ -7,9 +7,7 @@ using System.Linq;
 namespace Sideline.Facet.Extensions.RedDot
 {
     /// <summary>
-    /// 页面内红点测试 Provider。
-    /// 通过显式按钮触发，便于快速验证聚合、Binding 和页面挂载链路。
-    /// </summary>
+    /// 椤甸潰鍐呯孩鐐规祴璇?Provider銆?    /// 閫氳繃鏄惧紡鎸夐挳瑙﹀彂锛屼究浜庡揩閫熼獙璇佽仛鍚堛€丅inding 鍜岄〉闈㈡寕杞介摼璺€?    /// </summary>
     public sealed class ManualRedDotProvider : IRedDotProvider
     {
         private readonly Dictionary<string, bool> _states = new(StringComparer.OrdinalIgnoreCase)

@@ -18,8 +18,16 @@ on:
       - 'godot/scripts/main/**'
       - 'godot/scripts/ui/**'
       - 'godot/scripts/window/**'
+      - '.github/actions/**'
       - '.github/workflows/ci-facet.yml'
   workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: facet-ci-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   DOTNET_VERSION: '8.0.x'
@@ -33,16 +41,31 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v5
 
-    - name: Setup .NET
-      uses: actions/setup-dotnet@v5
+    - name: Build Facet Core Project
+      uses: ./.github/actions/dotnet-ci
       with:
         dotnet-version: ${{ env.DOTNET_VERSION }}
+        cache: 'true'
+        cache-dependency-path: |
+          godot/Sideline.sln
+          godot/scripts/facet/Facet.Core.csproj
+        script: |
+          dotnet restore godot/scripts/facet/Facet.Core.csproj
+          dotnet build godot/scripts/facet/Facet.Core.csproj --no-restore --configuration Release -nologo
 
-    - name: Restore Facet Core Project
-      run: dotnet restore godot/scripts/facet/Facet.Core.csproj
+    - name: Summarize facet core build
+      if: always()
+      shell: pwsh
+      run: |
+        $summary = @"
+        ## Facet Core Build
 
-    - name: Build Facet Core Project
-      run: dotnet build godot/scripts/facet/Facet.Core.csproj --no-restore --configuration Release -nologo
+        - Status: `${{ job.status }}`
+        - Cache: `enabled`
+        - Target: `godot/scripts/facet/Facet.Core.csproj`
+        "@
+
+        Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value $summary
 
   facet-integration-build:
     name: Facet Integration Build
@@ -53,13 +76,30 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v5
 
-    - name: Setup .NET
-      uses: actions/setup-dotnet@v5
+    - name: Build Sideline Project
+      uses: ./.github/actions/dotnet-ci
       with:
         dotnet-version: ${{ env.DOTNET_VERSION }}
+        cache: 'true'
+        cache-dependency-path: |
+          godot/Sideline.sln
+          godot/Sideline.csproj
+          godot/scripts/facet/Facet.Core.csproj
+        script: |
+          dotnet restore godot/Sideline.csproj
+          dotnet build godot/Sideline.csproj --no-restore --configuration Debug -nologo
 
-    - name: Restore Sideline Project
-      run: dotnet restore godot/Sideline.csproj
+    - name: Summarize facet integration build
+      if: always()
+      shell: pwsh
+      run: |
+        $summary = @"
+        ## Facet Integration Build
 
-    - name: Build Sideline Project
-      run: dotnet build godot/Sideline.csproj --no-restore --configuration Debug -nologo
+        - Status: `${{ job.status }}`
+        - Depends on: `Facet Core Build`
+        - Cache: `enabled`
+        - Target: `godot/Sideline.csproj`
+        "@
+
+        Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value $summary

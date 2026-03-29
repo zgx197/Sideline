@@ -18,26 +18,33 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-theme_override_constants/margin_left = 12
-theme_override_constants/margin_top = 12
-theme_override_constants/margin_right = 12
-theme_override_constants/margin_bottom = 12
+theme_override_constants/margin_left = 14
+theme_override_constants/margin_top = 14
+theme_override_constants/margin_right = 14
+theme_override_constants/margin_bottom = 14
 
 [node name="RootVBox" type="VBoxContainer" parent="RootMargin"]
-unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
-theme_override_constants/separation = 10
+theme_override_constants/separation = 12
 
 [node name="Toolbar" type="HBoxContainer" parent="RootMargin/RootVBox"]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_constants/separation = 8
 
-[node name="TitleLabel" type="Label" parent="RootMargin/RootVBox/Toolbar"]
+[node name="TitleBlock" type="VBoxContainer" parent="RootMargin/RootVBox/Toolbar"]
+layout_mode = 2
+theme_override_constants/separation = 2
+
+[node name="TitleLabel" type="Label" parent="RootMargin/RootVBox/Toolbar/TitleBlock"]
 layout_mode = 2
 text = "Facet"
+
+[node name="SubtitleLabel" type="Label" parent="RootMargin/RootVBox/Toolbar/TitleBlock"]
+layout_mode = 2
+text = "编辑器工作台首页"
 
 [node name="ToolbarSpacer" type="Control" parent="RootMargin/RootVBox/Toolbar"]
 layout_mode = 2
@@ -48,807 +55,225 @@ unique_name_in_owner = true
 layout_mode = 2
 text = "刷新"
 
-[node name="OpenLogButton" type="Button" parent="RootMargin/RootVBox/Toolbar"]
+[node name="OpenLogsButton" type="Button" parent="RootMargin/RootVBox/Toolbar"]
 unique_name_in_owner = true
 layout_mode = 2
 text = "打开日志目录"
 
-[node name="WorkspaceTabs" type="TabContainer" parent="RootMargin/RootVBox"]
-unique_name_in_owner = true
-layout_mode = 2
-size_flags_horizontal = 3
-size_flags_vertical = 3
-use_hidden_tabs_for_min_size = false
-
-[node name="LogTab" type="VBoxContainer" parent="RootMargin/RootVBox/WorkspaceTabs"]
-layout_mode = 2
-size_flags_horizontal = 3
-size_flags_vertical = 3
-theme_override_constants/separation = 10
-
-[node name="LogMetricsGrid" type="GridContainer" parent="RootMargin/RootVBox/WorkspaceTabs/LogTab"]
-unique_name_in_owner = true
-layout_mode = 2
-size_flags_horizontal = 3
-theme_override_constants/h_separation = 8
-theme_override_constants/v_separation = 8
-columns = 4
-
-[node name="TotalMetricCard" type="PanelContainer" parent="RootMargin/RootVBox/WorkspaceTabs/LogTab/LogMetricsGrid"]
-unique_name_in_owner = true
-layout_mode = 2
-size_flags_horizontal = 3
-
-[node name="TotalMetricMargin" type="MarginContainer" parent="RootMargin/RootVBox/WorkspaceTabs/LogTab/LogMetricsGrid/TotalMetricCard"]
-layout_mode = 2
-theme_override_constants/margin_left = 12
-theme_override_constants/margin_top = 12
-theme_override_constants/margin_right = 12
-theme_override_constants/margin_bottom = 12
-
-[node name="TotalMetricVBox" type="VBoxContainer" parent="RootMargin/RootVBox/WorkspaceTabs/LogTab/LogMetricsGrid/TotalMetricCard/TotalMetricMargin"]
-layout_mode = 2
-size_flags_horizontal = 3
-theme_override_constants/separation = 4
-
-[node name="TotalMetricTitleLabel" type="Label" parent="RootMargin/RootVBox/WorkspaceTabs/LogTab/LogMetricsGrid/TotalMetricCard/TotalMetricMargin/TotalMetricVBox"]
-layout_mode = 2
-text = "总日志"
-
-[node name="TotalValueLabel" type="Label" parent="RootMargin/RootVBox/WorkspaceTabs/LogTab/LogMetricsGrid/TotalMetricCard/TotalMetricMargin/TotalMetricVBox"]
-unique_name_in_owner = true
-layout_mode = 2
-text = "0"
-
-[node name="FilteredMetricCard" type="PanelContainer" parent="RootMargin/RootVBox/WorkspaceTabs/LogTab/LogMetricsGrid"]
-unique_name_in_owner = true
-layout_mode = 2
-size_flags_horizontal = 3
-
-[node name="FilteredMetricMargin" type="MarginContainer" parent="RootMargin/RootVBox/WorkspaceTabs/LogTab/LogMetricsGrid/FilteredMetricCard"]
-layout_mode = 2
-theme_override_constants/margin_left = 12
-theme_override_constants/margin_top = 12
-theme_override_constants/margin_right = 12
-theme_override_constants/margin_bottom = 12
-
-[node name="FilteredMetricVBox" type="VBoxContainer" parent="RootMargin/RootVBox/WorkspaceTabs/LogTab/LogMetricsGrid/FilteredMetricCard/FilteredMetricMargin"]
-layout_mode = 2
-size_flags_horizontal = 3
-theme_override_constants/separation = 4
-
-[node name="FilteredMetricTitleLabel" type="Label" parent="RootMargin/RootVBox/WorkspaceTabs/LogTab/LogMetricsGrid/FilteredMetricCard/FilteredMetricMargin/FilteredMetricVBox"]
-layout_mode = 2
-text = "过滤结果"
-
-[node name="FilteredValueLabel" type="Label" parent="RootMargin/RootVBox/WorkspaceTabs/LogTab/LogMetricsGrid/FilteredMetricCard/FilteredMetricMargin/FilteredMetricVBox"]
-unique_name_in_owner = true
-layout_mode = 2
-text = "0"
-
-[node name="SessionsMetricCard" type="PanelContainer" parent="RootMargin/RootVBox/WorkspaceTabs/LogTab/LogMetricsGrid"]
-unique_name_in_owner = true
-layout_mode = 2
-size_flags_horizontal = 3
-
-[node name="SessionsMetricMargin" type="MarginContainer" parent="RootMargin/RootVBox/WorkspaceTabs/LogTab/LogMetricsGrid/SessionsMetricCard"]
-layout_mode = 2
-theme_override_constants/margin_left = 12
-theme_override_constants/margin_top = 12
-theme_override_constants/margin_right = 12
-theme_override_constants/margin_bottom = 12
-
-[node name="SessionsMetricVBox" type="VBoxContainer" parent="RootMargin/RootVBox/WorkspaceTabs/LogTab/LogMetricsGrid/SessionsMetricCard/SessionsMetricMargin"]
-layout_mode = 2
-size_flags_horizontal = 3
-theme_override_constants/separation = 4
-
-[node name="SessionsMetricTitleLabel" type="Label" parent="RootMargin/RootVBox/WorkspaceTabs/LogTab/LogMetricsGrid/SessionsMetricCard/SessionsMetricMargin/SessionsMetricVBox"]
-layout_mode = 2
-text = "会话数"
-
-[node name="SessionsValueLabel" type="Label" parent="RootMargin/RootVBox/WorkspaceTabs/LogTab/LogMetricsGrid/SessionsMetricCard/SessionsMetricMargin/SessionsMetricVBox"]
-unique_name_in_owner = true
-layout_mode = 2
-text = "0"
-
-[node name="CategoriesMetricCard" type="PanelContainer" parent="RootMargin/RootVBox/WorkspaceTabs/LogTab/LogMetricsGrid"]
-unique_name_in_owner = true
-layout_mode = 2
-size_flags_horizontal = 3
-
-[node name="CategoriesMetricMargin" type="MarginContainer" parent="RootMargin/RootVBox/WorkspaceTabs/LogTab/LogMetricsGrid/CategoriesMetricCard"]
-layout_mode = 2
-theme_override_constants/margin_left = 12
-theme_override_constants/margin_top = 12
-theme_override_constants/margin_right = 12
-theme_override_constants/margin_bottom = 12
-
-[node name="CategoriesMetricVBox" type="VBoxContainer" parent="RootMargin/RootVBox/WorkspaceTabs/LogTab/LogMetricsGrid/CategoriesMetricCard/CategoriesMetricMargin"]
-layout_mode = 2
-size_flags_horizontal = 3
-theme_override_constants/separation = 4
-
-[node name="CategoriesMetricTitleLabel" type="Label" parent="RootMargin/RootVBox/WorkspaceTabs/LogTab/LogMetricsGrid/CategoriesMetricCard/CategoriesMetricMargin/CategoriesMetricVBox"]
-layout_mode = 2
-text = "分类数"
-
-[node name="CategoriesValueLabel" type="Label" parent="RootMargin/RootVBox/WorkspaceTabs/LogTab/LogMetricsGrid/CategoriesMetricCard/CategoriesMetricMargin/CategoriesMetricVBox"]
-unique_name_in_owner = true
-layout_mode = 2
-text = "0"
-
-[node name="LogSplit" type="HSplitContainer" parent="RootMargin/RootVBox/WorkspaceTabs/LogTab"]
-unique_name_in_owner = true
-layout_mode = 2
-size_flags_horizontal = 3
-size_flags_vertical = 3
-
-[node name="LogSidebarCard" type="PanelContainer" parent="RootMargin/RootVBox/WorkspaceTabs/LogTab/LogSplit"]
-unique_name_in_owner = true
-layout_mode = 2
-size_flags_horizontal = 3
-size_flags_vertical = 3
-custom_minimum_size = Vector2(280, 0)
-
-[node name="LogSidebarMargin" type="MarginContainer" parent="RootMargin/RootVBox/WorkspaceTabs/LogTab/LogSplit/LogSidebarCard"]
-layout_mode = 2
-theme_override_constants/margin_left = 14
-theme_override_constants/margin_top = 14
-theme_override_constants/margin_right = 14
-theme_override_constants/margin_bottom = 14
-
-[node name="LogSidebarScroll" type="ScrollContainer" parent="RootMargin/RootVBox/WorkspaceTabs/LogTab/LogSplit/LogSidebarCard/LogSidebarMargin"]
+[node name="Scroll" type="ScrollContainer" parent="RootMargin/RootVBox"]
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
 horizontal_scroll_mode = 0
 
-[node name="LogSidebarVBox" type="VBoxContainer" parent="RootMargin/RootVBox/WorkspaceTabs/LogTab/LogSplit/LogSidebarCard/LogSidebarMargin/LogSidebarScroll"]
+[node name="ScrollMargin" type="MarginContainer" parent="RootMargin/RootVBox/Scroll"]
 layout_mode = 2
 size_flags_horizontal = 3
+size_flags_vertical = 3
+theme_override_constants/margin_left = 2
+theme_override_constants/margin_top = 2
+theme_override_constants/margin_right = 2
+theme_override_constants/margin_bottom = 2
+
+[node name="ScrollVBox" type="VBoxContainer" parent="RootMargin/RootVBox/Scroll/ScrollMargin"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
 theme_override_constants/separation = 12
 
-[node name="LogControlsSection" type="VBoxContainer" parent="RootMargin/RootVBox/WorkspaceTabs/LogTab/LogSplit/LogSidebarCard/LogSidebarMargin/LogSidebarScroll/LogSidebarVBox"]
-layout_mode = 2
-theme_override_constants/separation = 4
-
-[node name="LogControlsTitleLabel" type="Label" parent="RootMargin/RootVBox/WorkspaceTabs/LogTab/LogSplit/LogSidebarCard/LogSidebarMargin/LogSidebarScroll/LogSidebarVBox/LogControlsSection"]
-layout_mode = 2
-text = "日志控制"
-
-[node name="LogControlsDescriptionLabel" type="Label" parent="RootMargin/RootVBox/WorkspaceTabs/LogTab/LogSplit/LogSidebarCard/LogSidebarMargin/LogSidebarScroll/LogSidebarVBox/LogControlsSection"]
-layout_mode = 2
-size_flags_horizontal = 3
-text = "顶部工具栏负责刷新和打开日志目录，这里保留自动刷新与筛选配置。"
-autowrap_mode = 2
-
-[node name="AutoRefreshToggle" type="CheckButton" parent="RootMargin/RootVBox/WorkspaceTabs/LogTab/LogSplit/LogSidebarCard/LogSidebarMargin/LogSidebarScroll/LogSidebarVBox"]
-unique_name_in_owner = true
-layout_mode = 2
-button_pressed = true
-text = "自动刷新"
-
-[node name="LogSidebarDivider1" type="HSeparator" parent="RootMargin/RootVBox/WorkspaceTabs/LogTab/LogSplit/LogSidebarCard/LogSidebarMargin/LogSidebarScroll/LogSidebarVBox"]
-layout_mode = 2
-
-[node name="LogSourceSection" type="VBoxContainer" parent="RootMargin/RootVBox/WorkspaceTabs/LogTab/LogSplit/LogSidebarCard/LogSidebarMargin/LogSidebarScroll/LogSidebarVBox"]
-layout_mode = 2
-theme_override_constants/separation = 4
-
-[node name="LogSourceTitleLabel" type="Label" parent="RootMargin/RootVBox/WorkspaceTabs/LogTab/LogSplit/LogSidebarCard/LogSidebarMargin/LogSidebarScroll/LogSidebarVBox/LogSourceSection"]
-layout_mode = 2
-text = "日志路径"
-
-[node name="PathLabel" type="Label" parent="RootMargin/RootVBox/WorkspaceTabs/LogTab/LogSplit/LogSidebarCard/LogSidebarMargin/LogSidebarScroll/LogSidebarVBox/LogSourceSection"]
+[node name="SummaryGrid" type="GridContainer" parent="RootMargin/RootVBox/Scroll/ScrollMargin/ScrollVBox"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
-text = "user://logs/facet-structured.jsonl"
-autowrap_mode = 2
+theme_override_constants/h_separation = 12
+theme_override_constants/v_separation = 12
+columns = 2
 
-[node name="RetentionCard" type="PanelContainer" parent="RootMargin/RootVBox/WorkspaceTabs/LogTab/LogSplit/LogSidebarCard/LogSidebarMargin/LogSidebarScroll/LogSidebarVBox"]
+[node name="OverviewCard" type="PanelContainer" parent="RootMargin/RootVBox/Scroll/ScrollMargin/ScrollVBox/SummaryGrid"]
+layout_mode = 2
+size_flags_horizontal = 3
+groups = ["facet_editor_card"]
+
+[node name="OverviewMargin" type="MarginContainer" parent="RootMargin/RootVBox/Scroll/ScrollMargin/ScrollVBox/SummaryGrid/OverviewCard"]
+layout_mode = 2
+theme_override_constants/margin_left = 16
+theme_override_constants/margin_top = 16
+theme_override_constants/margin_right = 16
+theme_override_constants/margin_bottom = 16
+
+[node name="OverviewVBox" type="VBoxContainer" parent="RootMargin/RootVBox/Scroll/ScrollMargin/ScrollVBox/SummaryGrid/OverviewCard/OverviewMargin"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="OverviewTitleLabel" type="Label" parent="RootMargin/RootVBox/Scroll/ScrollMargin/ScrollVBox/SummaryGrid/OverviewCard/OverviewMargin/OverviewVBox"]
+layout_mode = 2
+text = "Overview"
+
+[node name="OverviewSummaryLabel" type="Label" parent="RootMargin/RootVBox/Scroll/ScrollMargin/ScrollVBox/SummaryGrid/OverviewCard/OverviewMargin/OverviewVBox"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "等待刷新"
+
+[node name="OverviewDetailsLabel" type="Label" parent="RootMargin/RootVBox/Scroll/ScrollMargin/ScrollVBox/SummaryGrid/OverviewCard/OverviewMargin/OverviewVBox"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
+text = "Facet 编辑器首页正在准备中。"
+autowrap_mode = 2
 
-[node name="RetentionMargin" type="MarginContainer" parent="RootMargin/RootVBox/WorkspaceTabs/LogTab/LogSplit/LogSidebarCard/LogSidebarMargin/LogSidebarScroll/LogSidebarVBox/RetentionCard"]
-layout_mode = 2
-theme_override_constants/margin_left = 12
-theme_override_constants/margin_top = 12
-theme_override_constants/margin_right = 12
-theme_override_constants/margin_bottom = 12
-
-[node name="RetentionVBox" type="VBoxContainer" parent="RootMargin/RootVBox/WorkspaceTabs/LogTab/LogSplit/LogSidebarCard/LogSidebarMargin/LogSidebarScroll/LogSidebarVBox/RetentionCard/RetentionMargin"]
+[node name="ValidationCard" type="PanelContainer" parent="RootMargin/RootVBox/Scroll/ScrollMargin/ScrollVBox/SummaryGrid"]
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_constants/separation = 4
+groups = ["facet_editor_card"]
 
-[node name="RetentionTitleLabel" type="Label" parent="RootMargin/RootVBox/WorkspaceTabs/LogTab/LogSplit/LogSidebarCard/LogSidebarMargin/LogSidebarScroll/LogSidebarVBox/RetentionCard/RetentionMargin/RetentionVBox"]
+[node name="ValidationMargin" type="MarginContainer" parent="RootMargin/RootVBox/Scroll/ScrollMargin/ScrollVBox/SummaryGrid/ValidationCard"]
 layout_mode = 2
-text = "保留策略"
+theme_override_constants/margin_left = 16
+theme_override_constants/margin_top = 16
+theme_override_constants/margin_right = 16
+theme_override_constants/margin_bottom = 16
 
-[node name="RetentionLabel" type="Label" parent="RootMargin/RootVBox/WorkspaceTabs/LogTab/LogSplit/LogSidebarCard/LogSidebarMargin/LogSidebarScroll/LogSidebarVBox/RetentionCard/RetentionMargin/RetentionVBox"]
+[node name="ValidationVBox" type="VBoxContainer" parent="RootMargin/RootVBox/Scroll/ScrollMargin/ScrollVBox/SummaryGrid/ValidationCard/ValidationMargin"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="ValidationTitleLabel" type="Label" parent="RootMargin/RootVBox/Scroll/ScrollMargin/ScrollVBox/SummaryGrid/ValidationCard/ValidationMargin/ValidationVBox"]
+layout_mode = 2
+text = "Validation"
+
+[node name="ValidationSummaryLabel" type="Label" parent="RootMargin/RootVBox/Scroll/ScrollMargin/ScrollVBox/SummaryGrid/ValidationCard/ValidationMargin/ValidationVBox"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "等待刷新"
+
+[node name="ValidationDetailsLabel" type="RichTextLabel" parent="RootMargin/RootVBox/Scroll/ScrollMargin/ScrollVBox/SummaryGrid/ValidationCard/ValidationMargin/ValidationVBox"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
-text = "当前活动日志 + 最近 10 次历史会话"
-autowrap_mode = 2
+custom_minimum_size = Vector2(0, 220)
+scroll_active = true
+selection_enabled = true
+bbcode_enabled = true
+fit_content = false
 
-[node name="RetentionDetailLabel" type="Label" parent="RootMargin/RootVBox/WorkspaceTabs/LogTab/LogSplit/LogSidebarCard/LogSidebarMargin/LogSidebarScroll/LogSidebarVBox/RetentionCard/RetentionMargin/RetentionVBox"]
+[node name="SectionsGrid" type="GridContainer" parent="RootMargin/RootVBox/Scroll/ScrollMargin/ScrollVBox"]
+unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
-text = "限制用户目录下结构化日志的体积，避免长期调试时无限增长。"
+theme_override_constants/h_separation = 12
+theme_override_constants/v_separation = 12
+columns = 2
+
+[node name="WorkspaceCard" type="PanelContainer" parent="RootMargin/RootVBox/Scroll/ScrollMargin/ScrollVBox/SectionsGrid"]
+layout_mode = 2
+size_flags_horizontal = 3
+groups = ["facet_editor_card"]
+
+[node name="WorkspaceMargin" type="MarginContainer" parent="RootMargin/RootVBox/Scroll/ScrollMargin/ScrollVBox/SectionsGrid/WorkspaceCard"]
+layout_mode = 2
+theme_override_constants/margin_left = 16
+theme_override_constants/margin_top = 16
+theme_override_constants/margin_right = 16
+theme_override_constants/margin_bottom = 16
+
+[node name="WorkspaceVBox" type="VBoxContainer" parent="RootMargin/RootVBox/Scroll/ScrollMargin/ScrollVBox/SectionsGrid/WorkspaceCard/WorkspaceMargin"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="WorkspaceTitleLabel" type="Label" parent="RootMargin/RootVBox/Scroll/ScrollMargin/ScrollVBox/SectionsGrid/WorkspaceCard/WorkspaceMargin/WorkspaceVBox"]
+layout_mode = 2
+text = "Workspace"
+
+[node name="WorkspaceDescriptionLabel" type="Label" parent="RootMargin/RootVBox/Scroll/ScrollMargin/ScrollVBox/SectionsGrid/WorkspaceCard/WorkspaceMargin/WorkspaceVBox"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "这里只保留编辑期目录导航。运行时实验请回到挂机窗口、地下城窗口或后续 Runtime Debug 工具。"
 autowrap_mode = 2
 
-[node name="LogSidebarDivider2" type="HSeparator" parent="RootMargin/RootVBox/WorkspaceTabs/LogTab/LogSplit/LogSidebarCard/LogSidebarMargin/LogSidebarScroll/LogSidebarVBox"]
+[node name="WorkspaceSummaryLabel" type="Label" parent="RootMargin/RootVBox/Scroll/ScrollMargin/ScrollVBox/SectionsGrid/WorkspaceCard/WorkspaceMargin/WorkspaceVBox"]
+unique_name_in_owner = true
 layout_mode = 2
+size_flags_horizontal = 3
+text = "等待刷新"
+autowrap_mode = 2
 
-[node name="FiltersSection" type="VBoxContainer" parent="RootMargin/RootVBox/WorkspaceTabs/LogTab/LogSplit/LogSidebarCard/LogSidebarMargin/LogSidebarScroll/LogSidebarVBox"]
+[node name="WorkspaceButtons" type="VBoxContainer" parent="RootMargin/RootVBox/Scroll/ScrollMargin/ScrollVBox/SectionsGrid/WorkspaceCard/WorkspaceMargin/WorkspaceVBox"]
 layout_mode = 2
 theme_override_constants/separation = 6
 
-[node name="FiltersTitleLabel" type="Label" parent="RootMargin/RootVBox/WorkspaceTabs/LogTab/LogSplit/LogSidebarCard/LogSidebarMargin/LogSidebarScroll/LogSidebarVBox/FiltersSection"]
-layout_mode = 2
-text = "筛选"
-
-[node name="SessionField" type="VBoxContainer" parent="RootMargin/RootVBox/WorkspaceTabs/LogTab/LogSplit/LogSidebarCard/LogSidebarMargin/LogSidebarScroll/LogSidebarVBox/FiltersSection"]
-layout_mode = 2
-theme_override_constants/separation = 4
-
-[node name="SessionFieldLabel" type="Label" parent="RootMargin/RootVBox/WorkspaceTabs/LogTab/LogSplit/LogSidebarCard/LogSidebarMargin/LogSidebarScroll/LogSidebarVBox/FiltersSection/SessionField"]
-layout_mode = 2
-text = "会话前缀"
-
-[node name="SessionFilter" type="LineEdit" parent="RootMargin/RootVBox/WorkspaceTabs/LogTab/LogSplit/LogSidebarCard/LogSidebarMargin/LogSidebarScroll/LogSidebarVBox/FiltersSection/SessionField"]
+[node name="OpenDocsDirectoryButton" type="Button" parent="RootMargin/RootVBox/Scroll/ScrollMargin/ScrollVBox/SectionsGrid/WorkspaceCard/WorkspaceMargin/WorkspaceVBox/WorkspaceButtons"]
 unique_name_in_owner = true
 layout_mode = 2
-size_flags_horizontal = 3
-placeholder_text = "例如 abcd1234"
-clear_button_enabled = true
+text = "打开 docs 目录"
 
-[node name="CategoryField" type="VBoxContainer" parent="RootMargin/RootVBox/WorkspaceTabs/LogTab/LogSplit/LogSidebarCard/LogSidebarMargin/LogSidebarScroll/LogSidebarVBox/FiltersSection"]
-layout_mode = 2
-theme_override_constants/separation = 4
-
-[node name="CategoryFieldLabel" type="Label" parent="RootMargin/RootVBox/WorkspaceTabs/LogTab/LogSplit/LogSidebarCard/LogSidebarMargin/LogSidebarScroll/LogSidebarVBox/FiltersSection/CategoryField"]
-layout_mode = 2
-text = "分类前缀"
-
-[node name="CategoryFilter" type="LineEdit" parent="RootMargin/RootVBox/WorkspaceTabs/LogTab/LogSplit/LogSidebarCard/LogSidebarMargin/LogSidebarScroll/LogSidebarVBox/FiltersSection/CategoryField"]
+[node name="OpenFacetToolsDirectoryButton" type="Button" parent="RootMargin/RootVBox/Scroll/ScrollMargin/ScrollVBox/SectionsGrid/WorkspaceCard/WorkspaceMargin/WorkspaceVBox/WorkspaceButtons"]
 unique_name_in_owner = true
 layout_mode = 2
-size_flags_horizontal = 3
-placeholder_text = "例如 Lua.HotReload"
-clear_button_enabled = true
+text = "打开 facet-tools 目录"
 
-[node name="LevelField" type="VBoxContainer" parent="RootMargin/RootVBox/WorkspaceTabs/LogTab/LogSplit/LogSidebarCard/LogSidebarMargin/LogSidebarScroll/LogSidebarVBox/FiltersSection"]
-layout_mode = 2
-theme_override_constants/separation = 4
-
-[node name="LevelFieldLabel" type="Label" parent="RootMargin/RootVBox/WorkspaceTabs/LogTab/LogSplit/LogSidebarCard/LogSidebarMargin/LogSidebarScroll/LogSidebarVBox/FiltersSection/LevelField"]
-layout_mode = 2
-text = "最小级别"
-
-[node name="LevelFilter" type="OptionButton" parent="RootMargin/RootVBox/WorkspaceTabs/LogTab/LogSplit/LogSidebarCard/LogSidebarMargin/LogSidebarScroll/LogSidebarVBox/FiltersSection/LevelField"]
+[node name="OpenFacetRuntimeDirectoryButton" type="Button" parent="RootMargin/RootVBox/Scroll/ScrollMargin/ScrollVBox/SectionsGrid/WorkspaceCard/WorkspaceMargin/WorkspaceVBox/WorkspaceButtons"]
 unique_name_in_owner = true
 layout_mode = 2
-size_flags_horizontal = 3
+text = "打开 Facet Runtime 目录"
 
-[node name="LogSidebarDivider3" type="HSeparator" parent="RootMargin/RootVBox/WorkspaceTabs/LogTab/LogSplit/LogSidebarCard/LogSidebarMargin/LogSidebarScroll/LogSidebarVBox"]
-layout_mode = 2
-
-[node name="NotesSection" type="VBoxContainer" parent="RootMargin/RootVBox/WorkspaceTabs/LogTab/LogSplit/LogSidebarCard/LogSidebarMargin/LogSidebarScroll/LogSidebarVBox"]
-layout_mode = 2
-theme_override_constants/separation = 4
-
-[node name="NotesTitleLabel" type="Label" parent="RootMargin/RootVBox/WorkspaceTabs/LogTab/LogSplit/LogSidebarCard/LogSidebarMargin/LogSidebarScroll/LogSidebarVBox/NotesSection"]
-layout_mode = 2
-text = "说明"
-
-[node name="NotesBodyLabel" type="Label" parent="RootMargin/RootVBox/WorkspaceTabs/LogTab/LogSplit/LogSidebarCard/LogSidebarMargin/LogSidebarScroll/LogSidebarVBox/NotesSection"]
-layout_mode = 2
-size_flags_horizontal = 3
-text = "日志页只承担日志查看与筛选职责；热重载测试已迁移到独立的整页标签，避免互相挤占空间。"
-autowrap_mode = 2
-
-[node name="LogContentCard" type="PanelContainer" parent="RootMargin/RootVBox/WorkspaceTabs/LogTab/LogSplit"]
+[node name="OpenRuntimeUiDirectoryButton" type="Button" parent="RootMargin/RootVBox/Scroll/ScrollMargin/ScrollVBox/SectionsGrid/WorkspaceCard/WorkspaceMargin/WorkspaceVBox/WorkspaceButtons"]
 unique_name_in_owner = true
 layout_mode = 2
-size_flags_horizontal = 3
-size_flags_vertical = 3
+text = "打开运行时 UI 目录"
 
-[node name="LogContentMargin" type="MarginContainer" parent="RootMargin/RootVBox/WorkspaceTabs/LogTab/LogSplit/LogContentCard"]
-layout_mode = 2
-theme_override_constants/margin_left = 14
-theme_override_constants/margin_top = 14
-theme_override_constants/margin_right = 14
-theme_override_constants/margin_bottom = 14
-
-[node name="LogContentVBox" type="VBoxContainer" parent="RootMargin/RootVBox/WorkspaceTabs/LogTab/LogSplit/LogContentCard/LogContentMargin"]
+[node name="DocsCard" type="PanelContainer" parent="RootMargin/RootVBox/Scroll/ScrollMargin/ScrollVBox/SectionsGrid"]
 layout_mode = 2
 size_flags_horizontal = 3
-size_flags_vertical = 3
-theme_override_constants/separation = 8
+groups = ["facet_editor_card"]
 
-[node name="LogSummaryLabel" type="Label" parent="RootMargin/RootVBox/WorkspaceTabs/LogTab/LogSplit/LogContentCard/LogContentMargin/LogContentVBox"]
-unique_name_in_owner = true
-layout_mode = 2
-size_flags_horizontal = 3
-text = "等待结构化日志..."
-autowrap_mode = 2
-
-[node name="EntriesLabel" type="RichTextLabel" parent="RootMargin/RootVBox/WorkspaceTabs/LogTab/LogSplit/LogContentCard/LogContentMargin/LogContentVBox"]
-unique_name_in_owner = true
-layout_mode = 2
-size_flags_horizontal = 3
-size_flags_vertical = 3
-scroll_active = true
-selection_enabled = true
-fit_content = false
-bbcode_enabled = true
-
-[node name="HotReloadTab" type="ScrollContainer" parent="RootMargin/RootVBox/WorkspaceTabs"]
-layout_mode = 2
-size_flags_horizontal = 3
-size_flags_vertical = 3
-horizontal_scroll_mode = 0
-
-[node name="HotReloadMargin" type="MarginContainer" parent="RootMargin/RootVBox/WorkspaceTabs/HotReloadTab"]
-layout_mode = 2
-size_flags_horizontal = 3
-theme_override_constants/margin_left = 4
-theme_override_constants/margin_top = 4
-theme_override_constants/margin_right = 4
-theme_override_constants/margin_bottom = 4
-
-[node name="HotReloadVBox" type="VBoxContainer" parent="RootMargin/RootVBox/WorkspaceTabs/HotReloadTab/HotReloadMargin"]
-layout_mode = 2
-size_flags_horizontal = 3
-theme_override_constants/separation = 12
-
-[node name="HotReloadIntroCard" type="PanelContainer" parent="RootMargin/RootVBox/WorkspaceTabs/HotReloadTab/HotReloadMargin/HotReloadVBox"]
-unique_name_in_owner = true
-layout_mode = 2
-size_flags_horizontal = 3
-
-[node name="HotReloadIntroMargin" type="MarginContainer" parent="RootMargin/RootVBox/WorkspaceTabs/HotReloadTab/HotReloadMargin/HotReloadVBox/HotReloadIntroCard"]
+[node name="DocsMargin" type="MarginContainer" parent="RootMargin/RootVBox/Scroll/ScrollMargin/ScrollVBox/SectionsGrid/DocsCard"]
 layout_mode = 2
 theme_override_constants/margin_left = 16
 theme_override_constants/margin_top = 16
 theme_override_constants/margin_right = 16
 theme_override_constants/margin_bottom = 16
 
-[node name="HotReloadIntroVBox" type="VBoxContainer" parent="RootMargin/RootVBox/WorkspaceTabs/HotReloadTab/HotReloadMargin/HotReloadVBox/HotReloadIntroCard/HotReloadIntroMargin"]
+[node name="DocsVBox" type="VBoxContainer" parent="RootMargin/RootVBox/Scroll/ScrollMargin/ScrollVBox/SectionsGrid/DocsCard/DocsMargin"]
 layout_mode = 2
-size_flags_horizontal = 3
-theme_override_constants/separation = 10
-
-[node name="HotReloadTitleLabel" type="Label" parent="RootMargin/RootVBox/WorkspaceTabs/HotReloadTab/HotReloadMargin/HotReloadVBox/HotReloadIntroCard/HotReloadIntroMargin/HotReloadIntroVBox"]
-layout_mode = 2
-text = "阶段 9 热重载测试台"
-
-[node name="HotReloadDescriptionLabel" type="Label" parent="RootMargin/RootVBox/WorkspaceTabs/HotReloadTab/HotReloadMargin/HotReloadVBox/HotReloadIntroCard/HotReloadIntroMargin/HotReloadIntroVBox"]
-layout_mode = 2
-size_flags_horizontal = 3
-text = "这里直接向运行中的 Facet 客户端下发 Lua 热重载往返测试请求，并读取最近一次桥接状态和日志证据。"
-autowrap_mode = 2
-
-[node name="HotReloadActionRow" type="HBoxContainer" parent="RootMargin/RootVBox/WorkspaceTabs/HotReloadTab/HotReloadMargin/HotReloadVBox/HotReloadIntroCard/HotReloadIntroMargin/HotReloadIntroVBox"]
-layout_mode = 2
-size_flags_horizontal = 3
 theme_override_constants/separation = 8
 
-[node name="CurrentPageReloadTestButton" type="Button" parent="RootMargin/RootVBox/WorkspaceTabs/HotReloadTab/HotReloadMargin/HotReloadVBox/HotReloadIntroCard/HotReloadIntroMargin/HotReloadIntroVBox/HotReloadActionRow"]
-unique_name_in_owner = true
+[node name="DocsTitleLabel" type="Label" parent="RootMargin/RootVBox/Scroll/ScrollMargin/ScrollVBox/SectionsGrid/DocsCard/DocsMargin/DocsVBox"]
+layout_mode = 2
+text = "Docs"
+
+[node name="DocsDescriptionLabel" type="Label" parent="RootMargin/RootVBox/Scroll/ScrollMargin/ScrollVBox/SectionsGrid/DocsCard/DocsMargin/DocsVBox"]
 layout_mode = 2
 size_flags_horizontal = 3
-text = "当前页往返测试"
-
-[node name="DungeonReloadTestButton" type="Button" parent="RootMargin/RootVBox/WorkspaceTabs/HotReloadTab/HotReloadMargin/HotReloadVBox/HotReloadIntroCard/HotReloadIntroMargin/HotReloadIntroVBox/HotReloadActionRow"]
-unique_name_in_owner = true
-layout_mode = 2
-size_flags_horizontal = 3
-text = "地下城往返测试"
-
-[node name="RefreshHotReloadStatusButton" type="Button" parent="RootMargin/RootVBox/WorkspaceTabs/HotReloadTab/HotReloadMargin/HotReloadVBox/HotReloadIntroCard/HotReloadIntroMargin/HotReloadIntroVBox/HotReloadActionRow"]
-unique_name_in_owner = true
-layout_mode = 2
-size_flags_horizontal = 3
-text = "刷新状态"
-
-[node name="HotReloadDivider" type="HSeparator" parent="RootMargin/RootVBox/WorkspaceTabs/HotReloadTab/HotReloadMargin/HotReloadVBox/HotReloadIntroCard/HotReloadIntroMargin/HotReloadIntroVBox"]
-layout_mode = 2
-
-[node name="BridgeStatusTitleLabel" type="Label" parent="RootMargin/RootVBox/WorkspaceTabs/HotReloadTab/HotReloadMargin/HotReloadVBox/HotReloadIntroCard/HotReloadIntroMargin/HotReloadIntroVBox"]
-layout_mode = 2
-text = "运行时桥状态"
-
-[node name="HotReloadBridgeStatusLabel" type="Label" parent="RootMargin/RootVBox/WorkspaceTabs/HotReloadTab/HotReloadMargin/HotReloadVBox/HotReloadIntroCard/HotReloadIntroMargin/HotReloadIntroVBox"]
-unique_name_in_owner = true
-layout_mode = 2
-size_flags_horizontal = 3
-text = "等待运行时状态..."
+text = "Facet Main Panel 只保留编辑期文档入口，不再内嵌运行时实验页面。"
 autowrap_mode = 2
 
-[node name="HotReloadBridgePathsLabel" type="Label" parent="RootMargin/RootVBox/WorkspaceTabs/HotReloadTab/HotReloadMargin/HotReloadVBox/HotReloadIntroCard/HotReloadIntroMargin/HotReloadIntroVBox"]
+[node name="DocsSummaryLabel" type="Label" parent="RootMargin/RootVBox/Scroll/ScrollMargin/ScrollVBox/SectionsGrid/DocsCard/DocsMargin/DocsVBox"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
-text = "Request / Status"
+text = "等待刷新"
 autowrap_mode = 2
 
-[node name="HotReloadEvidenceCard" type="PanelContainer" parent="RootMargin/RootVBox/WorkspaceTabs/HotReloadTab/HotReloadMargin/HotReloadVBox"]
+[node name="DocsButtons" type="VBoxContainer" parent="RootMargin/RootVBox/Scroll/ScrollMargin/ScrollVBox/SectionsGrid/DocsCard/DocsMargin/DocsVBox"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="OpenFacetReadmeButton" type="Button" parent="RootMargin/RootVBox/Scroll/ScrollMargin/ScrollVBox/SectionsGrid/DocsCard/DocsMargin/DocsVBox/DocsButtons"]
 unique_name_in_owner = true
 layout_mode = 2
-size_flags_horizontal = 3
+text = "打开 Facet README"
 
-[node name="HotReloadEvidenceMargin" type="MarginContainer" parent="RootMargin/RootVBox/WorkspaceTabs/HotReloadTab/HotReloadMargin/HotReloadVBox/HotReloadEvidenceCard"]
-layout_mode = 2
-theme_override_constants/margin_left = 16
-theme_override_constants/margin_top = 16
-theme_override_constants/margin_right = 16
-theme_override_constants/margin_bottom = 16
-
-[node name="HotReloadEvidenceVBox" type="VBoxContainer" parent="RootMargin/RootVBox/WorkspaceTabs/HotReloadTab/HotReloadMargin/HotReloadVBox/HotReloadEvidenceCard/HotReloadEvidenceMargin"]
-layout_mode = 2
-size_flags_horizontal = 3
-theme_override_constants/separation = 8
-
-[node name="HotReloadEvidenceTitleLabel" type="Label" parent="RootMargin/RootVBox/WorkspaceTabs/HotReloadTab/HotReloadMargin/HotReloadVBox/HotReloadEvidenceCard/HotReloadEvidenceMargin/HotReloadEvidenceVBox"]
-layout_mode = 2
-text = "最近证据"
-
-[node name="HotReloadEvidenceDescriptionLabel" type="Label" parent="RootMargin/RootVBox/WorkspaceTabs/HotReloadTab/HotReloadMargin/HotReloadVBox/HotReloadEvidenceCard/HotReloadEvidenceMargin/HotReloadEvidenceVBox"]
-layout_mode = 2
-size_flags_horizontal = 3
-text = "这里直接提取最近的 `Lua.HotReload.Test` 结构化日志，作为阶段 9 的证据链之一。"
-autowrap_mode = 2
-
-[node name="HotReloadEvidenceLabel" type="RichTextLabel" parent="RootMargin/RootVBox/WorkspaceTabs/HotReloadTab/HotReloadMargin/HotReloadVBox/HotReloadEvidenceCard/HotReloadEvidenceMargin/HotReloadEvidenceVBox"]
+[node name="OpenAiWorkflowButton" type="Button" parent="RootMargin/RootVBox/Scroll/ScrollMargin/ScrollVBox/SectionsGrid/DocsCard/DocsMargin/DocsVBox/DocsButtons"]
 unique_name_in_owner = true
 layout_mode = 2
-size_flags_horizontal = 3
-custom_minimum_size = Vector2(0, 260)
-scroll_active = true
-selection_enabled = true
-fit_content = false
+text = "打开 FacetAIUIWorkflow"
 
-[node name="LayoutTab" type="ScrollContainer" parent="RootMargin/RootVBox/WorkspaceTabs"]
-layout_mode = 2
-size_flags_horizontal = 3
-size_flags_vertical = 3
-horizontal_scroll_mode = 0
-
-[node name="LayoutMargin" type="MarginContainer" parent="RootMargin/RootVBox/WorkspaceTabs/LayoutTab"]
-layout_mode = 2
-size_flags_horizontal = 3
-theme_override_constants/margin_left = 4
-theme_override_constants/margin_top = 4
-theme_override_constants/margin_right = 4
-theme_override_constants/margin_bottom = 4
-
-[node name="LayoutVBox" type="VBoxContainer" parent="RootMargin/RootVBox/WorkspaceTabs/LayoutTab/LayoutMargin"]
-layout_mode = 2
-size_flags_horizontal = 3
-theme_override_constants/separation = 12
-
-[node name="LayoutLabIntroCard" type="PanelContainer" parent="RootMargin/RootVBox/WorkspaceTabs/LayoutTab/LayoutMargin/LayoutVBox"]
+[node name="OpenAssemblyLayoutButton" type="Button" parent="RootMargin/RootVBox/Scroll/ScrollMargin/ScrollVBox/SectionsGrid/DocsCard/DocsMargin/DocsVBox/DocsButtons"]
 unique_name_in_owner = true
 layout_mode = 2
-size_flags_horizontal = 3
+text = "打开 AssemblyLayout"
 
-[node name="LayoutLabIntroMargin" type="MarginContainer" parent="RootMargin/RootVBox/WorkspaceTabs/LayoutTab/LayoutMargin/LayoutVBox/LayoutLabIntroCard"]
-layout_mode = 2
-theme_override_constants/margin_left = 16
-theme_override_constants/margin_top = 16
-theme_override_constants/margin_right = 16
-theme_override_constants/margin_bottom = 16
-
-[node name="LayoutLabIntroVBox" type="VBoxContainer" parent="RootMargin/RootVBox/WorkspaceTabs/LayoutTab/LayoutMargin/LayoutVBox/LayoutLabIntroCard/LayoutLabIntroMargin"]
-layout_mode = 2
-size_flags_horizontal = 3
-theme_override_constants/separation = 8
-
-[node name="LayoutLabTitleLabel" type="Label" parent="RootMargin/RootVBox/WorkspaceTabs/LayoutTab/LayoutMargin/LayoutVBox/LayoutLabIntroCard/LayoutLabIntroMargin/LayoutLabIntroVBox"]
-layout_mode = 2
-text = "阶段 11 布局实验室"
-
-[node name="LayoutLabDescriptionLabel" type="Label" parent="RootMargin/RootVBox/WorkspaceTabs/LayoutTab/LayoutMargin/LayoutVBox/LayoutLabIntroCard/LayoutLabIntroMargin/LayoutLabIntroVBox"]
-layout_mode = 2
-size_flags_horizontal = 3
-text = "这里直接向运行中的 Facet 客户端发送布局入口请求，用来打开 Generated / Template 两类阶段 11 页面，并查看最近一次桥接状态与结构化日志证据。"
-autowrap_mode = 2
-
-[node name="LayoutLabActionRow" type="HBoxContainer" parent="RootMargin/RootVBox/WorkspaceTabs/LayoutTab/LayoutMargin/LayoutVBox/LayoutLabIntroCard/LayoutLabIntroMargin/LayoutLabIntroVBox"]
-layout_mode = 2
-size_flags_horizontal = 3
-theme_override_constants/separation = 8
-
-[node name="OpenGeneratedLayoutLabButton" type="Button" parent="RootMargin/RootVBox/WorkspaceTabs/LayoutTab/LayoutMargin/LayoutVBox/LayoutLabIntroCard/LayoutLabIntroMargin/LayoutLabIntroVBox/LayoutLabActionRow"]
+[node name="OpenWorkflowButton" type="Button" parent="RootMargin/RootVBox/Scroll/ScrollMargin/ScrollVBox/SectionsGrid/DocsCard/DocsMargin/DocsVBox/DocsButtons"]
 unique_name_in_owner = true
 layout_mode = 2
-size_flags_horizontal = 3
-text = "打开 Generated Lab"
-
-[node name="OpenTemplateLayoutLabButton" type="Button" parent="RootMargin/RootVBox/WorkspaceTabs/LayoutTab/LayoutMargin/LayoutVBox/LayoutLabIntroCard/LayoutLabIntroMargin/LayoutLabIntroVBox/LayoutLabActionRow"]
-unique_name_in_owner = true
-layout_mode = 2
-size_flags_horizontal = 3
-text = "打开 Template Lab"
-
-[node name="RefreshLayoutLabStatusButton" type="Button" parent="RootMargin/RootVBox/WorkspaceTabs/LayoutTab/LayoutMargin/LayoutVBox/LayoutLabIntroCard/LayoutLabIntroMargin/LayoutLabIntroVBox/LayoutLabActionRow"]
-unique_name_in_owner = true
-layout_mode = 2
-size_flags_horizontal = 3
-text = "刷新状态"
-
-[node name="LayoutLabDivider" type="HSeparator" parent="RootMargin/RootVBox/WorkspaceTabs/LayoutTab/LayoutMargin/LayoutVBox/LayoutLabIntroCard/LayoutLabIntroMargin/LayoutLabIntroVBox"]
-layout_mode = 2
-
-[node name="LayoutLabBridgeStatusTitleLabel" type="Label" parent="RootMargin/RootVBox/WorkspaceTabs/LayoutTab/LayoutMargin/LayoutVBox/LayoutLabIntroCard/LayoutLabIntroMargin/LayoutLabIntroVBox"]
-layout_mode = 2
-text = "运行时桥状态"
-
-[node name="LayoutLabBridgeStatusLabel" type="Label" parent="RootMargin/RootVBox/WorkspaceTabs/LayoutTab/LayoutMargin/LayoutVBox/LayoutLabIntroCard/LayoutLabIntroMargin/LayoutLabIntroVBox"]
-unique_name_in_owner = true
-layout_mode = 2
-size_flags_horizontal = 3
-text = "等待运行时状态..."
-autowrap_mode = 2
-
-[node name="LayoutLabBridgePathsLabel" type="Label" parent="RootMargin/RootVBox/WorkspaceTabs/LayoutTab/LayoutMargin/LayoutVBox/LayoutLabIntroCard/LayoutLabIntroMargin/LayoutLabIntroVBox"]
-unique_name_in_owner = true
-layout_mode = 2
-size_flags_horizontal = 3
-text = "Request / Status"
-autowrap_mode = 2
-
-[node name="LayoutLabEvidenceCard" type="PanelContainer" parent="RootMargin/RootVBox/WorkspaceTabs/LayoutTab/LayoutMargin/LayoutVBox"]
-unique_name_in_owner = true
-layout_mode = 2
-size_flags_horizontal = 3
-
-[node name="LayoutLabEvidenceMargin" type="MarginContainer" parent="RootMargin/RootVBox/WorkspaceTabs/LayoutTab/LayoutMargin/LayoutVBox/LayoutLabEvidenceCard"]
-layout_mode = 2
-theme_override_constants/margin_left = 16
-theme_override_constants/margin_top = 16
-theme_override_constants/margin_right = 16
-theme_override_constants/margin_bottom = 16
-
-[node name="LayoutLabEvidenceVBox" type="VBoxContainer" parent="RootMargin/RootVBox/WorkspaceTabs/LayoutTab/LayoutMargin/LayoutVBox/LayoutLabEvidenceCard/LayoutLabEvidenceMargin"]
-layout_mode = 2
-size_flags_horizontal = 3
-theme_override_constants/separation = 8
-
-[node name="LayoutLabEvidenceTitleLabel" type="Label" parent="RootMargin/RootVBox/WorkspaceTabs/LayoutTab/LayoutMargin/LayoutVBox/LayoutLabEvidenceCard/LayoutLabEvidenceMargin/LayoutLabEvidenceVBox"]
-layout_mode = 2
-text = "最近证据"
-
-[node name="LayoutLabEvidenceDescriptionLabel" type="Label" parent="RootMargin/RootVBox/WorkspaceTabs/LayoutTab/LayoutMargin/LayoutVBox/LayoutLabEvidenceCard/LayoutLabEvidenceMargin/LayoutLabEvidenceVBox"]
-layout_mode = 2
-size_flags_horizontal = 3
-text = "这里提取最近与 `client.layout.generated_lab` / `client.layout.template_lab` 相关的 `UI.Layout` 与 `UI.Page` 结构化日志。"
-autowrap_mode = 2
-
-[node name="LayoutLabEvidenceLabel" type="RichTextLabel" parent="RootMargin/RootVBox/WorkspaceTabs/LayoutTab/LayoutMargin/LayoutVBox/LayoutLabEvidenceCard/LayoutLabEvidenceMargin/LayoutLabEvidenceVBox"]
-unique_name_in_owner = true
-layout_mode = 2
-size_flags_horizontal = 3
-custom_minimum_size = Vector2(0, 260)
-scroll_active = true
-selection_enabled = true
-fit_content = false
-autowrap_mode = 2
-
-[node name="DiagnosticsTab" type="ScrollContainer" parent="RootMargin/RootVBox/WorkspaceTabs"]
-layout_mode = 2
-size_flags_horizontal = 3
-size_flags_vertical = 3
-horizontal_scroll_mode = 0
-
-[node name="DiagnosticsMargin" type="MarginContainer" parent="RootMargin/RootVBox/WorkspaceTabs/DiagnosticsTab"]
-layout_mode = 2
-size_flags_horizontal = 3
-theme_override_constants/margin_left = 4
-theme_override_constants/margin_top = 4
-theme_override_constants/margin_right = 4
-theme_override_constants/margin_bottom = 4
-
-[node name="DiagnosticsVBox" type="VBoxContainer" parent="RootMargin/RootVBox/WorkspaceTabs/DiagnosticsTab/DiagnosticsMargin"]
-layout_mode = 2
-size_flags_horizontal = 3
-theme_override_constants/separation = 12
-
-[node name="RuntimeDiagnosticsIntroCard" type="PanelContainer" parent="RootMargin/RootVBox/WorkspaceTabs/DiagnosticsTab/DiagnosticsMargin/DiagnosticsVBox"]
-unique_name_in_owner = true
-layout_mode = 2
-size_flags_horizontal = 3
-
-[node name="RuntimeDiagnosticsIntroMargin" type="MarginContainer" parent="RootMargin/RootVBox/WorkspaceTabs/DiagnosticsTab/DiagnosticsMargin/DiagnosticsVBox/RuntimeDiagnosticsIntroCard"]
-layout_mode = 2
-theme_override_constants/margin_left = 16
-theme_override_constants/margin_top = 16
-theme_override_constants/margin_right = 16
-theme_override_constants/margin_bottom = 16
-
-[node name="RuntimeDiagnosticsIntroVBox" type="VBoxContainer" parent="RootMargin/RootVBox/WorkspaceTabs/DiagnosticsTab/DiagnosticsMargin/DiagnosticsVBox/RuntimeDiagnosticsIntroCard/RuntimeDiagnosticsIntroMargin"]
-layout_mode = 2
-size_flags_horizontal = 3
-theme_override_constants/separation = 8
-
-[node name="RuntimeDiagnosticsTitleLabel" type="Label" parent="RootMargin/RootVBox/WorkspaceTabs/DiagnosticsTab/DiagnosticsMargin/DiagnosticsVBox/RuntimeDiagnosticsIntroCard/RuntimeDiagnosticsIntroMargin/RuntimeDiagnosticsIntroVBox"]
-layout_mode = 2
-text = "阶段 12 运行时诊断"
-
-[node name="RuntimeDiagnosticsDescriptionLabel" type="Label" parent="RootMargin/RootVBox/WorkspaceTabs/DiagnosticsTab/DiagnosticsMargin/DiagnosticsVBox/RuntimeDiagnosticsIntroCard/RuntimeDiagnosticsIntroMargin/RuntimeDiagnosticsIntroVBox"]
-layout_mode = 2
-size_flags_horizontal = 3
-text = "这里直接读取 FacetHost 输出的统一诊断快照，用来查看页面注册表、活动运行时、Projection 键、Lua 脚本和红点树摘要。"
-autowrap_mode = 2
-
-[node name="RuntimeDiagnosticsDivider" type="HSeparator" parent="RootMargin/RootVBox/WorkspaceTabs/DiagnosticsTab/DiagnosticsMargin/DiagnosticsVBox/RuntimeDiagnosticsIntroCard/RuntimeDiagnosticsIntroMargin/RuntimeDiagnosticsIntroVBox"]
-layout_mode = 2
-
-[node name="RuntimeDiagnosticsStatusTitleLabel" type="Label" parent="RootMargin/RootVBox/WorkspaceTabs/DiagnosticsTab/DiagnosticsMargin/DiagnosticsVBox/RuntimeDiagnosticsIntroCard/RuntimeDiagnosticsIntroMargin/RuntimeDiagnosticsIntroVBox"]
-layout_mode = 2
-text = "快照状态"
-
-[node name="RuntimeDiagnosticsStatusLabel" type="Label" parent="RootMargin/RootVBox/WorkspaceTabs/DiagnosticsTab/DiagnosticsMargin/DiagnosticsVBox/RuntimeDiagnosticsIntroCard/RuntimeDiagnosticsIntroMargin/RuntimeDiagnosticsIntroVBox"]
-unique_name_in_owner = true
-layout_mode = 2
-size_flags_horizontal = 3
-text = "等待运行时诊断快照..."
-autowrap_mode = 2
-
-[node name="RuntimeDiagnosticsPathsLabel" type="Label" parent="RootMargin/RootVBox/WorkspaceTabs/DiagnosticsTab/DiagnosticsMargin/DiagnosticsVBox/RuntimeDiagnosticsIntroCard/RuntimeDiagnosticsIntroMargin/RuntimeDiagnosticsIntroVBox"]
-unique_name_in_owner = true
-layout_mode = 2
-size_flags_horizontal = 3
-text = "Snapshot"
-autowrap_mode = 2
-
-[node name="RuntimeDiagnosticsSnapshotCard" type="PanelContainer" parent="RootMargin/RootVBox/WorkspaceTabs/DiagnosticsTab/DiagnosticsMargin/DiagnosticsVBox"]
-unique_name_in_owner = true
-layout_mode = 2
-size_flags_horizontal = 3
-
-[node name="RuntimeDiagnosticsSnapshotMargin" type="MarginContainer" parent="RootMargin/RootVBox/WorkspaceTabs/DiagnosticsTab/DiagnosticsMargin/DiagnosticsVBox/RuntimeDiagnosticsSnapshotCard"]
-layout_mode = 2
-theme_override_constants/margin_left = 16
-theme_override_constants/margin_top = 16
-theme_override_constants/margin_right = 16
-theme_override_constants/margin_bottom = 16
-
-[node name="RuntimeDiagnosticsSnapshotVBox" type="VBoxContainer" parent="RootMargin/RootVBox/WorkspaceTabs/DiagnosticsTab/DiagnosticsMargin/DiagnosticsVBox/RuntimeDiagnosticsSnapshotCard/RuntimeDiagnosticsSnapshotMargin"]
-layout_mode = 2
-size_flags_horizontal = 3
-theme_override_constants/separation = 8
-
-[node name="RuntimeDiagnosticsSnapshotTitleLabel" type="Label" parent="RootMargin/RootVBox/WorkspaceTabs/DiagnosticsTab/DiagnosticsMargin/DiagnosticsVBox/RuntimeDiagnosticsSnapshotCard/RuntimeDiagnosticsSnapshotMargin/RuntimeDiagnosticsSnapshotVBox"]
-layout_mode = 2
-text = "当前快照"
-
-[node name="RuntimeDiagnosticsSnapshotDescriptionLabel" type="Label" parent="RootMargin/RootVBox/WorkspaceTabs/DiagnosticsTab/DiagnosticsMargin/DiagnosticsVBox/RuntimeDiagnosticsSnapshotCard/RuntimeDiagnosticsSnapshotMargin/RuntimeDiagnosticsSnapshotVBox"]
-layout_mode = 2
-size_flags_horizontal = 3
-text = "该快照来自运行中的客户端，不依赖编辑器内置缓存；如果内容未变化，运行时不会重复写文件。"
-autowrap_mode = 2
-
-[node name="RuntimeDiagnosticsSnapshotLabel" type="RichTextLabel" parent="RootMargin/RootVBox/WorkspaceTabs/DiagnosticsTab/DiagnosticsMargin/DiagnosticsVBox/RuntimeDiagnosticsSnapshotCard/RuntimeDiagnosticsSnapshotMargin/RuntimeDiagnosticsSnapshotVBox"]
-unique_name_in_owner = true
-layout_mode = 2
-size_flags_horizontal = 3
-custom_minimum_size = Vector2(0, 320)
-scroll_active = true
-selection_enabled = true
-fit_content = false
-autowrap_mode = 2
-
-[node name="RuntimeDiagnosticsValidationCard" type="PanelContainer" parent="RootMargin/RootVBox/WorkspaceTabs/DiagnosticsTab/DiagnosticsMargin/DiagnosticsVBox"]
-unique_name_in_owner = true
-layout_mode = 2
-size_flags_horizontal = 3
-
-[node name="RuntimeDiagnosticsValidationMargin" type="MarginContainer" parent="RootMargin/RootVBox/WorkspaceTabs/DiagnosticsTab/DiagnosticsMargin/DiagnosticsVBox/RuntimeDiagnosticsValidationCard"]
-layout_mode = 2
-theme_override_constants/margin_left = 16
-theme_override_constants/margin_top = 16
-theme_override_constants/margin_right = 16
-theme_override_constants/margin_bottom = 16
-
-[node name="RuntimeDiagnosticsValidationVBox" type="VBoxContainer" parent="RootMargin/RootVBox/WorkspaceTabs/DiagnosticsTab/DiagnosticsMargin/DiagnosticsVBox/RuntimeDiagnosticsValidationCard/RuntimeDiagnosticsValidationMargin"]
-layout_mode = 2
-size_flags_horizontal = 3
-theme_override_constants/separation = 8
-
-[node name="RuntimeDiagnosticsValidationTitleLabel" type="Label" parent="RootMargin/RootVBox/WorkspaceTabs/DiagnosticsTab/DiagnosticsMargin/DiagnosticsVBox/RuntimeDiagnosticsValidationCard/RuntimeDiagnosticsValidationMargin/RuntimeDiagnosticsValidationVBox"]
-layout_mode = 2
-text = "运行时校验器"
-
-[node name="RuntimeDiagnosticsValidationDescriptionLabel" type="Label" parent="RootMargin/RootVBox/WorkspaceTabs/DiagnosticsTab/DiagnosticsMargin/DiagnosticsVBox/RuntimeDiagnosticsValidationCard/RuntimeDiagnosticsValidationMargin/RuntimeDiagnosticsValidationVBox"]
-layout_mode = 2
-size_flags_horizontal = 3
-text = "校验器直接基于运行时页面注册表、布局仓库、Lua 脚本与活动运行时生成结果，优先暴露配置缺口和链路不一致。"
-autowrap_mode = 2
-
-[node name="RuntimeDiagnosticsValidationLabel" type="RichTextLabel" parent="RootMargin/RootVBox/WorkspaceTabs/DiagnosticsTab/DiagnosticsMargin/DiagnosticsVBox/RuntimeDiagnosticsValidationCard/RuntimeDiagnosticsValidationMargin/RuntimeDiagnosticsValidationVBox"]
-unique_name_in_owner = true
-layout_mode = 2
-size_flags_horizontal = 3
-custom_minimum_size = Vector2(0, 240)
-scroll_active = true
-selection_enabled = true
-fit_content = false
-autowrap_mode = 2
-
-[node name="RuntimeDiagnosticsObserverCard" type="PanelContainer" parent="RootMargin/RootVBox/WorkspaceTabs/DiagnosticsTab/DiagnosticsMargin/DiagnosticsVBox"]
-unique_name_in_owner = true
-layout_mode = 2
-size_flags_horizontal = 3
-
-[node name="RuntimeDiagnosticsObserverMargin" type="MarginContainer" parent="RootMargin/RootVBox/WorkspaceTabs/DiagnosticsTab/DiagnosticsMargin/DiagnosticsVBox/RuntimeDiagnosticsObserverCard"]
-layout_mode = 2
-theme_override_constants/margin_left = 16
-theme_override_constants/margin_top = 16
-theme_override_constants/margin_right = 16
-theme_override_constants/margin_bottom = 16
-
-[node name="RuntimeDiagnosticsObserverVBox" type="VBoxContainer" parent="RootMargin/RootVBox/WorkspaceTabs/DiagnosticsTab/DiagnosticsMargin/DiagnosticsVBox/RuntimeDiagnosticsObserverCard/RuntimeDiagnosticsObserverMargin"]
-layout_mode = 2
-size_flags_horizontal = 3
-theme_override_constants/separation = 8
-
-[node name="RuntimeDiagnosticsObserverTitleLabel" type="Label" parent="RootMargin/RootVBox/WorkspaceTabs/DiagnosticsTab/DiagnosticsMargin/DiagnosticsVBox/RuntimeDiagnosticsObserverCard/RuntimeDiagnosticsObserverMargin/RuntimeDiagnosticsObserverVBox"]
-layout_mode = 2
-text = "深度观察器"
-
-[node name="RuntimeDiagnosticsObserverDescriptionLabel" type="Label" parent="RootMargin/RootVBox/WorkspaceTabs/DiagnosticsTab/DiagnosticsMargin/DiagnosticsVBox/RuntimeDiagnosticsObserverCard/RuntimeDiagnosticsObserverMargin/RuntimeDiagnosticsObserverVBox"]
-layout_mode = 2
-size_flags_horizontal = 3
-text = "这里按主题提取生命周期、Projection、红点、Binding 和工具日志，并支持焦点筛选，方便盯当前页面或指定路径。"
-autowrap_mode = 2
-
-[node name="RuntimeDiagnosticsObserverActionRow" type="HBoxContainer" parent="RootMargin/RootVBox/WorkspaceTabs/DiagnosticsTab/DiagnosticsMargin/DiagnosticsVBox/RuntimeDiagnosticsObserverCard/RuntimeDiagnosticsObserverMargin/RuntimeDiagnosticsObserverVBox"]
-layout_mode = 2
-size_flags_horizontal = 3
-theme_override_constants/separation = 8
-
-[node name="RuntimeDiagnosticsFocusFilter" type="LineEdit" parent="RootMargin/RootVBox/WorkspaceTabs/DiagnosticsTab/DiagnosticsMargin/DiagnosticsVBox/RuntimeDiagnosticsObserverCard/RuntimeDiagnosticsObserverMargin/RuntimeDiagnosticsObserverVBox/RuntimeDiagnosticsObserverActionRow"]
-unique_name_in_owner = true
-layout_mode = 2
-size_flags_horizontal = 3
-placeholder_text = "焦点筛选，例如 client.idle / client.dungeon / diagnostics.runtime_metrics"
-clear_button_enabled = true
-
-[node name="RuntimeDiagnosticsObserverChannelFilter" type="OptionButton" parent="RootMargin/RootVBox/WorkspaceTabs/DiagnosticsTab/DiagnosticsMargin/DiagnosticsVBox/RuntimeDiagnosticsObserverCard/RuntimeDiagnosticsObserverMargin/RuntimeDiagnosticsObserverVBox/RuntimeDiagnosticsObserverActionRow"]
-unique_name_in_owner = true
-layout_mode = 2
-custom_minimum_size = Vector2(150, 0)
-
-[node name="RuntimeDiagnosticsUseCurrentPageButton" type="Button" parent="RootMargin/RootVBox/WorkspaceTabs/DiagnosticsTab/DiagnosticsMargin/DiagnosticsVBox/RuntimeDiagnosticsObserverCard/RuntimeDiagnosticsObserverMargin/RuntimeDiagnosticsObserverVBox/RuntimeDiagnosticsObserverActionRow"]
-unique_name_in_owner = true
-layout_mode = 2
-text = "使用当前页"
-
-[node name="RuntimeDiagnosticsClearFocusButton" type="Button" parent="RootMargin/RootVBox/WorkspaceTabs/DiagnosticsTab/DiagnosticsMargin/DiagnosticsVBox/RuntimeDiagnosticsObserverCard/RuntimeDiagnosticsObserverMargin/RuntimeDiagnosticsObserverVBox/RuntimeDiagnosticsObserverActionRow"]
-unique_name_in_owner = true
-layout_mode = 2
-text = "清空焦点"
-
-[node name="RuntimeDiagnosticsObserverSummaryLabel" type="Label" parent="RootMargin/RootVBox/WorkspaceTabs/DiagnosticsTab/DiagnosticsMargin/DiagnosticsVBox/RuntimeDiagnosticsObserverCard/RuntimeDiagnosticsObserverMargin/RuntimeDiagnosticsObserverVBox"]
-unique_name_in_owner = true
-layout_mode = 2
-size_flags_horizontal = 3
-text = "等待深度观察摘要..."
-autowrap_mode = 2
-
-[node name="RuntimeDiagnosticsObserverLabel" type="RichTextLabel" parent="RootMargin/RootVBox/WorkspaceTabs/DiagnosticsTab/DiagnosticsMargin/DiagnosticsVBox/RuntimeDiagnosticsObserverCard/RuntimeDiagnosticsObserverMargin/RuntimeDiagnosticsObserverVBox"]
-unique_name_in_owner = true
-layout_mode = 2
-size_flags_horizontal = 3
-custom_minimum_size = Vector2(0, 300)
-scroll_active = true
-selection_enabled = true
-fit_content = false
-autowrap_mode = 2
+text = "打开 Workflow"

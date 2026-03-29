@@ -2,14 +2,16 @@
 
 using System;
 using System.Collections.Generic;
+using System.Security.Cryptography;
+using System.Text;
 
 namespace Sideline.Facet.Lua
 {
     /// <summary>
-    /// 内存版 Lua 脚本源。
-    /// 主要用于测试或离线构造脚本文本，不再负责直接创建控制器实例。
+    /// 内存型 Lua 脚本源。
+    /// 主要用于测试或离线构造脚本文本。
     /// </summary>
-    public sealed class InMemoryLuaScriptSource : ILuaScriptSource
+    public sealed class InMemoryLuaScriptSource : ILuaWritableScriptSource
     {
         private readonly Dictionary<string, LuaScriptAsset> _scripts;
 
@@ -20,8 +22,7 @@ namespace Sideline.Facet.Lua
             _scripts = new Dictionary<string, LuaScriptAsset>(StringComparer.OrdinalIgnoreCase);
             foreach (KeyValuePair<string, string> pair in scripts)
             {
-                string versionToken = $"memory:{pair.Value.GetHashCode():X8}";
-                _scripts[pair.Key] = new LuaScriptAsset(pair.Key, pair.Key, pair.Value, versionToken);
+                _scripts[pair.Key] = CreateAsset(pair.Key, pair.Value);
             }
         }
 
@@ -45,6 +46,33 @@ namespace Sideline.Facet.Lua
         public IReadOnlyCollection<string> GetRegisteredScripts()
         {
             return _scripts.Keys;
+        }
+
+        public bool CanWriteScript(string scriptId)
+        {
+            return _scripts.ContainsKey(scriptId);
+        }
+
+        public bool TryWriteScript(string scriptId, string sourceCode, out LuaScriptAsset? scriptAsset)
+        {
+            ArgumentNullException.ThrowIfNull(sourceCode);
+
+            scriptAsset = null;
+            if (!_scripts.ContainsKey(scriptId))
+            {
+                return false;
+            }
+
+            scriptAsset = CreateAsset(scriptId, sourceCode);
+            _scripts[scriptId] = scriptAsset;
+            return true;
+        }
+
+        private static LuaScriptAsset CreateAsset(string scriptId, string sourceCode)
+        {
+            byte[] bytes = Encoding.UTF8.GetBytes(sourceCode);
+            string versionToken = Convert.ToHexString(SHA256.HashData(bytes));
+            return new LuaScriptAsset(scriptId, scriptId, sourceCode, versionToken);
         }
     }
 }

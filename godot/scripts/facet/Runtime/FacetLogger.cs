@@ -11,8 +11,8 @@ using Godot;
 namespace Sideline.Facet.Runtime
 {
     /// <summary>
-    /// Facet 榛樿 Godot 鏃ュ織瀹炵幇銆?    /// 鍚屾椂璐熻矗缁撴瀯鍖栨棩蹇椼€丟odot 鎺у埗鍙拌緭鍑哄拰绾枃鏈暅鍍忔棩蹇椼€?    /// </summary>
-    public sealed class FacetLogger : IFacetLogger
+    /// Facet 婵帗绋掗…鍫ヮ敇?Godot 闂佸搫鍟ㄩ崕杈╂崲閺冨倵鍋撻崷顓炰户妤犵偛娲俊?    /// 闂佸憡鑹鹃張顒€顪冮崒婊勫闁绘棁宕甸悡鎴犵磽娴ｈ灏伴柣搴灦瀹曠娀寮介妸锔肩礆闂婎偄娲﹂妵婊堝焵椤戣法顑刼dot 闂佺鐭囬崘銊у幀闂佸憡鐟︽刊鐣屾椤撱垹绀勯柛婵嗗鐎氳尙绱掔紒銏犵仭闁哄鍟村鐢割敆閸曨剚鐣堕梺绋跨Т缁绘垵螞閳哄嫮鐤€婵＄偛鐨烽崑?    /// </summary>
+    public sealed class FacetLogger : IFacetLogger, IDisposable
     {
         private const string HistoryDirectoryName = "history";
         private static readonly HashSet<string> SuppressedConsoleDebugCategories = new(StringComparer.OrdinalIgnoreCase)
@@ -43,6 +43,7 @@ namespace Sideline.Facet.Runtime
         };
 
         private long _nextEventId;
+        private bool _disposed;
 
         public FacetLogger(
             FacetLogLevel minimumLevel,
@@ -81,15 +82,15 @@ namespace Sideline.Facet.Runtime
         public FacetLogLevel MinimumLevel { get; }
 
         /// <summary>
-        /// 褰撳墠杩愯浼氳瘽鏍囪瘑銆?        /// </summary>
+        /// 閻熸粎澧楅幐鍛婃櫠閻樿櫕浜ら柟閭﹀灱閺€钘壝归崗闂翠孩闁伙缚绮欏浠嬪炊椤忓棙顫氶梺?        /// </summary>
         public string SessionId { get; }
 
         /// <summary>
-        /// 鏂版棩蹇楀叆缂撳啿鍚庣殑閫氱煡銆?        /// </summary>
+        /// 闂佸搫鍊绘晶妤€螞閳哄嫮鐤€婵°倐鍋撻柛娆忔缁辨捇骞橀崘鍙夋瘣闂佸憡鑹惧ù宄扳枔閹达附鐒绘慨妯夸含閸欌偓闂?        /// </summary>
         public event Action<FacetLogEntry>? EntryLogged;
 
         /// <summary>
-        /// 鑾峰彇褰撳墠缂撳啿鍖哄唴鐨勬渶杩戞棩蹇楀揩鐓с€?        /// </summary>
+        /// 闂佸吋鍎抽崲鑼躲亹閸ヮ亗浜归柟鎯у暱椤ゅ懐绱撻崒娑欏碍闁哥喎娼″畷鐘诲传閸曨偅鏆ラ梺姹囧妼鐎氼厼銆掗懜鍨氦闁瑰鍋為敍澶愮叓閸ヮ煈娈旈柟鐑╂櫊閹ゎ槹闁?        /// </summary>
         public IReadOnlyList<FacetLogEntry> GetBufferedEntries()
         {
             return _buffer.ToArray();
@@ -201,7 +202,7 @@ namespace Sideline.Facet.Runtime
 
             try
             {
-                string globalizedPath = ProjectSettings.GlobalizePath(_consoleMirrorLogPath);
+                string globalizedPath = ResolveOutputPath(_consoleMirrorLogPath);
                 string? directory = Path.GetDirectoryName(globalizedPath);
                 if (!string.IsNullOrWhiteSpace(directory))
                 {
@@ -267,7 +268,7 @@ namespace Sideline.Facet.Runtime
 
         private void PrepareLogFile(string logPath, string archivePrefix, string extension, int historyLimit, bool writeBom)
         {
-            string activePath = ProjectSettings.GlobalizePath(logPath);
+            string activePath = ResolveOutputPath(logPath);
             string? logsDirectory = Path.GetDirectoryName(activePath);
             if (string.IsNullOrWhiteSpace(logsDirectory))
             {
@@ -299,7 +300,7 @@ namespace Sideline.Facet.Runtime
 
             try
             {
-                string globalizedPath = ProjectSettings.GlobalizePath(_structuredLogPath);
+                string globalizedPath = ResolveOutputPath(_structuredLogPath);
                 string? directory = Path.GetDirectoryName(globalizedPath);
                 if (!string.IsNullOrWhiteSpace(directory))
                 {
@@ -325,6 +326,17 @@ namespace Sideline.Facet.Runtime
             {
                 GD.PushWarning($"[Facet][Warning][Logging] Structured log listener failed. Error={exception.Message}");
             }
+        }
+
+        private static string ResolveOutputPath(string path)
+        {
+            if (path.StartsWith("user://", StringComparison.OrdinalIgnoreCase) ||
+                path.StartsWith("res://", StringComparison.OrdinalIgnoreCase))
+            {
+                return ProjectSettings.GlobalizePath(path);
+            }
+
+            return Path.GetFullPath(path);
         }
 
         private static void EnsureUtf8Bom(string path)
@@ -443,6 +455,17 @@ namespace Sideline.Facet.Runtime
             }
 
             return sessionId[..8];
+        }
+        public void Dispose()
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            EntryLogged = null;
+            _buffer.Clear();
+            _disposed = true;
         }
     }
 }

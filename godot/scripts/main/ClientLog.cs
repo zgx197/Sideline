@@ -1,5 +1,6 @@
 #nullable enable
 
+using System;
 using System.Collections.Generic;
 using System.Text.Json;
 using Godot;
@@ -11,6 +12,26 @@ using Sideline.Facet.Runtime;
 /// </summary>
 internal static class ClientLog
 {
+    private static WeakReference<IFacetLogger>? _boundLogger;
+
+    /// <summary>
+    /// 绑定运行时日志器，避免业务代码直接依赖 FacetHost 单例。
+    /// </summary>
+    public static void BindLogger(IFacetLogger? logger)
+    {
+        _boundLogger = logger == null
+            ? null
+            : new WeakReference<IFacetLogger>(logger);
+    }
+
+    /// <summary>
+    /// 清理当前绑定的运行时日志器。
+    /// </summary>
+    public static void UnbindLogger()
+    {
+        _boundLogger = null;
+    }
+
     /// <summary>
     /// 写入一条信息级客户端日志。
     /// </summary>
@@ -43,7 +64,7 @@ internal static class ClientLog
     {
         string normalizedCategory = $"Client.{category}";
 
-        if (FacetHost.Instance?.Logger is IFacetLogger logger)
+        if (TryGetBoundLogger(out IFacetLogger? logger) && logger != null)
         {
             logger.Log(level, normalizedCategory, message, payload);
             return;
@@ -81,5 +102,11 @@ internal static class ClientLog
         }
 
         return $"[Client][{level}][{category}] {message} Payload={JsonSerializer.Serialize(payload)}";
+    }
+
+    private static bool TryGetBoundLogger(out IFacetLogger? logger)
+    {
+        logger = null;
+        return _boundLogger != null && _boundLogger.TryGetTarget(out logger) && logger != null;
     }
 }

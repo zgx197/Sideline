@@ -11,10 +11,10 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
-  <!-- 测试框架 -->
+  <!-- 娴嬭瘯妗嗘灦 -->
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
-    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.8.0" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.9.2" />
     <PackageReference Include="xunit" Version="2.9.2" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2">
       <PrivateAssets>all</PrivateAssets>
@@ -30,13 +30,13 @@
     </PackageReference>
   </ItemGroup>
 
-  <!-- 性能测试 -->
+  <!-- 鎬ц兘娴嬭瘯 -->
   <ItemGroup>
     <PackageReference Include="BenchmarkDotNet" Version="0.13.12" />
     <PackageReference Include="BenchmarkDotNet.Annotations" Version="0.13.12" />
   </ItemGroup>
 
-  <!-- 引用 Lattice 核心 -->
+  <!-- 寮曠敤 Lattice 鏍稿績 -->
   <ItemGroup>
     <ProjectReference Include="..\Lattice.csproj" />
     <ProjectReference Include="..\Tools\Lattice.Analyzers\Lattice.Analyzers.csproj" />
@@ -46,3 +46,4 @@
     <Compile Include="..\Benchmarks\BenchmarkGovernanceCli.cs" Link="Performance\BenchmarkGovernanceCli.cs" />
   </ItemGroup>
 </Project>
+

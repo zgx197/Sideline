@@ -4,16 +4,15 @@ using System;
 using System.Collections.Generic;
 using Godot;
 using Sideline.Facet.Extensions.RedDot;
-using Sideline.Facet.Lua;
 using Sideline.Facet.Projection;
 using Sideline.Facet.Projection.Client;
-using Sideline.Facet.Projection.Diagnostics;
 using Sideline.Facet.Runtime;
+using Sideline.Facet.Runtime.Debug;
 using Sideline.Facet.UI;
 
 /// <summary>
 /// 地下城模式面板。
-/// 通过 Projection 驱动页面状态，并使用模板化复杂列表展示运行时指标。
+/// 仅保留业务界面与调试入口，不再在页面内承载运行时指标与实验工具。
 /// </summary>
 public partial class DungeonPanel : PanelContainer, IUIPageLifecycle
 {
@@ -21,45 +20,21 @@ public partial class DungeonPanel : PanelContainer, IUIPageLifecycle
     private const string LuaStatusStateKey = "facet.dungeon.status";
     private const string LuaPrimaryActionLabelStateKey = "facet.dungeon.primary_action_label";
     private const string LuaPrimaryActionEnabledStateKey = "facet.dungeon.primary_action_enabled";
-    private const string LuaShowMetricsPanelStateKey = "facet.dungeon.show_metrics_panel";
-    private const string LuaMetricsTitleStateKey = "facet.dungeon.metrics_title";
-    private const string LuaMetricsItemsStateKey = "facet.dungeon.metrics_items";
     private const string DungeonPageRedDotPath = "client.dungeon";
-    private const string DungeonMetricsRedDotPath = "client.dungeon.metrics";
-    private const string DungeonManualRedDotPath = FacetRedDotLabPaths.DungeonManual;
-    private const string IdleManualRedDotPath = FacetRedDotLabPaths.IdleManual;
 
-    private PanelContainer _metricsPanel = null!;
     private Label _titleLabel = null!;
     private Label _titleRedDotBadgeLabel = null!;
     private Label _statusLabel = null!;
-    private Label _metricsTitleLabel = null!;
-    private Label _redDotSummaryLabel = null!;
-    private Label _redDotLabCurrentBadgeLabel = null!;
-    private Label _redDotLabStatusLabel = null!;
-    private Label _metricsEmptyLabel = null!;
-    private Label _hotReloadTestStatusLabel = null!;
-    private VBoxContainer _metricsListContainer = null!;
-    private Control _metricsItemTemplate = null!;
     private Button _switchButton = null!;
-    private Button _currentPageReloadTestButton = null!;
-    private Button _dungeonReloadTestButton = null!;
-    private Button _toggleCurrentRedDotButton = null!;
-    private Button _toggleIdleRedDotButton = null!;
-    private Button _clearRedDotLabButton = null!;
+    private Button _openRuntimeDebugButton = null!;
 
     private IDisposable? _clientShellSubscription;
-    private IDisposable? _metricsSubscription;
     private IDisposable? _redDotSubscription;
     private UIContext? _pageContext;
     private ClientShellProjection? _currentShellProjection;
-    private FacetRuntimeMetricListProjection? _currentMetricsProjection;
-    private IUIComponentBindingScope? _metricsPanelBindings;
-    private IUIComplexListBinding<FacetRuntimeMetricItem>? _metricsListBinding;
     private bool _nodesBound;
     private bool _bindingsRegistered;
     private bool _hasDungeonPageRedDot;
-    private string _redDotSummaryText = "红点树 / 等待数据";
 
     [Signal]
     public delegate void SwitchToIdleRequestedEventHandler();
@@ -69,87 +44,13 @@ public partial class DungeonPanel : PanelContainer, IUIPageLifecycle
         ReleaseProjectionSubscriptions();
     }
 
-    /// <summary>
-    /// 绑定 Facet Projection。
-    /// 这里同时监听 ClientShell 与 RuntimeMetrics 两类 Projection。
-    /// </summary>
-    public void BindFacetProjection()
-    {
-        ReleaseProjectionSubscriptions();
-
-        if (FacetHost.Instance?.IsInitialized != true)
-        {
-            _currentShellProjection = null;
-            _currentMetricsProjection = null;
-            RefreshView("projection.pending");
-            ClientLog.Warning("DungeonPanel", "FacetHost 尚未初始化，Projection 绑定延后。", null);
-            return;
-        }
-
-        ProjectionStore projectionStore = FacetHost.Instance.Context.ProjectionStore;
-        _clientShellSubscription = projectionStore.Subscribe(FacetProjectionKeys.ClientShell, OnClientShellChanged);
-        _metricsSubscription = projectionStore.Subscribe(FacetProjectionKeys.RuntimeMetrics, OnRuntimeMetricsChanged);
-        BindRedDotProjection();
-
-        bool initialClientShellApplied = false;
-        if (projectionStore.TryGet(FacetProjectionKeys.ClientShell, out ClientShellProjection? shellProjection) && shellProjection != null)
-        {
-            if (ShouldApplyInitialClientShellProjection(shellProjection))
-            {
-                ApplyClientShellProjection(shellProjection);
-                LogInitialClientShellProjection(shellProjection);
-                initialClientShellApplied = true;
-            }
-            else
-            {
-                ClientLog.Info(
-                    "DungeonPanel",
-                    "DungeonPanel 跳过了不匹配当前页面模式的初始 ClientShellProjection。",
-                    new Dictionary<string, object?>
-                    {
-                        ["expectedMode"] = GetExpectedShellMode(),
-                        ["actualMode"] = shellProjection.Mode,
-                    });
-                ApplyShellFallback("projection.initial.shell_mismatch");
-            }
-        }
-        else
-        {
-            ApplyShellFallback("projection.initial.shell_missing");
-        }
-
-        bool initialMetricsApplied = false;
-        if (projectionStore.TryGet(FacetProjectionKeys.RuntimeMetrics, out FacetRuntimeMetricListProjection? metricsProjection) && metricsProjection != null)
-        {
-            ApplyRuntimeMetricsProjection(metricsProjection);
-            LogInitialRuntimeMetricsProjection(metricsProjection);
-            initialMetricsApplied = true;
-        }
-        else
-        {
-            ApplyMetricsPlaceholder("projection.initial.metrics_missing");
-        }
-
-        ClientLog.Info(
-            "DungeonPanel",
-            "DungeonPanel Projection 绑定完成。",
-            new Dictionary<string, object?>
-            {
-                ["clientShellKey"] = FacetProjectionKeys.ClientShell.ToString(),
-                ["runtimeMetricsKey"] = FacetProjectionKeys.RuntimeMetrics.ToString(),
-                ["redDotPath"] = DungeonPageRedDotPath,
-                ["initialClientShellApplied"] = initialClientShellApplied,
-                ["initialMetricsApplied"] = initialMetricsApplied,
-            });
-    }
-
     public void OnPageInitialize(UIContext context)
     {
         _pageContext = context;
         EnsureNodesResolved(context);
         EnsureBindingsRegistered(context);
         BindFacetProjection();
-        ClientLog.Info("DungeonPanel", "DungeonPanel 生命周期 Initialize。", CreateLifecyclePayload(context, _metricsPanelBindings, _metricsListBinding));
+        ClientLog.Info("DungeonPanel", "DungeonPanel 生命周期 Initialize。", CreateLifecyclePayload(context));
     }
 
     public void OnPageShow(UIContext context)
@@ -157,13 +58,14 @@ public partial class DungeonPanel : PanelContainer, IUIPageLifecycle
         _pageContext = context;
         EnsureNodesResolved(context);
         EnsureBindingsRegistered(context);
-        if (_clientShellSubscription == null || _metricsSubscription == null)
+
+        if (_clientShellSubscription == null)
         {
             BindFacetProjection();
         }
 
         RefreshView("page.show");
-        ClientLog.Info("DungeonPanel", "DungeonPanel 生命周期 Show。", CreateLifecyclePayload(context, _metricsPanelBindings, _metricsListBinding));
+        ClientLog.Info("DungeonPanel", "DungeonPanel 生命周期 Show。", CreateLifecyclePayload(context));
     }
 
     public void OnPageRefresh(UIContext context)
@@ -171,29 +73,67 @@ public partial class DungeonPanel : PanelContainer, IUIPageLifecycle
         _pageContext = context;
         EnsureNodesResolved(context);
         EnsureBindingsRegistered(context);
-        if (_clientShellSubscription == null || _metricsSubscription == null)
+
+        if (_clientShellSubscription == null)
         {
             BindFacetProjection();
         }
 
         RefreshView("page.refresh");
-        ClientLog.Info("DungeonPanel", "DungeonPanel 生命周期 Refresh。", CreateLifecyclePayload(context, _metricsPanelBindings, _metricsListBinding));
+        ClientLog.Info("DungeonPanel", "DungeonPanel 生命周期 Refresh。", CreateLifecyclePayload(context));
     }
 
     public void OnPageHide(UIContext context)
     {
         _pageContext = context;
         ReleaseProjectionSubscriptions();
-        ClientLog.Info("DungeonPanel", "DungeonPanel 生命周期 Hide。", CreateLifecyclePayload(context, _metricsPanelBindings, _metricsListBinding));
+        ClientLog.Info("DungeonPanel", "DungeonPanel 生命周期 Hide。", CreateLifecyclePayload(context));
     }
 
     public void OnPageDispose(UIContext context)
     {
         _pageContext = context;
         ReleaseProjectionSubscriptions();
-        _metricsPanelBindings = null;
-        _metricsListBinding = null;
-        ClientLog.Info("DungeonPanel", "DungeonPanel 生命周期 Dispose。", CreateLifecyclePayload(context, null, null));
+        ClientLog.Info("DungeonPanel", "DungeonPanel 生命周期 Dispose。", CreateLifecyclePayload(context));
+    }
+
+    public void BindFacetProjection()
+    {
+        ReleaseProjectionSubscriptions();
+
+        ProjectionStore? projectionStore = GetProjectionStore();
+        if (projectionStore == null)
+        {
+            RefreshView("projection.pending");
+            ClientLog.Warning("DungeonPanel", "FacetHost 尚未初始化，Projection 绑定延后。", null);
+            return;
+        }
+
+        _clientShellSubscription = projectionStore.Subscribe(Sideline.Facet.Projection.Diagnostics.FacetProjectionKeys.ClientShell, OnClientShellChanged);
+        BindRedDotProjection();
+
+        bool initialClientShellApplied = false;
+        if (projectionStore.TryGet(Sideline.Facet.Projection.Diagnostics.FacetProjectionKeys.ClientShell, out ClientShellProjection? shellProjection) &&
+            shellProjection != null &&
+            ShouldApplyInitialClientShellProjection(shellProjection))
+        {
+            ApplyClientShellProjection(shellProjection);
+            initialClientShellApplied = true;
+        }
+        else
+        {
+            RefreshView("projection.initial.shell_missing_or_mismatch");
+        }
+
+        ClientLog.Info(
+            "DungeonPanel",
+            "DungeonPanel Projection 绑定完成。",
+            new Dictionary<string, object?>
+            {
+                ["clientShellKey"] = Sideline.Facet.Projection.Diagnostics.FacetProjectionKeys.ClientShell.ToString(),
+                ["redDotPath"] = DungeonPageRedDotPath,
+                ["initialClientShellApplied"] = initialClientShellApplied,
+            });
     }
 
     private void EnsureNodesResolved(UIContext? context)
@@ -204,38 +144,15 @@ public partial class DungeonPanel : PanelContainer, IUIPageLifecycle
         }
 
         UINodeResolver? resolver = context?.Resolver as UINodeResolver;
-        _metricsPanel = ResolveRequiredNode<PanelContainer>(resolver, "MetricsPanel", "%MetricsPanel");
         _titleLabel = ResolveRequiredNode<Label>(resolver, "TitleLabel", "%TitleLabel");
         _titleRedDotBadgeLabel = ResolveRequiredNode<Label>(resolver, "TitleRedDotBadgeLabel", "%TitleRedDotBadgeLabel");
         _statusLabel = ResolveRequiredNode<Label>(resolver, "StatusLabel", "%StatusLabel");
-        _metricsTitleLabel = ResolveRequiredNode<Label>(resolver, "MetricsTitleLabel", "%MetricsTitleLabel");
-        _redDotSummaryLabel = ResolveRequiredNode<Label>(resolver, "RedDotSummaryLabel", "%RedDotSummaryLabel");
-        _redDotLabCurrentBadgeLabel = ResolveRequiredNode<Label>(resolver, "RedDotLabCurrentBadgeLabel", "%RedDotLabCurrentBadgeLabel");
-        _redDotLabStatusLabel = ResolveRequiredNode<Label>(resolver, "RedDotLabStatusLabel", "%RedDotLabStatusLabel");
-        _metricsEmptyLabel = ResolveRequiredNode<Label>(resolver, "MetricsEmptyLabel", "%MetricsEmptyLabel");
-        _hotReloadTestStatusLabel = ResolveRequiredNode<Label>(resolver, "HotReloadTestStatusLabel", "%HotReloadTestStatusLabel");
-        _metricsListContainer = ResolveRequiredNode<VBoxContainer>(resolver, "MetricsListContainer", "%MetricsListContainer");
-        _metricsItemTemplate = ResolveRequiredNode<Control>(resolver, "MetricsItemTemplate", "%MetricsItemTemplate");
         _switchButton = ResolveRequiredNode<Button>(resolver, "SwitchButton", "%SwitchButton");
-        _currentPageReloadTestButton = ResolveRequiredNode<Button>(resolver, "CurrentPageReloadTestButton", "%CurrentPageReloadTestButton");
-        _dungeonReloadTestButton = ResolveRequiredNode<Button>(resolver, "DungeonReloadTestButton", "%DungeonReloadTestButton");
-        _toggleCurrentRedDotButton = ResolveRequiredNode<Button>(resolver, "ToggleCurrentRedDotButton", "%ToggleCurrentRedDotButton");
-        _toggleIdleRedDotButton = ResolveRequiredNode<Button>(resolver, "ToggleIdleRedDotButton", "%ToggleIdleRedDotButton");
-        _clearRedDotLabButton = ResolveRequiredNode<Button>(resolver, "ClearRedDotLabButton", "%ClearRedDotLabButton");
+        _openRuntimeDebugButton = ResolveRequiredNode<Button>(resolver, "OpenRuntimeDebugButton", "%OpenRuntimeDebugButton");
 
         _statusLabel.AutowrapMode = TextServer.AutowrapMode.WordSmart;
-        _metricsTitleLabel.AutowrapMode = TextServer.AutowrapMode.WordSmart;
-        _redDotSummaryLabel.AutowrapMode = TextServer.AutowrapMode.WordSmart;
-        _redDotLabStatusLabel.AutowrapMode = TextServer.AutowrapMode.WordSmart;
-        _metricsEmptyLabel.AutowrapMode = TextServer.AutowrapMode.WordSmart;
-        _hotReloadTestStatusLabel.AutowrapMode = TextServer.AutowrapMode.WordSmart;
-        _metricsItemTemplate.Visible = false;
-
         _nodesBound = true;
-        UpdateHotReloadTestStatus("等待测试触发。");
-        ApplyShellFallback("nodes.resolved.shell_fallback");
-        ApplyMetricsPlaceholder("nodes.resolved.metrics_placeholder");
-        ApplyRedDotPlaceholder();
+        RefreshView("nodes.resolved");
     }
 
     private void EnsureBindingsRegistered(UIContext? context)
@@ -250,43 +167,21 @@ public partial class DungeonPanel : PanelContainer, IUIPageLifecycle
         if (bindings == null)
         {
             ConnectButtonPressed(_switchButton, OnSwitchPressed);
-            ConnectButtonPressed(_currentPageReloadTestButton, OnCurrentPageReloadTestPressed);
-            ConnectButtonPressed(_dungeonReloadTestButton, OnDungeonReloadTestPressed);
-            ConnectButtonPressed(_toggleCurrentRedDotButton, OnToggleCurrentRedDotPressed);
-            ConnectButtonPressed(_toggleIdleRedDotButton, OnToggleIdleRedDotPressed);
-            ConnectButtonPressed(_clearRedDotLabButton, OnClearRedDotLabPressed);
+            ConnectButtonPressed(_openRuntimeDebugButton, OnOpenRuntimeDebugPressed);
             _bindingsRegistered = true;
             return;
         }
 
         bindings.BindCommand("SwitchButton", OnSwitchPressed);
-        bindings.BindCommand("CurrentPageReloadTestButton", OnCurrentPageReloadTestPressed);
-        bindings.BindCommand("DungeonReloadTestButton", OnDungeonReloadTestPressed);
-        bindings.BindCommand("ToggleCurrentRedDotButton", OnToggleCurrentRedDotPressed);
-        bindings.BindCommand("ToggleIdleRedDotButton", OnToggleIdleRedDotPressed);
-        bindings.BindCommand("ClearRedDotLabButton", OnClearRedDotLabPressed);
-        bindings.BindText("RedDotSummaryLabel", GetRedDotSummaryText);
-        bindings.BindVisibility("RedDotLabCurrentBadgeLabel", HasDungeonManualRedDot);
-        bindings.BindText("RedDotLabStatusLabel", GetRedDotLabStatusText);
+        bindings.BindCommand("OpenRuntimeDebugButton", OnOpenRuntimeDebugPressed);
 
-        if (!useLuaBindings && context?.Resolver is UINodeResolver resolver)
+        if (!useLuaBindings)
         {
             bindings.BindText("TitleLabel", GetTitleText);
             bindings.BindVisibility("TitleRedDotBadgeLabel", HasDungeonPageRedDot);
             bindings.BindText("StatusLabel", GetStatusText);
             bindings.BindText("SwitchButton", GetPrimaryActionText);
             bindings.BindInteractable("SwitchButton", IsPrimaryActionEnabled);
-
-            UINodeResolver metricsResolver = resolver.CreateSubtreeResolver("MetricsPanel");
-            _metricsPanelBindings = bindings.CreateComponentScope("metrics-panel", metricsResolver);
-            _metricsPanelBindings.BindVisibility("MetricsPanel", ShouldShowMetricsPanel);
-            _metricsPanelBindings.BindText("MetricsTitleLabel", GetMetricsTitle);
-            _metricsListBinding = _metricsPanelBindings.BindComplexList(
-                "MetricsListContainer",
-                "MetricsItemTemplate",
-                GetMetricItems,
-                new MetricsItemBindingAdapter(),
-                "MetricsEmptyLabel");
         }
 
         _bindingsRegistered = true;
@@ -296,12 +191,7 @@ public partial class DungeonPanel : PanelContainer, IUIPageLifecycle
         ClientLog.Info(
             "DungeonPanel",
             "DungeonPanel Binding 已注册。",
-            CreateBindingRegistrationPayload(context, _metricsPanelBindings, _metricsListBinding, useLuaBindings));
-    }
-
-    private TNode ResolveRequiredNode<TNode>(UINodeResolver? resolver, string key, string fallbackPath) where TNode : Node
-    {
-        return resolver?.GetRequired<TNode>(key) ?? GetNode<TNode>(fallbackPath);
+            CreateBindingRegistrationPayload(context, useLuaBindings));
     }
 
     private static void ConnectButtonPressed(Button button, Action handler)
@@ -311,6 +201,23 @@ public partial class DungeonPanel : PanelContainer, IUIPageLifecycle
         {
             button.Connect(Button.SignalName.Pressed, callable);
         }
+    }
+
+    private TNode ResolveRequiredNode<TNode>(UINodeResolver? resolver, string key, string fallbackPath)
+        where TNode : Node
+    {
+        return resolver?.GetRequired<TNode>(key) ?? GetNode<TNode>(fallbackPath);
+    }
+
+    private ProjectionStore? GetProjectionStore()
+    {
+        return _pageContext?.RuntimeContext.ProjectionStore;
+    }
+
+    private bool TryGetRedDotService(out IRedDotService? redDotService)
+    {
+        redDotService = null;
+        return _pageContext?.Services.TryGet(out redDotService) == true && redDotService != null;
     }
 
     private void RefreshView(string? reason = null)
@@ -328,16 +235,10 @@ public partial class DungeonPanel : PanelContainer, IUIPageLifecycle
     private void ApplyLegacyView()
     {
         _titleLabel.Text = GetTitleText();
+        _titleRedDotBadgeLabel.Visible = HasDungeonPageRedDot();
         _statusLabel.Text = GetStatusText();
         _switchButton.Text = GetPrimaryActionText();
         _switchButton.Disabled = !IsPrimaryActionEnabled();
-        _titleRedDotBadgeLabel.Visible = HasDungeonPageRedDot();
-        _metricsPanel.Visible = ShouldShowMetricsPanel();
-        _metricsTitleLabel.Text = GetMetricsTitle();
-        _redDotSummaryLabel.Text = GetRedDotSummaryText();
-        _redDotLabCurrentBadgeLabel.Visible = HasDungeonManualRedDot();
-        _redDotLabStatusLabel.Text = GetRedDotLabStatusText();
-        RenderLegacyMetricItems();
     }
 
     private string GetTitleText()
@@ -360,60 +261,9 @@ public partial class DungeonPanel : PanelContainer, IUIPageLifecycle
         return _currentShellProjection?.IsPrimaryActionEnabled != false;
     }
 
-    private bool ShouldShowMetricsPanel()
-    {
-        return _currentShellProjection?.ShowMetricsList ?? true;
-    }
-
-    private string GetMetricsTitle()
-    {
-        return _currentMetricsProjection?.Title ?? "运行时指标 / Runtime Metrics";
-    }
-
     private bool HasDungeonPageRedDot()
     {
         return _hasDungeonPageRedDot;
-    }
-
-    private string GetRedDotSummaryText()
-    {
-        return _redDotSummaryText;
-    }
-
-    private bool HasDungeonManualRedDot()
-    {
-        return GetManualRedDotState(DungeonManualRedDotPath);
-    }
-
-    private string GetRedDotLabStatusText()
-    {
-        return
-            $"测试红点 / Manual Lab\n" +
-            $"Dungeon Lab: {(GetManualRedDotState(DungeonManualRedDotPath) ? "On" : "Off")}\n" +
-            $"Idle Lab: {(GetManualRedDotState(IdleManualRedDotPath) ? "On" : "Off")}";
-    }
-
-    private IReadOnlyList<FacetRuntimeMetricItem> GetMetricItems()
-    {
-        return _currentMetricsProjection?.Items ?? Array.Empty<FacetRuntimeMetricItem>();
-    }
-
-    private void ApplyShellFallback(string reason)
-    {
-        _currentShellProjection = null;
-        RefreshView(reason);
-    }
-
-    private void ApplyMetricsPlaceholder(string reason)
-    {
-        _currentMetricsProjection = null;
-        RefreshView(reason);
-    }
-
-    private void ApplyRedDotPlaceholder()
-    {
-        _hasDungeonPageRedDot = false;
-        _redDotSummaryText = "红点树 / 等待数据";
     }
 
     private void SyncLuaState()
@@ -427,44 +277,24 @@ public partial class DungeonPanel : PanelContainer, IUIPageLifecycle
         _pageContext.Lua.SetStateString(LuaStatusStateKey, GetStatusText());
         _pageContext.Lua.SetStateString(LuaPrimaryActionLabelStateKey, GetPrimaryActionText());
         _pageContext.Lua.SetStateBoolean(LuaPrimaryActionEnabledStateKey, IsPrimaryActionEnabled());
-        _pageContext.Lua.SetStateBoolean(LuaShowMetricsPanelStateKey, ShouldShowMetricsPanel());
-        _pageContext.Lua.SetStateString(LuaMetricsTitleStateKey, GetMetricsTitle());
-        _pageContext.Lua.SetStructuredListState(LuaMetricsItemsStateKey, CreateLuaMetricItems());
-    }
-
-    private IReadOnlyList<LuaBindingScopeBridge.LuaStructuredListItem> CreateLuaMetricItems()
-    {
-        IReadOnlyList<FacetRuntimeMetricItem> items = GetMetricItems();
-        LuaBindingScopeBridge.LuaStructuredListItem[] snapshot = new LuaBindingScopeBridge.LuaStructuredListItem[items.Count];
-
-        for (int index = 0; index < items.Count; index++)
-        {
-            FacetRuntimeMetricItem item = items[index];
-            snapshot[index] = new LuaBindingScopeBridge.LuaStructuredListItem(
-                item.Key,
-                item.Label,
-                item.Value,
-                $"Key: {item.Key} / #{index + 1}");
-        }
-
-        return snapshot;
     }
 
     private void OnClientShellChanged(ProjectionChange change)
     {
-        if (change.CurrentValue is ClientShellProjection projection)
+        if (change.CurrentValue is not ClientShellProjection projection)
         {
-            ApplyClientShellProjection(projection);
-            ClientLog.Info(
-                "DungeonPanel",
-                "DungeonPanel 收到 ClientShellProjection 变更。",
-                new Dictionary<string, object?>
-                {
-                    ["mode"] = projection.Mode,
-                    ["showMetricsList"] = projection.ShowMetricsList,
-                    ["primaryActionEnabled"] = projection.IsPrimaryActionEnabled,
-                });
+            return;
         }
+
+        ApplyClientShellProjection(projection);
+        ClientLog.Info(
+            "DungeonPanel",
+            "DungeonPanel 收到 ClientShellProjection 变更。",
+            new Dictionary<string, object?>
+            {
+                ["mode"] = projection.Mode,
+                ["primaryActionEnabled"] = projection.IsPrimaryActionEnabled,
+            });
     }
 
     private void ApplyClientShellProjection(ClientShellProjection projection)
@@ -473,379 +303,99 @@ public partial class DungeonPanel : PanelContainer, IUIPageLifecycle
         RefreshView("projection.client_shell");
     }
 
-    private void LogInitialClientShellProjection(ClientShellProjection projection)
-    {
-        ClientLog.Info(
-            "DungeonPanel",
-            "DungeonPanel 已应用初始 ClientShellProjection。",
-            new Dictionary<string, object?>
-            {
-                ["mode"] = projection.Mode,
-                ["showMetricsList"] = projection.ShowMetricsList,
-                ["primaryActionEnabled"] = projection.IsPrimaryActionEnabled,
-            });
-    }
-
-    private void OnRuntimeMetricsChanged(ProjectionChange change)
-    {
-        if (change.Kind == ProjectionChangeKind.Removed)
-        {
-            ApplyMetricsPlaceholder("projection.runtime_metrics.removed");
-            return;
-        }
-
-        if (change.CurrentValue is FacetRuntimeMetricListProjection projection)
-        {
-            ApplyRuntimeMetricsProjection(projection);
-            ClientLog.Info(
-                "DungeonPanel",
-                "DungeonPanel 收到 RuntimeMetricsProjection 变更。",
-                new Dictionary<string, object?>
-                {
-                    ["itemCount"] = projection.Items.Count,
-                    ["updatedAtUtc"] = projection.UpdatedAtUtc.ToString("O"),
-                });
-        }
-    }
-
-    private void ApplyRuntimeMetricsProjection(FacetRuntimeMetricListProjection projection)
-    {
-        _currentMetricsProjection = projection;
-        RefreshView("projection.runtime_metrics");
-    }
-
     private void BindRedDotProjection()
     {
         _redDotSubscription?.Dispose();
         _redDotSubscription = null;
 
-        if (FacetHost.Instance?.IsInitialized != true ||
-            !FacetHost.Instance.Services.TryGet(out IRedDotService? redDotService) ||
-            redDotService == null)
+        if (!TryGetRedDotService(out IRedDotService? redDotService))
         {
-            ApplyRedDotPlaceholder();
+            _hasDungeonPageRedDot = false;
             RefreshView("red_dot.pending");
             return;
         }
 
-        _redDotSubscription = redDotService.Subscribe(DungeonPageRedDotPath, OnRedDotChanged);
-        ApplyRedDotSnapshot(redDotService, "red_dot.initial");
-
-        ClientLog.Info(
-            "DungeonPanel",
-            "DungeonPanel 已挂载红点路径。",
-            new Dictionary<string, object?>
-            {
-                ["pagePath"] = DungeonPageRedDotPath,
-                ["detailPath"] = DungeonMetricsRedDotPath,
-            });
+        IRedDotService resolvedRedDotService = redDotService!;
+        _redDotSubscription = resolvedRedDotService.Subscribe(DungeonPageRedDotPath, OnRedDotChanged);
+        ApplyRedDotSnapshot(resolvedRedDotService, "red_dot.initial");
     }
 
     private void OnRedDotChanged(RedDotChange change)
     {
-        if (FacetHost.Instance?.Services.TryGet(out IRedDotService? redDotService) != true || redDotService == null)
+        if (!TryGetRedDotService(out IRedDotService? redDotService))
         {
             return;
         }
 
-        ApplyRedDotSnapshot(redDotService, $"red_dot.changed:{change.Source}");
-
-        ClientLog.Info(
-            "DungeonPanel",
-            "DungeonPanel 收到红点路径变更。",
-            new Dictionary<string, object?>
-            {
-                ["path"] = change.Path,
-                ["source"] = change.Source,
-                ["currentHasRedDot"] = change.Current?.HasRedDot ?? false,
-                ["currentActiveChildCount"] = change.Current?.ActiveChildCount ?? 0,
-            });
+        ApplyRedDotSnapshot(redDotService!, $"red_dot.changed:{change.Source}");
     }
 
     private void ApplyRedDotSnapshot(IRedDotService redDotService, string reason)
     {
-        bool hasPageSnapshot = redDotService.TryGetSnapshot(DungeonPageRedDotPath, out RedDotNodeSnapshot pageSnapshot);
-        bool hasMetricsSnapshot = redDotService.TryGetSnapshot(DungeonMetricsRedDotPath, out RedDotNodeSnapshot metricsSnapshot);
-
-        _hasDungeonPageRedDot = hasPageSnapshot && pageSnapshot.HasRedDot;
-        _redDotSummaryText =
-            $"红点树 / Dungeon\n" +
-            $"Page: {FormatRedDotSnapshot(hasPageSnapshot ? pageSnapshot : null)}\n" +
-            $"Metrics: {FormatRedDotSnapshot(hasMetricsSnapshot ? metricsSnapshot : null)}";
+        _hasDungeonPageRedDot =
+            redDotService.TryGetSnapshot(DungeonPageRedDotPath, out RedDotNodeSnapshot snapshot) &&
+            snapshot.HasRedDot;
         RefreshView(reason);
-    }
-
-    private void LogInitialRuntimeMetricsProjection(FacetRuntimeMetricListProjection projection)
-    {
-        ClientLog.Info(
-            "DungeonPanel",
-            "DungeonPanel 已应用初始 RuntimeMetricsProjection。",
-            new Dictionary<string, object?>
-            {
-                ["itemCount"] = projection.Items.Count,
-                ["updatedAtUtc"] = projection.UpdatedAtUtc.ToString("O"),
-            });
     }
 
     private void ReleaseProjectionSubscriptions()
     {
         _clientShellSubscription?.Dispose();
         _clientShellSubscription = null;
-        _metricsSubscription?.Dispose();
-        _metricsSubscription = null;
         _redDotSubscription?.Dispose();
         _redDotSubscription = null;
     }
 
-    private void RenderLegacyMetricItems()
+    private bool ShouldApplyInitialClientShellProjection(ClientShellProjection projection)
     {
-        IReadOnlyList<FacetRuntimeMetricItem> items = GetMetricItems();
-
-        foreach (Node child in _metricsListContainer.GetChildren())
-        {
-            if (!ReferenceEquals(child, _metricsItemTemplate))
-            {
-                child.QueueFree();
-            }
-        }
-
-        _metricsItemTemplate.Visible = false;
-        _metricsListContainer.Visible = items.Count > 0;
-        _metricsEmptyLabel.Visible = items.Count == 0;
-
-        for (int index = 0; index < items.Count; index++)
-        {
-            if (_metricsItemTemplate.Duplicate() is not Control itemRoot)
-            {
-                continue;
-            }
-
-            itemRoot.Name = $"LegacyMetricItem_{index}";
-            itemRoot.Visible = true;
-            _metricsListContainer.AddChild(itemRoot);
-
-            itemRoot.GetNode<Label>("MetricsItemMargin/MetricsItemRow/MetricLabel").Text = items[index].Label;
-            itemRoot.GetNode<Label>("MetricsItemMargin/MetricsItemRow/MetricValueLabel").Text = items[index].Value;
-            itemRoot.GetNode<Label>("MetricsItemMargin/MetricsItemRow/MetricStatusLabel").Text = items[index].Key;
-        }
+        return string.Equals(projection.Mode, "Dungeon", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static Dictionary<string, object?> CreateBindingRegistrationPayload(
-        UIContext? context,
-        IUIComponentBindingScope? metricsPanelBindings,
-        IUIComplexListBinding<FacetRuntimeMetricItem>? metricsListBinding,
-        bool useLuaBindings)
+    private static Dictionary<string, object?> CreateBindingRegistrationPayload(UIContext? context, bool useLuaBindings)
     {
-        if (context == null)
-        {
-            return new Dictionary<string, object?>
-            {
-                ["pageId"] = null,
-                ["hasResolver"] = false,
-                ["useLuaBindings"] = useLuaBindings,
-            };
-        }
-
-        Dictionary<string, object?> payload = CreateLifecyclePayload(context, metricsPanelBindings, metricsListBinding);
-        payload["bindingScopeId"] = context.Bindings?.ScopeId;
-        payload["hasResolver"] = context.Resolver != null;
+        Dictionary<string, object?> payload = CreateLifecyclePayload(context);
+        payload["hasResolver"] = context?.Resolver != null;
         payload["useLuaBindings"] = useLuaBindings;
         return payload;
     }
 
-    private static Dictionary<string, object?> CreateLifecyclePayload(
-        UIContext context,
-        IUIComponentBindingScope? metricsPanelBindings,
-        IUIComplexListBinding<FacetRuntimeMetricItem>? metricsListBinding)
+    private static Dictionary<string, object?> CreateLifecyclePayload(UIContext? context)
     {
-        UIBindingDiagnosticsSnapshot? bindingDiagnostics = context.Bindings?.GetDiagnosticsSnapshot();
-        UIBindingDiagnosticsSnapshot? metricsPanelDiagnostics = metricsPanelBindings?.GetDiagnosticsSnapshot();
-        UIBindingDiagnosticsSnapshot? luaRootDiagnostics = context.Lua?.GetLuaRootBindingDiagnostics();
-        UIBindingDiagnosticsSnapshot? luaMetricsPanelDiagnostics = context.Lua?.GetLuaComponentBindingDiagnostics("metrics-panel", "MetricsPanel");
+        UIBindingDiagnosticsSnapshot? bindingDiagnostics = context?.Bindings?.GetDiagnosticsSnapshot();
 
-        Dictionary<string, object?> payload = new()
+        return new Dictionary<string, object?>
         {
-            ["pageId"] = context.PageId,
-            ["layer"] = context.Layer,
-            ["argumentCount"] = context.Arguments.Count,
+            ["pageId"] = context?.PageId,
+            ["layer"] = context?.Layer,
+            ["argumentCount"] = context?.Arguments.Count ?? 0,
             ["bindingCount"] = bindingDiagnostics?.BindingCount ?? 0,
             ["bindingRefreshCount"] = bindingDiagnostics?.RefreshCount ?? 0,
             ["bindingLastReason"] = bindingDiagnostics?.LastRefreshReason,
-            ["csharpMetricsPanelScopeId"] = metricsPanelDiagnostics?.ScopeId,
-            ["csharpMetricsPanelBindingCount"] = metricsPanelDiagnostics?.BindingCount ?? 0,
-            ["csharpMetricsPanelRefreshCount"] = metricsPanelDiagnostics?.RefreshCount ?? 0,
-            ["csharpMetricsPanelLastReason"] = metricsPanelDiagnostics?.LastRefreshReason,
-            ["csharpMetricsListItemCount"] = metricsListBinding?.ItemCount ?? 0,
-            ["luaMetricsListStateCount"] = context.Lua?.GetStructuredListStateCount(LuaMetricsItemsStateKey) ?? 0,
             ["redDotPagePath"] = DungeonPageRedDotPath,
-            ["redDotMetricsPath"] = DungeonMetricsRedDotPath,
-            ["redDotActive"] = context.Lua?.GetRedDot(DungeonPageRedDotPath, false) ?? false,
+            ["redDotActive"] = context?.Lua?.GetRedDot(DungeonPageRedDotPath, false) ?? false,
         };
-
-        AppendScopeDiagnostics(payload, "luaRoot", luaRootDiagnostics);
-        AppendScopeDiagnostics(payload, "luaMetricsPanel", luaMetricsPanelDiagnostics);
-        return payload;
-    }
-
-    private static void AppendScopeDiagnostics(
-        IDictionary<string, object?> payload,
-        string prefix,
-        UIBindingDiagnosticsSnapshot? diagnostics)
-    {
-        payload[$"{prefix}ScopeId"] = diagnostics?.ScopeId;
-        payload[$"{prefix}BindingCount"] = diagnostics?.BindingCount ?? 0;
-        payload[$"{prefix}RefreshCount"] = diagnostics?.RefreshCount ?? 0;
-        payload[$"{prefix}LastReason"] = diagnostics?.LastRefreshReason;
-    }
-
-    private bool ShouldApplyInitialClientShellProjection(ClientShellProjection projection)
-    {
-        return string.Equals(projection.Mode, GetExpectedShellMode(), StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static string GetExpectedShellMode()
-    {
-        return "Dungeon";
     }
 
     private void OnSwitchPressed()
     {
-        EmitSignal("SwitchToIdleRequested");
+        EmitSignal(SignalName.SwitchToIdleRequested);
     }
 
-    private void OnCurrentPageReloadTestPressed()
+    private void OnOpenRuntimeDebugPressed()
     {
-        bool accepted = FacetHost.Instance?.TryRunLuaHotReloadRoundTripTest(reason: "dungeon.panel.button.current") == true;
-        HandleHotReloadTestRequest(accepted, "当前页");
-    }
+        IUIPageNavigator? navigator = _pageContext?.Services.TryGet(out IUIPageNavigator? resolvedNavigator) == true
+            ? resolvedNavigator
+            : null;
 
-    private void OnDungeonReloadTestPressed()
-    {
-        bool accepted = FacetHost.Instance?.TryRunDungeonLuaHotReloadRoundTripTest(reason: "dungeon.panel.button.dungeon") == true;
-        HandleHotReloadTestRequest(accepted, "地下城页");
-    }
-
-    private void HandleHotReloadTestRequest(bool accepted, string targetName)
-    {
-        string status = accepted
-            ? $"{FormatStatusTimestamp()} 已触发 {targetName} Lua 热重载测试，请查看结构化日志。"
-            : $"{FormatStatusTimestamp()} {targetName} Lua 热重载测试未启动，请检查运行时日志。";
-        UpdateHotReloadTestStatus(status);
-
+        bool opened = FacetRuntimeDebugService.TryOpenRuntimeDebug(navigator, _pageContext?.PageId, out string statusMessage);
         ClientLog.Info(
             "DungeonPanel",
-            "DungeonPanel 请求 Lua 热重载测试。",
+            "DungeonPanel 请求打开 Runtime Debug。",
             new Dictionary<string, object?>
             {
-                ["target"] = targetName,
-                ["accepted"] = accepted,
+                ["opened"] = opened,
                 ["currentPageId"] = _pageContext?.PageId,
+                ["statusMessage"] = statusMessage,
             });
-    }
-
-    private void UpdateHotReloadTestStatus(string text)
-    {
-        if (_hotReloadTestStatusLabel == null)
-        {
-            return;
-        }
-
-        _hotReloadTestStatusLabel.Text = text;
-    }
-
-    private static string FormatStatusTimestamp()
-    {
-        return DateTime.Now.ToString("HH:mm:ss");
-    }
-
-    private void OnToggleCurrentRedDotPressed()
-    {
-        ToggleManualRedDot(DungeonManualRedDotPath, "当前页");
-    }
-
-    private void OnToggleIdleRedDotPressed()
-    {
-        ToggleManualRedDot(IdleManualRedDotPath, "挂机页");
-    }
-
-    private void OnClearRedDotLabPressed()
-    {
-        if (FacetHost.Instance?.Services.TryGet(out ManualRedDotProvider? manualProvider) != true || manualProvider == null)
-        {
-            UpdateHotReloadTestStatus($"{FormatStatusTimestamp()} 红点测试 Provider 未就绪。");
-            return;
-        }
-
-        manualProvider.ClearAll();
-        RefreshView("red_dot_lab.clear");
-
-        ClientLog.Info(
-            "DungeonPanel",
-            "DungeonPanel 已清空红点测试状态。",
-            new Dictionary<string, object?>
-            {
-                ["pageId"] = _pageContext?.PageId,
-                ["dungeonPath"] = DungeonManualRedDotPath,
-                ["idlePath"] = IdleManualRedDotPath,
-            });
-    }
-
-    private void ToggleManualRedDot(string path, string targetName)
-    {
-        if (FacetHost.Instance?.Services.TryGet(out ManualRedDotProvider? manualProvider) != true || manualProvider == null)
-        {
-            UpdateHotReloadTestStatus($"{FormatStatusTimestamp()} 红点测试 Provider 未就绪。");
-            return;
-        }
-
-        manualProvider.Toggle(path);
-        RefreshView($"red_dot_lab.toggle:{path}");
-
-        ClientLog.Info(
-            "DungeonPanel",
-            "DungeonPanel 已切换红点测试状态。",
-            new Dictionary<string, object?>
-            {
-                ["pageId"] = _pageContext?.PageId,
-                ["target"] = targetName,
-                ["path"] = path,
-                ["active"] = manualProvider.IsActive(path),
-            });
-    }
-
-    private bool GetManualRedDotState(string path)
-    {
-        return FacetHost.Instance?.Services.TryGet(out ManualRedDotProvider? manualProvider) == true &&
-               manualProvider != null &&
-               manualProvider.IsActive(path);
-    }
-
-    private static string FormatRedDotSnapshot(RedDotNodeSnapshot? snapshot)
-    {
-        if (snapshot == null)
-        {
-            return "未注册";
-        }
-
-        return $"{snapshot.Path} => {(snapshot.HasRedDot ? "On" : "Off")} (self={(snapshot.SelfHasRedDot ? "On" : "Off")}, children={snapshot.ActiveChildCount}/{snapshot.DirectChildCount}, sources={snapshot.SourceCount})";
-    }
-
-    /// <summary>
-    /// 指标项模板适配器。
-    /// 每个列表项都会获得独立组件作用域，用于绑定标签、数值和诊断标识。
-    /// </summary>
-    private sealed class MetricsItemBindingAdapter : IUIComplexListAdapter<FacetRuntimeMetricItem>
-    {
-        public string GetItemKey(FacetRuntimeMetricItem item, int index)
-        {
-            return item.Key;
-        }
-
-        public void BindItem(IUIComponentBindingScope itemScope, FacetRuntimeMetricItem item, int index)
-        {
-            itemScope.BindText("MetricLabel", () => item.Label);
-            itemScope.BindText("MetricValueLabel", () => item.Value);
-            itemScope.BindText("MetricStatusLabel", () => $"Key: {item.Key} / #{index + 1}");
-        }
     }
 }
