@@ -49,14 +49,14 @@ jobs:
     - name: Summarize prepare
       shell: pwsh
       run: |
-        $summary = @"
-        ## Godot Release Artifact / Prepare
-
-        - Version: `${{ steps.metadata.outputs.version }}`
-        - Package: `${{ steps.metadata.outputs.package_name }}`
-        - Scope: `artifact only`
-        "@
-
+        $summaryLines = @(
+          '## Godot Release Artifact / Prepare',
+          '',
+          '- Version: `${{ steps.metadata.outputs.version }}`',
+          '- Package: `${{ steps.metadata.outputs.package_name }}`',
+          '- Scope: `artifact only`'
+        )
+        $summary = $summaryLines -join [Environment]::NewLine
         Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value $summary
 
   export-package:
@@ -161,16 +161,16 @@ jobs:
       if: always()
       shell: pwsh
       run: |
-        $summary = @"
-        ## Godot Release Artifact / Export and Package
-
-        - Status: `${{ job.status }}`
-        - Version: `${{ needs.prepare.outputs.version }}`
-        - Publish artifact: `${{ needs.prepare.outputs.artifact_export_name }}`
-        - Package artifact: `${{ needs.prepare.outputs.artifact_package_name }}`
-        - Package file: `${{ needs.prepare.outputs.package_name }}`
-        - Smoke console log: `${{ steps.smoke.outputs.console_log }}`
-        - Smoke structured log: `${{ steps.smoke.outputs.structured_log }}`
-        "@
-
+        $summaryLines = @(
+          '## Godot Release Artifact / Export and Package',
+          '',
+          ('- Status: `{0}`' -f '${{ job.status }}'),
+          '- Version: `${{ needs.prepare.outputs.version }}`',
+          '- Publish artifact: `${{ needs.prepare.outputs.artifact_export_name }}`',
+          '- Package artifact: `${{ needs.prepare.outputs.artifact_package_name }}`',
+          '- Package file: `${{ needs.prepare.outputs.package_name }}`',
+          '- Smoke console log: `${{ steps.smoke.outputs.console_log }}`',
+          '- Smoke structured log: `${{ steps.smoke.outputs.structured_log }}`'
+        )
+        $summary = $summaryLines -join [Environment]::NewLine
         Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value $summary

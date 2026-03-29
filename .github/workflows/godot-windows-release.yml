@@ -47,14 +47,14 @@ jobs:
     - name: Summarize prepare
       shell: pwsh
       run: |
-        $summary = @"
-        ## Godot Windows x64 Release / Prepare
-
-        - Version: `${{ steps.metadata.outputs.version }}`
-        - Package: `${{ steps.metadata.outputs.package_name }}`
-        - Release title: `${{ steps.metadata.outputs.release_title }}`
-        "@
-
+        $summaryLines = @(
+          '## Godot Windows x64 Release / Prepare',
+          '',
+          '- Version: `${{ steps.metadata.outputs.version }}`',
+          '- Package: `${{ steps.metadata.outputs.package_name }}`',
+          '- Release title: `${{ steps.metadata.outputs.release_title }}`'
+        )
+        $summary = $summaryLines -join [Environment]::NewLine
         Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value $summary
 
   export-package:
@@ -159,17 +159,17 @@ jobs:
       if: always()
       shell: pwsh
       run: |
-        $summary = @"
-        ## Godot Windows x64 Release / Export and Package
-
-        - Status: `${{ job.status }}`
-        - Version: `${{ needs.prepare.outputs.version }}`
-        - Publish artifact: `${{ needs.prepare.outputs.artifact_export_name }}`
-        - Package artifact: `${{ needs.prepare.outputs.artifact_package_name }}`
-        - Smoke console log: `${{ steps.smoke.outputs.console_log }}`
-        - Smoke structured log: `${{ steps.smoke.outputs.structured_log }}`
-        "@
-
+        $summaryLines = @(
+          '## Godot Windows x64 Release / Export and Package',
+          '',
+          ('- Status: `{0}`' -f '${{ job.status }}'),
+          '- Version: `${{ needs.prepare.outputs.version }}`',
+          '- Publish artifact: `${{ needs.prepare.outputs.artifact_export_name }}`',
+          '- Package artifact: `${{ needs.prepare.outputs.artifact_package_name }}`',
+          '- Smoke console log: `${{ steps.smoke.outputs.console_log }}`',
+          '- Smoke structured log: `${{ steps.smoke.outputs.structured_log }}`'
+        )
+        $summary = $summaryLines -join [Environment]::NewLine
         Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value $summary
 
   publish-release:
@@ -216,13 +216,13 @@ jobs:
       if: always()
       shell: pwsh
       run: |
-        $summary = @"
-        ## Godot Windows x64 Release / Publish
-
-        - Status: `${{ job.status }}`
-        - Version: `${{ needs.prepare.outputs.version }}`
-        - Release title: `${{ needs.prepare.outputs.release_title }}`
-        - Asset: `${{ needs.prepare.outputs.package_name }}`
-        "@
-
+        $summaryLines = @(
+          '## Godot Windows x64 Release / Publish',
+          '',
+          ('- Status: `{0}`' -f '${{ job.status }}'),
+          '- Version: `${{ needs.prepare.outputs.version }}`',
+          '- Release title: `${{ needs.prepare.outputs.release_title }}`',
+          '- Asset: `${{ needs.prepare.outputs.package_name }}`'
+        )
+        $summary = $summaryLines -join [Environment]::NewLine
         Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value $summary

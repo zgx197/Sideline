@@ -189,11 +189,11 @@ finally
 }
 
 [pscustomobject]@{
-    PublishDir         = $resolvedPublishDir
-    Executable         = $executablePath
-    ConsoleLogPath     = $consoleLogPath
-    StructuredLogPath  = $structuredLogPath
-    ExpectedPageId     = $ExpectedPageId
-    ExpectedLuaScript  = $ExpectedLuaScript
-    SmokeTestPassed    = $smokePassed
+    PublishDir        = $resolvedPublishDir
+    Executable        = $executablePath
+    ConsoleLogPath    = $consoleLogPath
+    StructuredLogPath = $structuredLogPath
+    ExpectedPageId    = $ExpectedPageId
+    ExpectedLuaScript = $ExpectedLuaScript
+    SmokeTestPassed   = $smokePassed
 }
