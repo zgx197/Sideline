@@ -106,10 +106,15 @@ jobs:
         cache-dependency-path: |
           godot/Sideline.sln
           godot/scripts/lattice/Lattice.csproj
+          godot/scripts/lattice/Tools/SwizzleGenerator/SwizzleGenerator.csproj
+          godot/scripts/lattice/Tools/Lattice.Analyzers/Lattice.Analyzers.csproj
           NuGet.Config
         script: |
+          dotnet restore godot/scripts/lattice/Tools/SwizzleGenerator/SwizzleGenerator.csproj --configfile NuGet.Config
+          dotnet restore godot/scripts/lattice/Tools/Lattice.Analyzers/Lattice.Analyzers.csproj --configfile NuGet.Config
           dotnet restore godot/scripts/lattice/Lattice.csproj --configfile NuGet.Config
-          dotnet format godot/scripts/lattice/Lattice.csproj --verify-no-changes --verbosity detailed --no-restore
+          dotnet format whitespace godot/scripts/lattice/Lattice.csproj --verify-no-changes --verbosity detailed --no-restore
+          dotnet format style godot/scripts/lattice/Lattice.csproj --verify-no-changes --verbosity detailed --no-restore
 
     - name: Summarize format check
       if: always()
@@ -119,7 +124,7 @@ jobs:
         $summaryLines = @(
           '## Code Format Check',
           '',
-          "- Status: `$status`",
+          ('- Status: `{0}`' -f $status),
           '- Triggered by scope: `needs_format=${{ needs.change-classification.outputs.needs_format }}`',
           '- Cache: `enabled`',
           '- Target: `godot/scripts/lattice/Lattice.csproj`'
@@ -157,8 +162,16 @@ jobs:
           godot/Sideline.csproj
           godot/scripts/lattice/Lattice.csproj
           godot/scripts/lattice/Tests/Lattice.Tests.csproj
+          godot/scripts/lattice/Tools/SwizzleGenerator/SwizzleGenerator.csproj
+          godot/scripts/lattice/Tools/Lattice.Analyzers/Lattice.Analyzers.csproj
           NuGet.Config
         script: |
+          if ('${{ needs.change-classification.outputs.needs_sideline }}' -eq 'true' -or '${{ needs.change-classification.outputs.needs_lattice }}' -eq 'true')
+          {
+              dotnet restore godot/scripts/lattice/Tools/SwizzleGenerator/SwizzleGenerator.csproj --configfile NuGet.Config
+              dotnet restore godot/scripts/lattice/Tools/Lattice.Analyzers/Lattice.Analyzers.csproj --configfile NuGet.Config
+          }
+
           if ('${{ needs.change-classification.outputs.needs_sideline }}' -eq 'true')
           {
               dotnet restore godot/Sideline.csproj --configfile NuGet.Config
@@ -180,7 +193,7 @@ jobs:
         $summaryLines = @(
           '## Build & Test (windows-latest, ${{ matrix.configuration }})',
           '',
-          "- Status: `$status`",
+          ('- Status: `{0}`' -f $status),
           '- docs_only: `${{ needs.change-classification.outputs.docs_only }}`',
           '- needs_sideline: `${{ needs.change-classification.outputs.needs_sideline }}`',
           '- needs_lattice: `${{ needs.change-classification.outputs.needs_lattice }}`',
