@@ -210,6 +210,149 @@ Release asset 是正式挂在 GitHub Release 页面上的下载文件。
 
 ---
 
+## 当前仓库现状
+
+基于当前仓库状态，先记录两个已经确认的事实：
+
+- 仓库中目前**没有**可用的 `export_presets.cfg`，因此还不具备直接执行 `Windows Desktop` 导出的前置条件。
+- 仓库中目前**没有**现成的 Godot 发布脚本，`tools/release/` 只有目录骨架和职责预留。
+
+这意味着当前阶段不能直接进入“写完整 release workflow”，而应该先把导出预设、导出环境和打包约束补齐。
+
+---
+
+## 实现计划
+
+下面这套计划按“先补前置，再落地实现”的顺序推进。它的目标不是一次性把所有发布能力写完，而是确保每一步完成后都能验证结果。
+
+### 阶段 1：补齐 Windows x64 导出前置
+
+目标：
+
+- 让仓库具备最小可用的 Godot Windows x64 导出条件。
+
+任务：
+
+1. 在 `godot/` 目录下建立并提交 `export_presets.cfg`。
+2. 新增一个明确面向 `Windows Desktop` 的导出预设，约束为 `x86_64`。
+3. 约定第一版只导出 release 包，不同时兼容多平台或多配置。
+4. 本地验证导出预设可被 Godot 识别。
+
+完成标准：
+
+- 仓库中存在可追踪的 `godot/export_presets.cfg`。
+- 文档中明确写出第一版只支持 `Windows x64`。
+- 本地可用 Godot 编辑器读取该预设。
+
+### 阶段 2：确定 CI 中的 Godot 导出环境方案
+
+目标：
+
+- 选定 GitHub Actions 中准备 Godot 导出环境的唯一方案，避免后续 workflow 同时维护多种路径。
+
+当前可选方案建议只保留三类进行比较：
+
+1. 在 workflow 中下载并解压指定版本的 Godot Mono / .NET 发行包与 export templates。
+2. 使用预先准备好的自托管 runner，本机已安装 Godot Mono 与导出模板。
+3. 在仓库或缓存中维护固定版本的 Godot 工具链，再由 workflow 复用。
+
+当前推荐优先评估方案 1，原因是：
+
+- 最容易做到版本显式、流程可复现；
+- 不依赖单台固定机器；
+- 比仓库内直接提交大体积二进制更容易维护。
+
+但在真正决定前，需要确认两件事：
+
+- 你们后续是否接受 workflow 在发布时下载 Godot 工具链；
+- Godot Mono / .NET 导出在 GitHub Hosted Windows Runner 上的可行性和稳定性。
+
+完成标准：
+
+- 文档中明确选定一种环境准备方案。
+- 对应方案的目录入口和脚本位置已经约定好。
+- 不再同时保留多套互斥方案。
+
+### 阶段 3：实现本地发布脚本
+
+目标：
+
+- 先在本地或手动命令层面跑通 `Windows x64 -> 打包 zip`，再把同样逻辑搬进 GitHub Actions。
+
+建议放置位置：
+
+- `tools/release/windows-x64/`
+- `tools/release/shared/`
+
+任务：
+
+1. 编写版本号解析与命名脚本。
+2. 编写 Godot Windows x64 导出脚本。
+3. 编写导出结果完整性检查脚本。
+4. 编写 zip 打包脚本，输出 `Sideline-vX.Y.Z-win-x64.zip`。
+5. 约定本地产物输出目录，例如 `artifacts/release/windows-x64/`。
+
+完成标准：
+
+- 不依赖 GitHub Actions，也能在本地手动执行完整导出与打包。
+- 最终能产出一个命名规范的 zip 文件。
+- 导出失败、缺文件、命名错误时能清晰报错。
+
+### 阶段 4：实现 Tag 触发的 GitHub Actions Workflow
+
+目标：
+
+- 在本地脚本稳定后，再把流程迁移到 GitHub Actions。
+
+任务：
+
+1. 新增独立的 release workflow，不接入当前 CI 验证链路。
+2. 使用 `push tags: [ 'v*' ]` 作为触发条件。
+3. 先执行 `prepare`，再执行 `export-win-x64`、`package`、`release`。
+4. 先上传 artifact，再创建或更新 GitHub Release。
+5. 只上传一个正式 asset：`Sideline-vX.Y.Z-win-x64.zip`。
+
+完成标准：
+
+- 推送 `v*` tag 后，workflow 能被稳定触发。
+- Release 页面可下载 Windows x64 zip。
+- 发布失败时仍能从 artifact 获取中间产物。
+
+### 阶段 5：补齐发布验证与维护文档
+
+目标：
+
+- 不让 release workflow 成为只能“看代码猜行为”的黑箱。
+
+任务：
+
+1. 补一份发布操作说明，说明如何打 tag、如何回滚、如何重发。
+2. 补一份导出产物检查清单，至少覆盖启动、窗口模式、关键资源和运行时文件。
+3. 记录 release workflow 使用到的环境变量、密钥和 GitHub 权限。
+
+完成标准：
+
+- 新人只看文档也能理解发布入口和产物结构。
+- 发布异常时有明确排障入口。
+
+---
+
+## 当前建议的推进顺序
+
+结合当前仓库现状，下一步建议按下面顺序推进：
+
+1. 先创建 `godot/export_presets.cfg`，补齐 Windows Desktop 导出预设。
+2. 明确 GitHub Actions 中 Godot 导出环境的准备方案。
+3. 先写本地导出与打包脚本，再迁移到 workflow。
+4. 最后再落 GitHub Release 自动发布。
+
+这个顺序的核心原因是：
+
+- 现在最大的阻塞点不是 GitHub Release，而是“仓库还不能稳定导出 Windows x64 包”；
+- 如果导出预设和导出环境没有先定下来，后面的 workflow 只是把不确定性搬进 CI。
+
+---
+
 ## 当前结论
 
 当前已经明确的结论是：
@@ -221,5 +364,5 @@ Release asset 是正式挂在 GitHub Release 页面上的下载文件。
 下一步如果继续推进，应该优先讨论：
 
 1. `export_presets.cfg` 的组织方式
-2. Windows x64 导出命令与依赖准备
-3. GitHub Release 的创建策略
+2. GitHub Actions 中 Godot 导出环境的准备方式
+3. Windows x64 本地导出与打包脚本的组织方式

@@ -1,0 +1,8 @@
+<Project>
+  <PropertyGroup>
+    <!-- Sideline 主工程在 restore graph 的并行项目遍历阶段会偶发出现无错误但返回失败的情况。
+         对顶层 Godot 工程默认关闭并行项目构建，保证编辑器触发的 Debug 重建稳定；
+         外部命令仍可显式覆盖该属性。 -->
+    <BuildInParallel Condition="'$(MSBuildProjectName)' == 'Sideline' and '$(BuildInParallel)' == ''">false</BuildInParallel>
+  </PropertyGroup>
+</Project>
