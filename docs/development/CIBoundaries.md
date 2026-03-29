@@ -1,6 +1,6 @@
-# CI 边界约束
+﻿# CI 边界约束
 
-> 本文档用于把 Sideline 当前 CI 中已经确认的职责边界写成明确约束，避免 benchmark、report、release 再次混回同一条流程。它不是未来方案草图，而是当前仓库应遵守的边界定义。
+> 本文档用于把 Sideline 当前 CI 中已经确认的职责边界写成明确约束，避免 benchmark、report、release 再次混回同一条流程。它描述的是当前仓库应遵守的边界，而不是未来草图。
 
 ---
 
@@ -12,9 +12,9 @@
 - `Main Validation` 只负责合入后的主干质量验证。
 - `Full Benchmark` 只负责性能基准测试和结果归档。
 - 报告展示属于站点内容层，不属于 benchmark 执行层。
-- Godot 自动发布流程暂缓实现，转入单独议题讨论，不纳入当前 CI 优化收口范围。
+- Godot 自动发布已经以**独立 release workflow** 的方式落地，不进入 PR Gate、Main Validation 或 Benchmark。
 
-这意味着：当前 CI 优化阶段已经完成了“职责拆分”，但没有承诺“立即上线发布流水线”。
+这意味着：当前 CI 已经形成“验证层、分析层、发布层”三种明确语义，而不是继续把所有职责塞进同一条 workflow。
 
 ---
 
@@ -38,8 +38,6 @@
 - 导出 Godot 构建。
 - 作为 PR required checks 的一部分参与门禁。
 
-如果后续需要报告上线或站点发布，那应该由单独的 report / pages 流程接管，而不是继续堆到 `benchmark-full.yml` 里。
-
 ---
 
 ## Report 边界
@@ -50,23 +48,33 @@
 
 - benchmark workflow 负责产出原始结果和索引素材；
 - `docs/` 下的网站内容负责展示；
-- 是否将 benchmark 结果自动同步到站点，属于未来可选能力，不是当前 CI 的既有职责。
-
-因此，report 不是 benchmark job 里的一个 step 细节，而是后续可以独立演进的一层能力。
+- 是否将 benchmark 结果自动同步到站点，仍然属于独立能力，而不是 benchmark workflow 的职责扩张。
 
 ---
 
 ## Release 边界
 
-Godot 自动发布流程当前明确处于“暂缓设计”状态。
+当前正式发布层已经落地，但它仍然必须与现有验证流程保持严格分离。
 
-这意味着：
+当前发布相关文件：
 
-- 仓库当前没有正式的 Godot release workflow；
-- benchmark、主干验证、PR Gate 都不应代替 release 流程承担导出或打包职责；
-- 任何与 Godot 导出、版本标签、Release asset、分发渠道相关的设计，都应在单独讨论后再进入实现。
+- `.github/workflows/godot-release-artifact.yml`
+- `.github/workflows/godot-windows-release.yml`
 
-这是一个明确决策，不是遗留空白。
+它们的职责如下：
+
+- `godot-release-artifact.yml`
+  只负责手动验证 `Windows x64 -> export -> package -> artifact`
+- `godot-windows-release.yml`
+  只负责 `push tag -> export -> package -> artifact -> GitHub Release`
+
+它们不负责：
+
+- PR 合并门禁
+- main 主干质量验证
+- benchmark 结果产出或展示
+
+同样地，现有验证 workflow 也不应代偿 release 职责。
 
 ---
 
@@ -77,7 +85,7 @@ Godot 自动发布流程当前明确处于“暂缓设计”状态。
 - benchmark workflow 内部的性能回归验证方式；
 - benchmark artifact 的组织结构；
 - report 层未来是否接入 Pages 或其他展示方式；
-- release 设计的前期方案讨论。
+- Godot release workflow 自身的导出缓存、Smoke Test 与 Release notes 能力。
 
 但以下做法当前应避免：
 
@@ -92,6 +100,6 @@ Godot 自动发布流程当前明确处于“暂缓设计”状态。
 当看到以下状态时，可以认为当前阶段的边界治理已经完成：
 
 - workflow 分层与文档定义一致；
-- benchmark workflow 不再暗含发布职责；
-- CI 架构文档、优化文档、边界文档三者结论一致；
-- Godot 自动发布被明确记录为独立议题，而不是当前 CI 优化中的未完成项。
+- benchmark workflow 不暗含发布职责；
+- release workflow 不承担 PR 门禁或 benchmark 职责；
+- CI 架构文档、优化文档、边界文档与当前实现结论一致。

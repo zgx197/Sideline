@@ -176,7 +176,7 @@ PR Gate 当前不再使用手写 Bash 逐条遍历文件名，而是使用结构
 
 - benchmark workflow 只负责性能测试与结果归档；
 - report 代表结果展示层，不等于 benchmark 执行层；
-- release 代表可交付制品层，当前尚未进入实现。
+- release 代表可交付制品层，当前已经通过独立 workflow 落地。
 
 更具体的约束见 [CIBoundaries.md](./CIBoundaries.md)。
 
@@ -196,19 +196,25 @@ PR Gate 当前不再使用手写 Bash 逐条遍历文件名，而是使用结构
 
 ## 维护要求
 
-每次重构 CI 后，至少应验证以下三类场景：
+每次重构 CI 后，至少应验证以下四类场景：
 
 - docs-only PR：required checks 必须全部出现并完成
 - 普通代码 PR：应触发对应模块的真实校验
 - CI 基础设施改动：PR Gate 与主干验证都应能覆盖共享 action / workflow 的影响面
+- release 相关改动：artifact workflow 与 tag release workflow 都应保持职责清晰、互不串层
 
-如果新增了共享 action 或过滤规则，还要同步检查相关 workflow 的 `paths` 触发范围，避免“模板变了，但依赖它的 workflow 没跑”的问题。
+如果新增了共享 action、过滤规则或 release 工具链脚本，还要同步检查相关 workflow 的 `paths`、权限和版本常量，避免“实现变了，但依赖它的流程没有更新”。
 
 ---
 
-## 后续边界
+## 当前发布层结论
 
-后续如果继续推进 Godot 自动发布，建议新增独立的 release / export workflow，并保持以下边界：
+Godot 自动发布当前已经作为独立层接入，文件如下：
+
+- `.github/workflows/godot-release-artifact.yml`
+- `.github/workflows/godot-windows-release.yml`
+
+它们必须始终保持以下边界：
 
 - PR Gate 负责合并门禁
 - Main Validation 负责合入后的代码质量
@@ -216,8 +222,3 @@ PR Gate 当前不再使用手写 Bash 逐条遍历文件名，而是使用结构
 - Release 负责可交付制品
 
 这四层职责一旦混回一条 workflow，维护成本会很快重新升高。
-
-当前状态补充说明：
-
-- Godot 自动发布流程已明确转入独立议题讨论；
-- 它不是当前这轮 CI 优化的未完成残项，也不应由现有 benchmark / validation workflow 临时代偿。

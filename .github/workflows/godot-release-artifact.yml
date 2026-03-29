@@ -1,0 +1,176 @@
+name: Godot Release Artifact
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Tag-style semantic version, for example v0.1.0
+        required: true
+        type: string
+        default: v0.1.0
+
+permissions:
+  contents: read
+
+concurrency:
+  group: godot-release-artifact-${{ github.event.inputs.version }}
+  cancel-in-progress: false
+
+env:
+  DOTNET_VERSION: '8.0.x'
+  GODOT_VERSION: '4.6.1'
+  GODOT_RELEASE_STATUS: 'stable'
+  GODOT_PRODUCT_FLAVOR: 'mono'
+
+jobs:
+  prepare:
+    name: Prepare Release Metadata
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.metadata.outputs.version }}
+      package_name: ${{ steps.metadata.outputs.package_name }}
+      artifact_export_name: ${{ steps.metadata.outputs.artifact_export_name }}
+      artifact_package_name: ${{ steps.metadata.outputs.artifact_package_name }}
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v5
+
+    - name: Resolve metadata
+      id: metadata
+      shell: pwsh
+      run: |
+        $metadata = & "$env:GITHUB_WORKSPACE/tools/release/shared/Resolve-ReleaseMetadata.ps1" -Version '${{ github.event.inputs.version }}'
+        "version=$($metadata.Version)" >> $env:GITHUB_OUTPUT
+        "package_name=$($metadata.PackageName)" >> $env:GITHUB_OUTPUT
+        "artifact_export_name=$($metadata.ArtifactExportName)-$($metadata.VersionWithoutPrefix)" >> $env:GITHUB_OUTPUT
+        "artifact_package_name=$($metadata.ArtifactPackageName)-$($metadata.VersionWithoutPrefix)" >> $env:GITHUB_OUTPUT
+
+    - name: Summarize prepare
+      shell: pwsh
+      run: |
+        $summary = @"
+        ## Godot Release Artifact / Prepare
+
+        - Version: `${{ steps.metadata.outputs.version }}`
+        - Package: `${{ steps.metadata.outputs.package_name }}`
+        - Scope: `artifact only`
+        "@
+
+        Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value $summary
+
+  export-package:
+    name: Export, Smoke Test and Package Windows x64
+    needs: prepare
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v5
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v5
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+        cache: true
+        cache-dependency-path: |
+          godot/Sideline.sln
+          godot/Sideline.csproj
+          godot/scripts/lattice/Lattice.csproj
+          godot/scripts/facet/Facet.Core.csproj
+
+    - name: Prepare release directories
+      id: dirs
+      shell: pwsh
+      run: |
+        $appDataRoot = Join-Path $env:RUNNER_TEMP 'godot-appdata'
+        $toolchainRoot = Join-Path $env:RUNNER_TEMP 'godot-toolchain'
+        $outputRoot = Join-Path $env:RUNNER_TEMP 'sideline-release'
+
+        New-Item -ItemType Directory -Path $appDataRoot -Force | Out-Null
+        New-Item -ItemType Directory -Path $toolchainRoot -Force | Out-Null
+        New-Item -ItemType Directory -Path $outputRoot -Force | Out-Null
+
+        "appdata_root=$appDataRoot" >> $env:GITHUB_OUTPUT
+        "toolchain_root=$toolchainRoot" >> $env:GITHUB_OUTPUT
+        "output_root=$outputRoot" >> $env:GITHUB_OUTPUT
+
+    - name: Install Godot export toolchain
+      shell: pwsh
+      run: |
+        & "$env:GITHUB_WORKSPACE/tools/release/shared/Install-GodotToolchain.ps1" `
+          -GodotVersion '${{ env.GODOT_VERSION }}' `
+          -ReleaseStatus '${{ env.GODOT_RELEASE_STATUS }}' `
+          -ProductFlavor '${{ env.GODOT_PRODUCT_FLAVOR }}' `
+          -InstallRoot '${{ steps.dirs.outputs.toolchain_root }}' `
+          -AppDataRoot '${{ steps.dirs.outputs.appdata_root }}'
+
+    - name: Export Windows x64
+      id: export
+      shell: pwsh
+      run: |
+        $export = & "$env:GITHUB_WORKSPACE/tools/release/windows-x64/Export-WindowsX64Release.ps1" `
+          -Version '${{ needs.prepare.outputs.version }}' `
+          -RepoRoot $env:GITHUB_WORKSPACE `
+          -ProjectDir (Join-Path $env:GITHUB_WORKSPACE 'godot') `
+          -OutputRoot '${{ steps.dirs.outputs.output_root }}' `
+          -InstallRoot '${{ steps.dirs.outputs.toolchain_root }}' `
+          -AppDataRoot '${{ steps.dirs.outputs.appdata_root }}'
+
+        "publish_dir=$($export.PublishDir)" >> $env:GITHUB_OUTPUT
+        "export_log=$($export.ExportLog)" >> $env:GITHUB_OUTPUT
+
+    - name: Smoke test Windows x64 release
+      id: smoke
+      shell: pwsh
+      run: |
+        $smoke = & "$env:GITHUB_WORKSPACE/tools/release/windows-x64/Test-WindowsX64ReleaseSmoke.ps1" `
+          -PublishDir '${{ steps.export.outputs.publish_dir }}'
+
+        "console_log=$($smoke.ConsoleLogPath)" >> $env:GITHUB_OUTPUT
+        "structured_log=$($smoke.StructuredLogPath)" >> $env:GITHUB_OUTPUT
+
+    - name: Package Windows x64
+      id: package
+      shell: pwsh
+      run: |
+        $package = & "$env:GITHUB_WORKSPACE/tools/release/windows-x64/Package-WindowsX64Release.ps1" `
+          -Version '${{ needs.prepare.outputs.version }}' `
+          -PublishDir '${{ steps.export.outputs.publish_dir }}' `
+          -OutputRoot '${{ steps.dirs.outputs.output_root }}' `
+          -RepoRoot $env:GITHUB_WORKSPACE
+
+        "package_path=$($package.PackagePath)" >> $env:GITHUB_OUTPUT
+
+    - name: Upload publish artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ needs.prepare.outputs.artifact_export_name }}
+        path: ${{ steps.export.outputs.publish_dir }}
+        if-no-files-found: error
+
+    - name: Upload package artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ needs.prepare.outputs.artifact_package_name }}
+        path: ${{ steps.package.outputs.package_path }}
+        if-no-files-found: error
+
+    - name: Summarize export and package
+      if: always()
+      shell: pwsh
+      run: |
+        $summary = @"
+        ## Godot Release Artifact / Export and Package
+
+        - Status: `${{ job.status }}`
+        - Version: `${{ needs.prepare.outputs.version }}`
+        - Publish artifact: `${{ needs.prepare.outputs.artifact_export_name }}`
+        - Package artifact: `${{ needs.prepare.outputs.artifact_package_name }}`
+        - Package file: `${{ needs.prepare.outputs.package_name }}`
+        - Smoke console log: `${{ steps.smoke.outputs.console_log }}`
+        - Smoke structured log: `${{ steps.smoke.outputs.structured_log }}`
+        "@
+
+        Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value $summary
