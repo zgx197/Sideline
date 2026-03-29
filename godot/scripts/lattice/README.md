@@ -50,10 +50,10 @@ using Lattice.Math;
 var options = new SessionRuntimeOptions(FP.One, localPlayerId: 0);
 
 using var runner = new SessionRunnerBuilder()
-    .WithRuntimeOptions(options)
-    .AddSystem(new MovementSystem())
-    .AddSystem(new LifetimeSystem())
-    .Build();
+	.WithRuntimeOptions(options)
+	.AddSystem(new MovementSystem())
+	.AddSystem(new LifetimeSystem())
+	.Build();
 
 runner.Start();
 runner.Step();
@@ -77,8 +77,8 @@ lattice/
 │   ├── Framework/          # ISystem / SystemScheduler / Gameplay sample systems
 │   └── Session/            # SessionRuntime / MinimalPredictionSession / LocalAuthoritativeSession / SessionRunner / SessionRunnerBuilder
 └── Tests/
-    ├── ECS/                # 运行时与联调测试
-    └── Performance/        # BenchmarkDotNet 与性能烟雾测试
+	├── ECS/                # 运行时与联调测试
+	└── Performance/        # BenchmarkDotNet 与性能烟雾测试
 ```
 
 当前主干中正式存在且可用的运行时骨架是：
