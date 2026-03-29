@@ -28,7 +28,7 @@ public partial class FacetMainScreen : PanelContainer
     private Button _openFacetToolsDirectoryButton = null!;
     private Button _openFacetRuntimeDirectoryButton = null!;
     private Button _openRuntimeUiDirectoryButton = null!;
-    private Button _openRefactorPlanButton = null!;
+    private Button _openFacetReadmeButton = null!;
     private Button _openAiWorkflowButton = null!;
     private Button _openAssemblyLayoutButton = null!;
     private Button _openWorkflowButton = null!;
@@ -153,7 +153,7 @@ public partial class FacetMainScreen : PanelContainer
         _openFacetToolsDirectoryButton = ResolveRequiredNode<Button>("%OpenFacetToolsDirectoryButton");
         _openFacetRuntimeDirectoryButton = ResolveRequiredNode<Button>("%OpenFacetRuntimeDirectoryButton");
         _openRuntimeUiDirectoryButton = ResolveRequiredNode<Button>("%OpenRuntimeUiDirectoryButton");
-        _openRefactorPlanButton = ResolveRequiredNode<Button>("%OpenRefactorPlanButton");
+        _openFacetReadmeButton = ResolveRequiredNode<Button>("%OpenFacetReadmeButton");
         _openAiWorkflowButton = ResolveRequiredNode<Button>("%OpenAiWorkflowButton");
         _openAssemblyLayoutButton = ResolveRequiredNode<Button>("%OpenAssemblyLayoutButton");
         _openWorkflowButton = ResolveRequiredNode<Button>("%OpenWorkflowButton");
@@ -204,7 +204,7 @@ public partial class FacetMainScreen : PanelContainer
         _openFacetToolsDirectoryButton.Pressed += OnOpenFacetToolsDirectoryPressed;
         _openFacetRuntimeDirectoryButton.Pressed += OnOpenFacetRuntimeDirectoryPressed;
         _openRuntimeUiDirectoryButton.Pressed += OnOpenRuntimeUiDirectoryPressed;
-        _openRefactorPlanButton.Pressed += OnOpenRefactorPlanPressed;
+        _openFacetReadmeButton.Pressed += OnOpenFacetReadmePressed;
         _openAiWorkflowButton.Pressed += OnOpenAiWorkflowPressed;
         _openAssemblyLayoutButton.Pressed += OnOpenAssemblyLayoutPressed;
         _openWorkflowButton.Pressed += OnOpenWorkflowPressed;
@@ -224,7 +224,7 @@ public partial class FacetMainScreen : PanelContainer
         _openFacetToolsDirectoryButton.Pressed -= OnOpenFacetToolsDirectoryPressed;
         _openFacetRuntimeDirectoryButton.Pressed -= OnOpenFacetRuntimeDirectoryPressed;
         _openRuntimeUiDirectoryButton.Pressed -= OnOpenRuntimeUiDirectoryPressed;
-        _openRefactorPlanButton.Pressed -= OnOpenRefactorPlanPressed;
+        _openFacetReadmeButton.Pressed -= OnOpenFacetReadmePressed;
         _openAiWorkflowButton.Pressed -= OnOpenAiWorkflowPressed;
         _openAssemblyLayoutButton.Pressed -= OnOpenAssemblyLayoutPressed;
         _openWorkflowButton.Pressed -= OnOpenWorkflowPressed;
@@ -236,7 +236,7 @@ public partial class FacetMainScreen : PanelContainer
         bool hasFacetTools = Directory.Exists(_workspacePaths.FacetToolsDirectoryPath);
         bool hasFacetRuntime = Directory.Exists(_workspacePaths.FacetRuntimeDirectoryPath);
         bool hasRuntimeUi = Directory.Exists(_workspacePaths.RuntimeUiDirectoryPath);
-        bool hasRefactorPlan = File.Exists(_workspacePaths.RefactorPlanPath);
+        bool hasFacetReadme = File.Exists(_workspacePaths.FacetReadmePath);
         bool hasAiWorkflow = File.Exists(_workspacePaths.AiWorkflowPath);
         bool hasWorkflow = File.Exists(_workspacePaths.WorkflowPath);
 
@@ -244,7 +244,7 @@ public partial class FacetMainScreen : PanelContainer
         readyCount += hasFacetTools ? 1 : 0;
         readyCount += hasFacetRuntime ? 1 : 0;
         readyCount += hasRuntimeUi ? 1 : 0;
-        readyCount += hasRefactorPlan ? 1 : 0;
+        readyCount += hasFacetReadme ? 1 : 0;
         readyCount += hasAiWorkflow ? 1 : 0;
         readyCount += hasWorkflow ? 1 : 0;
 
@@ -252,6 +252,7 @@ public partial class FacetMainScreen : PanelContainer
         _overviewDetailsLabel.Text =
             "Facet Main Panel 已收敛为编辑器首页。\n" +
             "运行时实验与调试职责不再放在这里，而是回归运行时窗口与后续 Runtime Debug 工具。\n" +
+            "Facet 的长期结构说明统一维护在 scripts/facet/README.md，不再单独维护阶段性重构计划文档。\n" +
             "阶段 5 已冻结：当前不拆 Facet.Godot / Facet.Editor 程序集，先保持脚本归属清晰并继续压缩编辑器热区。\n" +
             $"用户日志目录: {_workspacePaths.LogsDirectoryPath}";
     }
@@ -319,7 +320,7 @@ public partial class FacetMainScreen : PanelContainer
     private void RefreshDocs()
     {
         List<string> docs = new();
-        docs.Add(BuildDocStatusLine("FacetRefactorPlan", _workspacePaths.RefactorPlanPath));
+        docs.Add(BuildDocStatusLine("Facet README", _workspacePaths.FacetReadmePath));
         docs.Add(BuildDocStatusLine("FacetAIUIWorkflow", _workspacePaths.AiWorkflowPath));
         docs.Add(BuildDocStatusLine("AssemblyLayout", _workspacePaths.AssemblyLayoutPath));
         docs.Add(BuildDocStatusLine("Workflow", _workspacePaths.WorkflowPath));
@@ -328,7 +329,7 @@ public partial class FacetMainScreen : PanelContainer
             "当前首页只保留编辑期工作流入口。\n" +
             string.Join("\n", docs);
 
-        _openRefactorPlanButton.Disabled = !File.Exists(_workspacePaths.RefactorPlanPath);
+        _openFacetReadmeButton.Disabled = !File.Exists(_workspacePaths.FacetReadmePath);
         _openAiWorkflowButton.Disabled = !File.Exists(_workspacePaths.AiWorkflowPath);
         _openAssemblyLayoutButton.Disabled = !File.Exists(_workspacePaths.AssemblyLayoutPath);
         _openWorkflowButton.Disabled = !File.Exists(_workspacePaths.WorkflowPath);
@@ -371,9 +372,9 @@ public partial class FacetMainScreen : PanelContainer
         OpenPath(_workspacePaths.RuntimeUiDirectoryPath, "OpenRuntimeUiDirectory");
     }
 
-    private void OnOpenRefactorPlanPressed()
+    private void OnOpenFacetReadmePressed()
     {
-        OpenPath(_workspacePaths.RefactorPlanPath, "OpenRefactorPlan");
+        OpenPath(_workspacePaths.FacetReadmePath, "OpenFacetReadme");
     }
 
     private void OnOpenAiWorkflowPressed()

@@ -17,7 +17,7 @@ internal sealed class FacetEditorWorkspacePaths
         string facetToolsDirectoryPath,
         string facetRuntimeDirectoryPath,
         string runtimeUiDirectoryPath,
-        string refactorPlanPath,
+        string facetReadmePath,
         string aiWorkflowPath,
         string assemblyLayoutPath,
         string workflowPath,
@@ -32,7 +32,7 @@ internal sealed class FacetEditorWorkspacePaths
         FacetToolsDirectoryPath = facetToolsDirectoryPath;
         FacetRuntimeDirectoryPath = facetRuntimeDirectoryPath;
         RuntimeUiDirectoryPath = runtimeUiDirectoryPath;
-        RefactorPlanPath = refactorPlanPath;
+        FacetReadmePath = facetReadmePath;
         AiWorkflowPath = aiWorkflowPath;
         AssemblyLayoutPath = assemblyLayoutPath;
         WorkflowPath = workflowPath;
@@ -54,7 +54,7 @@ internal sealed class FacetEditorWorkspacePaths
 
     public string RuntimeUiDirectoryPath { get; }
 
-    public string RefactorPlanPath { get; }
+    public string FacetReadmePath { get; }
 
     public string AiWorkflowPath { get; }
 
@@ -86,7 +86,7 @@ internal sealed class FacetEditorWorkspacePaths
                 ?? throw new InvalidOperationException("Facet tools directory resolve failed."),
             ProjectSettings.GlobalizePath("res://scripts/facet/Runtime"),
             ProjectSettings.GlobalizePath("res://scripts/ui"),
-            Path.Combine(projectRootPath, "docs", "development", "FacetRefactorPlan.md"),
+            ProjectSettings.GlobalizePath("res://scripts/facet/README.md"),
             Path.Combine(projectRootPath, "docs", "development", "FacetAIUIWorkflow.md"),
             Path.Combine(projectRootPath, "docs", "development", "AssemblyLayout.md"),
             Path.Combine(projectRootPath, "docs", "development", "Workflow.md"),

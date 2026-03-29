@@ -35,9 +35,9 @@ internal static class FacetEditorValidationCatalog
                 "挂机窗口、地下城窗口等运行时调试落点目录存在。"),
             CreateLuaScriptsValidationItem(paths.LuaScriptsDirectoryPath),
             CreateFileValidationItem(
-                "Facet 重构方案文档",
-                paths.RefactorPlanPath,
-                "阶段冻结与实施方案文档存在，可作为后续重构基线。"),
+                "Facet 主说明文档",
+                paths.FacetReadmePath,
+                "Facet 长期设计说明存在，可作为编辑器入口与运行时边界的统一文档。"),
             CreateFileValidationItem(
                 "Facet AI UI 工作流文档",
                 paths.AiWorkflowPath,

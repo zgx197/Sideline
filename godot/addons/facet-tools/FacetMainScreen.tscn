@@ -258,10 +258,10 @@ autowrap_mode = 2
 layout_mode = 2
 theme_override_constants/separation = 6
 
-[node name="OpenRefactorPlanButton" type="Button" parent="RootMargin/RootVBox/Scroll/ScrollMargin/ScrollVBox/SectionsGrid/DocsCard/DocsMargin/DocsVBox/DocsButtons"]
+[node name="OpenFacetReadmeButton" type="Button" parent="RootMargin/RootVBox/Scroll/ScrollMargin/ScrollVBox/SectionsGrid/DocsCard/DocsMargin/DocsVBox/DocsButtons"]
 unique_name_in_owner = true
 layout_mode = 2
-text = "打开 FacetRefactorPlan"
+text = "打开 Facet README"
 
 [node name="OpenAiWorkflowButton" type="Button" parent="RootMargin/RootVBox/Scroll/ScrollMargin/ScrollVBox/SectionsGrid/DocsCard/DocsMargin/DocsVBox/DocsButtons"]
 unique_name_in_owner = true
