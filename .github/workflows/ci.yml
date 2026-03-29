@@ -7,6 +7,20 @@ on:
   push:
     branches: [ main ]
     paths:
+      - 'NuGet.Config'
+      - 'godot/.editorconfig'
+      - 'godot/Sideline.csproj'
+      - 'godot/Sideline.sln'
+      - 'godot/project.godot'
+      - 'godot/addons/facet-tools/**'
+      - 'godot/scenes/**'
+      - 'godot/scripts/**'
+      - '.github/actions/**'
+      - '.github/workflows/ci.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'NuGet.Config'
       - 'godot/.editorconfig'
       - 'godot/Sideline.csproj'
       - 'godot/Sideline.sln'
@@ -45,21 +59,26 @@ jobs:
         cache-dependency-path: |
           godot/Sideline.sln
           godot/Sideline.csproj
+          godot/scripts/lattice/Tools/SwizzleGenerator/SwizzleGenerator.csproj
+          godot/scripts/lattice/Tools/Lattice.Analyzers/Lattice.Analyzers.csproj
+          NuGet.Config
         script: |
-          dotnet restore godot/Sideline.csproj
+          dotnet restore godot/scripts/lattice/Tools/SwizzleGenerator/SwizzleGenerator.csproj --configfile NuGet.Config
+          dotnet restore godot/scripts/lattice/Tools/Lattice.Analyzers/Lattice.Analyzers.csproj --configfile NuGet.Config
+          dotnet restore godot/Sideline.csproj --configfile NuGet.Config
           dotnet build godot/Sideline.csproj --no-restore --configuration Debug -nologo
 
     - name: Summarize common build
       if: always()
       shell: pwsh
       run: |
-        $summary = @"
-        ## Common Build
-
-        - Status: `${{ job.status }}`
-        - Role: `main branch minimum Sideline health check`
-        - Cache: `enabled`
-        - Target: `godot/Sideline.csproj`
-        "@
-
+        $summaryLines = @(
+          '## Common Build',
+          '',
+          ('- Status: `{0}`' -f '${{ job.status }}'),
+          '- Role: `minimum Sideline health check`',
+          '- Cache: `enabled`',
+          '- Target: `godot/Sideline.csproj`'
+        )
+        $summary = $summaryLines -join [Environment]::NewLine
         Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value $summary

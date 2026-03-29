@@ -4,6 +4,17 @@ on:
   push:
     branches: [ main ]
     paths:
+      - 'NuGet.Config'
+      - 'godot/.editorconfig'
+      - 'godot/Sideline.sln'
+      - 'godot/scripts/lattice/**'
+      - 'godot/Lattice.Benchmarks/**'
+      - '.github/actions/**'
+      - '.github/workflows/ci-lattice.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'NuGet.Config'
       - 'godot/.editorconfig'
       - 'godot/Sideline.sln'
       - 'godot/scripts/lattice/**'
@@ -39,22 +50,28 @@ jobs:
         cache-dependency-path: |
           godot/Sideline.sln
           godot/scripts/lattice/Lattice.csproj
+          godot/scripts/lattice/Tools/SwizzleGenerator/SwizzleGenerator.csproj
+          godot/scripts/lattice/Tools/Lattice.Analyzers/Lattice.Analyzers.csproj
+          NuGet.Config
         script: |
-          dotnet restore godot/scripts/lattice/Lattice.csproj
-          dotnet format godot/scripts/lattice/Lattice.csproj --verify-no-changes --verbosity detailed
+          dotnet restore godot/scripts/lattice/Tools/SwizzleGenerator/SwizzleGenerator.csproj --configfile NuGet.Config
+          dotnet restore godot/scripts/lattice/Tools/Lattice.Analyzers/Lattice.Analyzers.csproj --configfile NuGet.Config
+          dotnet restore godot/scripts/lattice/Lattice.csproj --configfile NuGet.Config
+          dotnet format whitespace godot/scripts/lattice/Lattice.csproj --verify-no-changes --verbosity detailed --no-restore
+          dotnet format style godot/scripts/lattice/Lattice.csproj --verify-no-changes --verbosity detailed --no-restore
 
     - name: Summarize lattice format
       if: always()
       shell: pwsh
       run: |
-        $summary = @"
-        ## Lattice Format Check
-
-        - Status: `${{ job.status }}`
-        - Cache: `enabled`
-        - Target: `godot/scripts/lattice/Lattice.csproj`
-        "@
-
+        $summaryLines = @(
+          '## Lattice Format Check',
+          '',
+          ('- Status: `{0}`' -f '${{ job.status }}'),
+          '- Cache: `enabled`',
+          '- Target: `godot/scripts/lattice/Lattice.csproj`'
+        )
+        $summary = $summaryLines -join [Environment]::NewLine
         Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value $summary
 
   lattice-build-test:
@@ -80,8 +97,13 @@ jobs:
           godot/Sideline.sln
           godot/scripts/lattice/Lattice.csproj
           godot/scripts/lattice/Tests/Lattice.Tests.csproj
+          godot/scripts/lattice/Tools/SwizzleGenerator/SwizzleGenerator.csproj
+          godot/scripts/lattice/Tools/Lattice.Analyzers/Lattice.Analyzers.csproj
+          NuGet.Config
         script: |
-          dotnet restore godot/scripts/lattice/Tests/Lattice.Tests.csproj
+          dotnet restore godot/scripts/lattice/Tools/SwizzleGenerator/SwizzleGenerator.csproj --configfile NuGet.Config
+          dotnet restore godot/scripts/lattice/Tools/Lattice.Analyzers/Lattice.Analyzers.csproj --configfile NuGet.Config
+          dotnet restore godot/scripts/lattice/Tests/Lattice.Tests.csproj --configfile NuGet.Config
           dotnet build godot/scripts/lattice/Tests/Lattice.Tests.csproj --no-restore --configuration ${{ matrix.configuration }} -nologo
           dotnet test godot/scripts/lattice/Tests/Lattice.Tests.csproj --no-build --configuration ${{ matrix.configuration }} -nologo --verbosity normal --maxcpucount:1
 
@@ -89,14 +111,14 @@ jobs:
       if: always()
       shell: pwsh
       run: |
-        $summary = @"
-        ## Lattice Build & Test (${{ matrix.os }}, ${{ matrix.configuration }})
-
-        - Status: `${{ job.status }}`
-        - Cache: `enabled`
-        - Target: `godot/scripts/lattice/Tests/Lattice.Tests.csproj`
-        "@
-
+        $summaryLines = @(
+          '## Lattice Build & Test (${{ matrix.os }}, ${{ matrix.configuration }})',
+          '',
+          ('- Status: `{0}`' -f '${{ job.status }}'),
+          '- Cache: `enabled`',
+          '- Target: `godot/scripts/lattice/Tests/Lattice.Tests.csproj`'
+        )
+        $summary = $summaryLines -join [Environment]::NewLine
         Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value $summary
 
   lattice-determinism:
@@ -117,8 +139,13 @@ jobs:
           godot/Sideline.sln
           godot/scripts/lattice/Lattice.csproj
           godot/scripts/lattice/Tests/Lattice.Tests.csproj
+          godot/scripts/lattice/Tools/SwizzleGenerator/SwizzleGenerator.csproj
+          godot/scripts/lattice/Tools/Lattice.Analyzers/Lattice.Analyzers.csproj
+          NuGet.Config
         script: |
-          dotnet restore godot/scripts/lattice/Tests/Lattice.Tests.csproj
+          dotnet restore godot/scripts/lattice/Tools/SwizzleGenerator/SwizzleGenerator.csproj --configfile NuGet.Config
+          dotnet restore godot/scripts/lattice/Tools/Lattice.Analyzers/Lattice.Analyzers.csproj --configfile NuGet.Config
+          dotnet restore godot/scripts/lattice/Tests/Lattice.Tests.csproj --configfile NuGet.Config
           dotnet build godot/scripts/lattice/Tests/Lattice.Tests.csproj --no-restore --configuration Release -nologo
           dotnet test godot/scripts/lattice/Tests/Lattice.Tests.csproj --no-build --configuration Release -nologo --filter "FullyQualifiedName~Determinism" --verbosity normal --maxcpucount:1
 
@@ -126,14 +153,14 @@ jobs:
       if: always()
       shell: pwsh
       run: |
-        $summary = @"
-        ## Lattice Determinism Validation
-
-        - Status: `${{ job.status }}`
-        - Cache: `enabled`
-        - Filter: `FullyQualifiedName~Determinism`
-        "@
-
+        $summaryLines = @(
+          '## Lattice Determinism Validation',
+          '',
+          ('- Status: `{0}`' -f '${{ job.status }}'),
+          '- Cache: `enabled`',
+          '- Filter: `FullyQualifiedName~Determinism`'
+        )
+        $summary = $summaryLines -join [Environment]::NewLine
         Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value $summary
 
   lattice-analyzers:
@@ -153,22 +180,27 @@ jobs:
         cache-dependency-path: |
           godot/Sideline.sln
           godot/scripts/lattice/Lattice.csproj
+          godot/scripts/lattice/Tools/SwizzleGenerator/SwizzleGenerator.csproj
+          godot/scripts/lattice/Tools/Lattice.Analyzers/Lattice.Analyzers.csproj
+          NuGet.Config
         script: |
-          dotnet restore godot/scripts/lattice/Lattice.csproj
+          dotnet restore godot/scripts/lattice/Tools/SwizzleGenerator/SwizzleGenerator.csproj --configfile NuGet.Config
+          dotnet restore godot/scripts/lattice/Tools/Lattice.Analyzers/Lattice.Analyzers.csproj --configfile NuGet.Config
+          dotnet restore godot/scripts/lattice/Lattice.csproj --configfile NuGet.Config
           dotnet build godot/scripts/lattice/Lattice.csproj --no-restore --configuration Release -p:TreatWarningsAsErrors=true -nologo
 
     - name: Summarize lattice analyzers
       if: always()
       shell: pwsh
       run: |
-        $summary = @"
-        ## Lattice Analyzer Validation
-
-        - Status: `${{ job.status }}`
-        - Cache: `enabled`
-        - Mode: `TreatWarningsAsErrors=true`
-        "@
-
+        $summaryLines = @(
+          '## Lattice Analyzer Validation',
+          '',
+          ('- Status: `{0}`' -f '${{ job.status }}'),
+          '- Cache: `enabled`',
+          '- Mode: `TreatWarningsAsErrors=true`'
+        )
+        $summary = $summaryLines -join [Environment]::NewLine
         Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value $summary
 
   lattice-benchmark-smoke:
@@ -189,20 +221,25 @@ jobs:
           godot/Sideline.sln
           godot/scripts/lattice/Lattice.csproj
           godot/Lattice.Benchmarks/Lattice.Benchmarks.csproj
+          godot/scripts/lattice/Tools/SwizzleGenerator/SwizzleGenerator.csproj
+          godot/scripts/lattice/Tools/Lattice.Analyzers/Lattice.Analyzers.csproj
+          NuGet.Config
         script: |
-          dotnet restore godot/Lattice.Benchmarks/Lattice.Benchmarks.csproj
+          dotnet restore godot/scripts/lattice/Tools/SwizzleGenerator/SwizzleGenerator.csproj --configfile NuGet.Config
+          dotnet restore godot/scripts/lattice/Tools/Lattice.Analyzers/Lattice.Analyzers.csproj --configfile NuGet.Config
+          dotnet restore godot/Lattice.Benchmarks/Lattice.Benchmarks.csproj --configfile NuGet.Config
           dotnet run --configuration Release --project godot/Lattice.Benchmarks/Lattice.Benchmarks.csproj -- --filter "*EntityMicroBenchmarks.SingleValidate*"
 
     - name: Summarize lattice benchmark smoke
       if: always()
       shell: pwsh
       run: |
-        $summary = @"
-        ## Lattice Benchmark Smoke
-
-        - Status: `${{ job.status }}`
-        - Cache: `enabled`
-        - Filter: `*EntityMicroBenchmarks.SingleValidate*`
-        "@
-
+        $summaryLines = @(
+          '## Lattice Benchmark Smoke',
+          '',
+          ('- Status: `{0}`' -f '${{ job.status }}'),
+          '- Cache: `enabled`',
+          '- Filter: `*EntityMicroBenchmarks.SingleValidate*`'
+        )
+        $summary = $summaryLines -join [Environment]::NewLine
         Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value $summary

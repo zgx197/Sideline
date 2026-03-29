@@ -7,6 +7,24 @@ on:
   push:
     branches: [ main ]
     paths:
+      - 'NuGet.Config'
+      - 'godot/.editorconfig'
+      - 'godot/Sideline.csproj'
+      - 'godot/Sideline.sln'
+      - 'godot/project.godot'
+      - 'godot/addons/facet-tools/**'
+      - 'godot/scenes/main/**'
+      - 'godot/scenes/ui/**'
+      - 'godot/scripts/facet/**'
+      - 'godot/scripts/main/**'
+      - 'godot/scripts/ui/**'
+      - 'godot/scripts/window/**'
+      - '.github/actions/**'
+      - '.github/workflows/ci-facet.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'NuGet.Config'
       - 'godot/.editorconfig'
       - 'godot/Sideline.csproj'
       - 'godot/Sideline.sln'
@@ -49,22 +67,23 @@ jobs:
         cache-dependency-path: |
           godot/Sideline.sln
           godot/scripts/facet/Facet.Core.csproj
+          NuGet.Config
         script: |
-          dotnet restore godot/scripts/facet/Facet.Core.csproj
+          dotnet restore godot/scripts/facet/Facet.Core.csproj --configfile NuGet.Config
           dotnet build godot/scripts/facet/Facet.Core.csproj --no-restore --configuration Release -nologo
 
     - name: Summarize facet core build
       if: always()
       shell: pwsh
       run: |
-        $summary = @"
-        ## Facet Core Build
-
-        - Status: `${{ job.status }}`
-        - Cache: `enabled`
-        - Target: `godot/scripts/facet/Facet.Core.csproj`
-        "@
-
+        $summaryLines = @(
+          '## Facet Core Build',
+          '',
+          ('- Status: `{0}`' -f '${{ job.status }}'),
+          '- Cache: `enabled`',
+          '- Target: `godot/scripts/facet/Facet.Core.csproj`'
+        )
+        $summary = $summaryLines -join [Environment]::NewLine
         Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value $summary
 
   facet-integration-build:
@@ -85,21 +104,26 @@ jobs:
           godot/Sideline.sln
           godot/Sideline.csproj
           godot/scripts/facet/Facet.Core.csproj
+          godot/scripts/lattice/Tools/SwizzleGenerator/SwizzleGenerator.csproj
+          godot/scripts/lattice/Tools/Lattice.Analyzers/Lattice.Analyzers.csproj
+          NuGet.Config
         script: |
-          dotnet restore godot/Sideline.csproj
+          dotnet restore godot/scripts/lattice/Tools/SwizzleGenerator/SwizzleGenerator.csproj --configfile NuGet.Config
+          dotnet restore godot/scripts/lattice/Tools/Lattice.Analyzers/Lattice.Analyzers.csproj --configfile NuGet.Config
+          dotnet restore godot/Sideline.csproj --configfile NuGet.Config
           dotnet build godot/Sideline.csproj --no-restore --configuration Debug -nologo
 
     - name: Summarize facet integration build
       if: always()
       shell: pwsh
       run: |
-        $summary = @"
-        ## Facet Integration Build
-
-        - Status: `${{ job.status }}`
-        - Depends on: `Facet Core Build`
-        - Cache: `enabled`
-        - Target: `godot/Sideline.csproj`
-        "@
-
+        $summaryLines = @(
+          '## Facet Integration Build',
+          '',
+          ('- Status: `{0}`' -f '${{ job.status }}'),
+          '- Depends on: `Facet Core Build`',
+          '- Cache: `enabled`',
+          '- Target: `godot/Sideline.csproj`'
+        )
+        $summary = $summaryLines -join [Environment]::NewLine
         Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value $summary
