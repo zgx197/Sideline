@@ -16,8 +16,9 @@ public partial class WindowManager : Node
         Dungeon,
     }
 
-    private static readonly Vector2I IdleWindowSize = new(400, 300);
-    private static readonly Vector2I DungeonWindowSize = new(1280, 720);
+    private static readonly Vector2I MinimumIdleWindowSize = new(560, 420);
+    private static readonly Vector2I MaximumIdleWindowSize = new(900, 640);
+    private static readonly Vector2I MinimumDungeonWindowSize = new(1600, 900);
 
     [Signal]
     public delegate void ModeChangedEventHandler(int mode);
@@ -73,12 +74,13 @@ public partial class WindowManager : Node
         window.Mode = Window.ModeEnum.Windowed;
         window.Borderless = true;
         window.AlwaysOnTop = true;
-        window.Size = IdleWindowSize;
-
         Vector2I screenSize = DisplayServer.ScreenGetSize();
+        Vector2I idleWindowSize = GetIdleWindowSize(screenSize);
+        window.Size = idleWindowSize;
+
         window.Position = new Vector2I(
-            screenSize.X - IdleWindowSize.X - 50,
-            screenSize.Y - IdleWindowSize.Y - 100);
+            screenSize.X - idleWindowSize.X - 50,
+            screenSize.Y - idleWindowSize.Y - 100);
 
         EmitSignal("ModeChanged", (int)CurrentMode);
         LogModeChange("切换到挂机模式", window);
@@ -95,12 +97,13 @@ public partial class WindowManager : Node
         Window window = GetWindow();
         window.Borderless = false;
         window.AlwaysOnTop = false;
-        window.Size = DungeonWindowSize;
-
         Vector2I screenSize = DisplayServer.ScreenGetSize();
+        Vector2I dungeonWindowSize = GetDungeonWindowSize(screenSize);
+        window.Size = dungeonWindowSize;
+
         window.Position = new Vector2I(
-            (screenSize.X - DungeonWindowSize.X) / 2,
-            (screenSize.Y - DungeonWindowSize.Y) / 2);
+            (screenSize.X - dungeonWindowSize.X) / 2,
+            (screenSize.Y - dungeonWindowSize.Y) / 2);
 
         EmitSignal("ModeChanged", (int)CurrentMode);
         LogModeChange("切换到刷宝模式", window);
@@ -130,6 +133,22 @@ public partial class WindowManager : Node
         {
             GetWindow().Position = DisplayServer.MouseGetPosition() - _dragOffset;
         }
+    }
+
+    private static Vector2I GetIdleWindowSize(Vector2I screenSize)
+    {
+        int width = Mathf.Clamp(screenSize.X / 5, MinimumIdleWindowSize.X, MaximumIdleWindowSize.X);
+        int height = Mathf.Clamp(screenSize.Y / 4, MinimumIdleWindowSize.Y, MaximumIdleWindowSize.Y);
+        return new Vector2I(width, height);
+    }
+
+    private static Vector2I GetDungeonWindowSize(Vector2I screenSize)
+    {
+        int maxWidth = Mathf.Max(MinimumDungeonWindowSize.X, screenSize.X - 120);
+        int maxHeight = Mathf.Max(MinimumDungeonWindowSize.Y, screenSize.Y - 120);
+        int width = Mathf.Clamp(screenSize.X * 3 / 5, MinimumDungeonWindowSize.X, maxWidth);
+        int height = Mathf.Clamp(screenSize.Y * 3 / 5, MinimumDungeonWindowSize.Y, maxHeight);
+        return new Vector2I(width, height);
     }
 
     private void LogModeChange(string message, Window window)

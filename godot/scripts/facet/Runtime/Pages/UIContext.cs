@@ -7,9 +7,7 @@ using Sideline.Facet.Lua;
 namespace Sideline.Facet.Runtime
 {
     /// <summary>
-    /// 页面运行时上下文。
-    /// 用于把页面定义、运行时服务、节点解析器、绑定作用域、Lua 桥接、控制器状态袋与当前参数统一交给页面生命周期使用。
-    /// </summary>
+    /// 椤甸潰杩愯鏃朵笂涓嬫枃銆?    /// 鐢ㄤ簬鎶婇〉闈㈠畾涔夈€佽繍琛屾椂鏈嶅姟銆佽妭鐐硅В鏋愬櫒銆佺粦瀹氫綔鐢ㄥ煙銆丩ua 妗ユ帴銆佹帶鍒跺櫒鐘舵€佽涓庡綋鍓嶅弬鏁扮粺涓€浜ょ粰椤甸潰鐢熷懡鍛ㄦ湡浣跨敤銆?    /// </summary>
     public sealed class UIContext
     {
         private readonly Dictionary<string, object?> _controllerState = new(StringComparer.OrdinalIgnoreCase);
@@ -97,6 +95,15 @@ namespace Sideline.Facet.Runtime
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(key);
             _controllerState.Remove(key);
+        }
+
+        public void ClearRuntimeReferences()
+        {
+            Resolver = null;
+            Bindings = null;
+            Lua = null;
+            Arguments = new Dictionary<string, object?>();
+            _controllerState.Clear();
         }
     }
 }

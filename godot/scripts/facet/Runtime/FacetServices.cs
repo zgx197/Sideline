@@ -2,19 +2,19 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
+
 
 namespace Sideline.Facet.Runtime
 {
     /// <summary>
-    /// Facet 最小服务容器。
-    /// </summary>
-    public sealed class FacetServices
+    /// Facet 闁哄牃鍋撻悘蹇撶箲濠€鍥礉閳ユ剚鍟囬柛锝冨妸閳?    /// </summary>
+    public sealed class FacetServices : IDisposable
     {
         private readonly Dictionary<Type, object> _services = new();
 
         /// <summary>
-        /// 注册或替换单例服务。
-        /// </summary>
+        /// 婵炲鍔岄崬浠嬪箣閺嶃劍绂岄柟骞垮灩瀹曠喐绗熺€ｎ偅绠涢柛鏂呮壋鍋?        /// </summary>
         public void RegisterSingleton<TService>(TService instance) where TService : class
         {
             ArgumentNullException.ThrowIfNull(instance);
@@ -22,8 +22,7 @@ namespace Sideline.Facet.Runtime
         }
 
         /// <summary>
-        /// 尝试获取服务。
-        /// </summary>
+        /// 閻忓繑绻嗛惁顖炴嚔瀹勬澘绲块柡鍫濈Т婵喖濡?        /// </summary>
         public bool TryGet<TService>(out TService? instance) where TService : class
         {
             if (_services.TryGetValue(typeof(TService), out object? service))
@@ -37,8 +36,7 @@ namespace Sideline.Facet.Runtime
         }
 
         /// <summary>
-        /// 获取必须存在的服务。
-        /// </summary>
+        /// 闁兼儳鍢茶ぐ鍥疀閸涙番鈧繒鈧稒锚濠€顏堟儍閸曨剚绠涢柛鏂呮壋鍋?        /// </summary>
         public TService GetRequired<TService>() where TService : class
         {
             if (TryGet<TService>(out TService? instance) && instance != null)
@@ -50,11 +48,55 @@ namespace Sideline.Facet.Runtime
         }
 
         /// <summary>
-        /// 检查服务是否已注册。
-        /// </summary>
+        /// 婵☆偀鍋撻柡灞诲劜濠€鍥礉閳╁啯笑闁告熬绠戦崙鈥斥枖閵娿儱鏂€闁?        /// </summary>
         public bool Contains<TService>() where TService : class
         {
             return _services.ContainsKey(typeof(TService));
+        }
+
+        public void Dispose()
+        {
+            HashSet<object> disposedInstances = new(ReferenceEqualityComparer.Instance);
+            List<Exception> exceptions = new();
+
+            foreach (object service in _services.Values)
+            {
+                if (!disposedInstances.Add(service) || service is not IDisposable disposable)
+                {
+                    continue;
+                }
+
+                try
+                {
+                    disposable.Dispose();
+                }
+                catch (Exception exception)
+                {
+                    exceptions.Add(exception);
+                }
+            }
+
+            _services.Clear();
+
+            if (exceptions.Count > 0)
+            {
+                throw new AggregateException("Facet service disposal failed.", exceptions);
+            }
+        }
+
+        private sealed class ReferenceEqualityComparer : IEqualityComparer<object>
+        {
+            public static ReferenceEqualityComparer Instance { get; } = new();
+
+            public new bool Equals(object? x, object? y)
+            {
+                return ReferenceEquals(x, y);
+            }
+
+            public int GetHashCode(object obj)
+            {
+                return RuntimeHelpers.GetHashCode(obj);
+            }
         }
     }
 }

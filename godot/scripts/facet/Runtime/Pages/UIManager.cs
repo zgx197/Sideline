@@ -8,10 +8,8 @@ using Sideline.Facet.Layout;
 namespace Sideline.Facet.Runtime
 {
     /// <summary>
-    /// 页面运行时管理器。
-    /// 负责页面创建、显示、隐藏、销毁、返回栈和缓存策略。
-    /// </summary>
-    public sealed class UIManager : IUIPageNavigator
+    /// 妞ょ敻娼版潻鎰攽閺冨墎顓搁悶鍡楁珤閵?    /// 鐠愮喕鐭楁い鐢告桨閸掓稑缂撻妴浣规▔缁€鎭掆偓渚€娈ｉ挊蹇嬧偓渚€鏀㈠В浣碘偓浣界箲閸ョ偞鐖ら崪宀€绱︾€涙鐡ラ悾銉ｂ偓?    /// </summary>
+    public sealed class UIManager : IUIPageNavigator, IDisposable
     {
         private readonly UIPageRegistry _pageRegistry;
         private readonly UIPageLoader _pageLoader;
@@ -52,7 +50,7 @@ namespace Sideline.Facet.Runtime
 
             _logger?.Info(
                 "UI.Page",
-                "页面挂载根节点已绑定。",
+                "妞ょ敻娼伴幐鍌濇祰閺嶇濡悙鐟板嚒缂佹垵鐣鹃妴?",
                 new Dictionary<string, object?>
                 {
                     ["mountRootPath"] = mountRoot.GetPath().ToString(),
@@ -61,9 +59,7 @@ namespace Sideline.Facet.Runtime
         }
 
         /// <summary>
-        /// 获取当前已创建页面运行时的快照。
-        /// 热重载协调器使用该快照轮询脚本版本变化。
-        /// </summary>
+        /// 閼惧嘲褰囪ぐ鎾冲瀹告彃鍨卞娲€夐棃銏ｇ箥鐞涘本妞傞惃鍕彥閻撗佲偓?        /// 閻戭參鍣告潪钘夊礂鐠嬪啫娅掓担璺ㄦ暏鐠囥儱鎻╅悡褑鐤嗙拠銏ｅ壖閺堫剛澧楅張顒€褰夐崠鏍モ偓?        /// </summary>
         public IReadOnlyList<UIPageRuntime> GetPageRuntimesSnapshot()
         {
             List<UIPageRuntime> snapshot = new();
@@ -133,14 +129,14 @@ namespace Sideline.Facet.Runtime
         {
             if (!_routeService.TryPop(out UIRouteEntry? entry) || entry == null)
             {
-                _logger?.Warning("UI.Page", "页面返回请求被忽略，当前返回栈为空。", null);
+                _logger?.Warning("UI.Page", "妞ょ敻娼版潻鏂挎礀鐠囬攱鐪扮悮顐㈡嫹閻ｃ儻绱濊ぐ鎾冲鏉╂柨娲栭弽鍫滆礋缁屾亽鈧?, null");
                 return false;
             }
 
             UIPageRuntime runtime = Open(entry.PageId, entry.Arguments, pushHistory: false);
             _logger?.Info(
                 "UI.Page",
-                "页面返回完成。",
+                "妞ょ敻娼版潻鏂挎礀鐎瑰本鍨氶妴?",
                 new Dictionary<string, object?>
                 {
                     ["pageId"] = runtime.Definition.PageId,
@@ -164,7 +160,7 @@ namespace Sideline.Facet.Runtime
 
             _logger?.Info(
                 "UI.Page",
-                "当前页面已关闭。",
+                "瑜版挸澧犳い鐢告桨瀹告彃鍙ч梻顓溾偓?",
                 new Dictionary<string, object?>
                 {
                     ["pageId"] = runtime.Definition.PageId,
@@ -183,6 +179,26 @@ namespace Sideline.Facet.Runtime
         bool IUIPageNavigator.GoBack()
         {
             return GoBack();
+        }
+
+        public void Dispose()
+        {
+            HashSet<UIPageRuntime> disposedRuntimes = new();
+
+            if (_currentRuntime != null)
+            {
+                DisposeRuntime(_currentRuntime, disposedRuntimes);
+                _currentRuntime = null;
+            }
+
+            foreach (UIPageRuntime runtime in _pageRuntimes.Values)
+            {
+                DisposeRuntime(runtime, disposedRuntimes);
+            }
+
+            _pageRuntimes.Clear();
+            _routeService.Clear();
+            _mountRoot = null;
         }
 
         private UIPageRuntime GetOrCreateRuntime(UIPageDefinition definition, UILayoutResult layoutResult, out bool loadedFromCache)
@@ -225,6 +241,16 @@ namespace Sideline.Facet.Runtime
             _pageRuntimes.Remove(runtime.Definition.PageId);
         }
 
+        private static void DisposeRuntime(UIPageRuntime runtime, ISet<UIPageRuntime> disposedRuntimes)
+        {
+            if (!disposedRuntimes.Add(runtime))
+            {
+                return;
+            }
+
+            runtime.DisposeRuntime();
+        }
+
         private void LogOpen(
             UIPageDefinition definition,
             UIPageRuntime runtime,
@@ -234,7 +260,7 @@ namespace Sideline.Facet.Runtime
         {
             _logger?.Info(
                 "UI.Page",
-                "页面打开完成。",
+                "妞ょ敻娼伴幍鎾崇磻鐎瑰本鍨氶妴?",
                 new Dictionary<string, object?>
                 {
                     ["pageId"] = definition.PageId,

@@ -12,8 +12,10 @@ namespace Sideline.Facet.Lua
     /// 基于文件系统的 Lua 脚本源。
     /// 负责把脚本标识解析为真实文件，并为热重载生成稳定版本标记。
     /// </summary>
-    public sealed class FileSystemLuaScriptSource : ILuaScriptSource
+    public sealed class FileSystemLuaScriptSource : ILuaWritableScriptSource
     {
+        private static readonly UTF8Encoding Utf8NoBom = new(false);
+
         private readonly string _projectRootPath;
         private readonly HashSet<string> _registeredScripts;
 
@@ -29,13 +31,8 @@ namespace Sideline.Facet.Lua
         public bool TryGetScript(string scriptId, out LuaScriptAsset? scriptAsset)
         {
             scriptAsset = null;
-            if (!_registeredScripts.Contains(scriptId))
-            {
-                return false;
-            }
-
-            string sourcePath = ResolveScriptPath(scriptId);
-            if (!File.Exists(sourcePath))
+            if (!TryResolveExistingScriptPath(scriptId, out string? sourcePath) ||
+                string.IsNullOrWhiteSpace(sourcePath))
             {
                 return false;
             }
@@ -50,13 +47,8 @@ namespace Sideline.Facet.Lua
         public bool TryGetVersionToken(string scriptId, out string? versionToken)
         {
             versionToken = null;
-            if (!_registeredScripts.Contains(scriptId))
-            {
-                return false;
-            }
-
-            string sourcePath = ResolveScriptPath(scriptId);
-            if (!File.Exists(sourcePath))
+            if (!TryResolveExistingScriptPath(scriptId, out string? sourcePath) ||
+                string.IsNullOrWhiteSpace(sourcePath))
             {
                 return false;
             }
@@ -68,6 +60,44 @@ namespace Sideline.Facet.Lua
         public IReadOnlyCollection<string> GetRegisteredScripts()
         {
             return _registeredScripts;
+        }
+
+        public bool CanWriteScript(string scriptId)
+        {
+            return TryResolveExistingScriptPath(scriptId, out _);
+        }
+
+        public bool TryWriteScript(string scriptId, string sourceCode, out LuaScriptAsset? scriptAsset)
+        {
+            ArgumentNullException.ThrowIfNull(sourceCode);
+
+            scriptAsset = null;
+            if (!TryResolveExistingScriptPath(scriptId, out string? sourcePath) ||
+                string.IsNullOrWhiteSpace(sourcePath))
+            {
+                return false;
+            }
+
+            File.WriteAllText(sourcePath, sourceCode, Utf8NoBom);
+            return TryGetScript(scriptId, out scriptAsset);
+        }
+
+        private bool TryResolveExistingScriptPath(string scriptId, out string? sourcePath)
+        {
+            sourcePath = null;
+            if (!_registeredScripts.Contains(scriptId))
+            {
+                return false;
+            }
+
+            string resolvedPath = ResolveScriptPath(scriptId);
+            if (!Path.IsPathRooted(resolvedPath) || !File.Exists(resolvedPath))
+            {
+                return false;
+            }
+
+            sourcePath = resolvedPath;
+            return true;
         }
 
         private string ResolveScriptPath(string scriptId)

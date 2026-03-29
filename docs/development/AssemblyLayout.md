@@ -244,3 +244,40 @@ Sideline
 - 将某个模块从 `Sideline` 中抽离
 
 否则几轮迭代后，团队会重新失去对程序集边界的共同认知。
+
+---
+
+## 阶段 5 冻结结论
+
+### 当前决策
+
+阶段 5 结论为：**当前暂不新增 `Facet.Godot`、`Facet.Editor`、`Facet.Runtime.Debug` 独立 `csproj`，继续由 `Sideline.csproj` 承载 Godot 直接加载的 Facet 脚本，但装配边界已经冻结为“文件级边界清晰、职责级边界清晰、文档级边界清晰”的状态。**
+
+这不是搁置，而是一次明确的工程决策。当前阶段不拆新程序集，原因有三点：
+- Godot 当前直接加载的脚本仍然以 `res://` 路径挂接在主项目里，`FacetHost`、`FacetMainScreen`、`FacetToolsPlugin`、运行时页面脚本都属于 Godot 直接加载入口，过早拆成新项目会把验证重点从边界治理转移到脚本装配兼容性上。
+- Facet 的无引擎核心已经先抽出到 `Facet.Core`，当前剩余部分主要是 Godot 宿主适配层，继续硬拆收益有限，风险高于收益。
+- 阶段 5 的目标是“装配边界优化”，不是“为了拆而拆”。只要能明确说明为什么不拆，并把热区代码和职责边界真正收紧，这一阶段就应判定为完成。
+
+### 当前冻结边界
+
+- `Sideline.csproj` 只承载两类代码：Godot 直接加载的项目脚本，以及 Facet 的 Godot 宿主适配层。
+- `Facet.Core.csproj` 继续承载无 Godot 依赖的 Facet 核心概念、服务容器、运行时上下文、页面定义契约、Lua/Projection/RedDot 抽象与数据结构。
+- `addons/facet-tools/FacetToolsPlugin.cs` 只负责编辑器插件生命周期、主面板创建与释放，不再承载工作区检查或文档规则本身。
+- `addons/facet-tools/FacetMainScreen.cs` 只负责节点解析、布局、自适应、事件绑定与渲染刷新，不再直接承担整套目录扫描与校验目录定义。
+- `addons/facet-tools/Workspace/**` 负责编辑器工作区路径解析。
+- `addons/facet-tools/Validation/**` 负责编辑器静态校验目录与校验条目定义。
+- `scripts/facet/RuntimeDebug/**` 继续作为运行时调试聚合层存在，但仍留在主程序集内，直到未来拆分条件满足。
+
+### 本阶段落地结果
+
+- 编辑器插件热区已进一步收紧：`FacetToolsPlugin` 保持极薄，`FacetMainScreen` 中的路径解析与静态校验目录已拆到独立 helper。
+- `Sideline.csproj` 已补充边界注释，明确主程序集当前只编译 Godot 宿主脚本与 Facet 的 Godot-facing 适配层。
+- `AssemblyLayout.md` 已记录本次“不拆新程序集”的理由、冻结边界与后续拆分准入条件。
+
+### 后续拆分准入条件
+
+只有同时满足以下条件，才应进入下一轮正式程序集拆分：
+- Facet 的 Godot 宿主代码规模继续扩大，主程序集中的 Facet 相关代码已经明显影响编译与维护成本。
+- 能验证 Godot 直接加载脚本在拆到新项目后的脚本资源装配链路仍然稳定可维护。
+- `Facet.Editor` 与 `Facet.Runtime.Debug` 的目录边界、命名空间边界、依赖边界已经长期稳定，不再频繁变动。
+- 拆分后能够减少复杂度，而不是引入更多工程粘合代码。

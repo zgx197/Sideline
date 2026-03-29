@@ -4,13 +4,14 @@
 [ext_resource type="Script" uid="uid://box2g6w1q7k8d" path="res://scripts/window/WindowManager.cs" id="2"]
 [ext_resource type="PackedScene" path="res://scenes/ui/IdlePanel.tscn" id="3"]
 [ext_resource type="PackedScene" path="res://scenes/ui/DungeonPanel.tscn" id="4"]
-[ext_resource type="Script" path="res://scripts/facet/Runtime/FacetHost.cs" id="5"]
+[ext_resource type="PackedScene" path="res://scenes/ui/RuntimeDebugPanel.tscn" id="5"]
+[ext_resource type="Script" path="res://scripts/facet/Runtime/FacetHost.cs" id="6"]
 
 [node name="Main" type="Node" unique_id=430688930]
 script = ExtResource("1")
 
 [node name="FacetHost" type="Node" parent="." unique_id=1403379101]
-script = ExtResource("5")
+script = ExtResource("6")
 
 [node name="WindowManager" type="Node" parent="." unique_id=2009923800]
 script = ExtResource("2")
@@ -21,3 +22,8 @@ script = ExtResource("2")
 
 [node name="DungeonPanel" parent="CanvasLayer" unique_id=1031441611 instance=ExtResource("4")]
 visible = false
+
+[node name="RuntimeDebugPanel" parent="CanvasLayer" instance=ExtResource("5")]
+visible = false
+
+
