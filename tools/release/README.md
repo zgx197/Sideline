@@ -1,11 +1,28 @@
 # Release Tools
 
-本目录用于存放 Sideline 发布流程的脚本、模板和辅助配置。
+本目录用于存放 Sideline 当前正式发布链路的脚本、模板和辅助配置。
 
-当前只建立目录边界，不直接放入正式实现。后续发布功能建议按职责拆分为：
+当前已经落地的职责拆分如下：
 
-- `shared/`：公共逻辑
-- `windows-x64/`：Windows x64 导出与打包
-- `github-release/`：GitHub Release 相关逻辑
+- `shared/`：版本元数据、Godot 工具链配置、工具链安装
+- `windows-x64/`：Windows x64 导出、前置检查、启动 smoke test、打包、本地一键入口
+- `github-release/`：Release 说明生成、GitHub Release 发布
 
-构建产物不进入本目录，也不入库，后续统一输出到被 `.gitignore` 忽略的本地目录，例如 `artifacts/release/`。
+对应 workflow：
+
+- `.github/workflows/godot-release-artifact.yml`
+- `.github/workflows/godot-windows-release.yml`
+
+当前发布链路的固定顺序为：
+
+- `prepare`
+- `install toolchain`
+- `export`
+- `smoke test`
+- `package`
+- `upload artifact / publish release`
+
+构建产物不进入本目录，也不入库。运行时输出统一进入被 `.gitignore` 忽略的本地目录，例如：
+
+- `artifacts/toolchains/`
+- `artifacts/release/`
