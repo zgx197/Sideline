@@ -70,17 +70,17 @@ jobs:
     - name: Summarize classification
       shell: pwsh
       run: |
-        $summary = @"
-        ## PR Gate / Change Classification
-
-        | Scope | Result |
-        |------|--------|
-        | docs_only | `${{ steps.finalize.outputs.docs_only }}` |
-        | needs_format | `${{ steps.finalize.outputs.needs_format }}` |
-        | needs_lattice | `${{ steps.finalize.outputs.needs_lattice }}` |
-        | needs_sideline | `${{ steps.finalize.outputs.needs_sideline }}` |
-        "@
-
+        $summaryLines = @(
+          '## PR Gate / Change Classification',
+          '',
+          '| Scope | Result |',
+          '|------|--------|',
+          '| docs_only | `${{ steps.finalize.outputs.docs_only }}` |',
+          '| needs_format | `${{ steps.finalize.outputs.needs_format }}` |',
+          '| needs_lattice | `${{ steps.finalize.outputs.needs_lattice }}` |',
+          '| needs_sideline | `${{ steps.finalize.outputs.needs_sideline }}` |'
+        )
+        $summary = $summaryLines -join [Environment]::NewLine
         Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value $summary
 
   format-check:
@@ -106,24 +106,25 @@ jobs:
         cache-dependency-path: |
           godot/Sideline.sln
           godot/scripts/lattice/Lattice.csproj
+          NuGet.Config
         script: |
-          dotnet restore godot/scripts/lattice/Lattice.csproj
-          dotnet format godot/scripts/lattice/Lattice.csproj --verify-no-changes --verbosity detailed
+          dotnet restore godot/scripts/lattice/Lattice.csproj --configfile NuGet.Config
+          dotnet format godot/scripts/lattice/Lattice.csproj --verify-no-changes --verbosity detailed --no-restore
 
     - name: Summarize format check
       if: always()
       shell: pwsh
       run: |
         $status = if ('${{ needs.change-classification.outputs.needs_format }}' -eq 'true') { '${{ job.status }}' } else { 'skipped' }
-        $summary = @"
-        ## Code Format Check
-
-        - Status: `$status`
-        - Triggered by scope: `needs_format=${{ needs.change-classification.outputs.needs_format }}`
-        - Cache: `enabled`
-        - Target: `godot/scripts/lattice/Lattice.csproj`
-        "@
-
+        $summaryLines = @(
+          '## Code Format Check',
+          '',
+          "- Status: `$status`",
+          '- Triggered by scope: `needs_format=${{ needs.change-classification.outputs.needs_format }}`',
+          '- Cache: `enabled`',
+          '- Target: `godot/scripts/lattice/Lattice.csproj`'
+        )
+        $summary = $summaryLines -join [Environment]::NewLine
         Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value $summary
 
   build-test:
@@ -156,16 +157,17 @@ jobs:
           godot/Sideline.csproj
           godot/scripts/lattice/Lattice.csproj
           godot/scripts/lattice/Tests/Lattice.Tests.csproj
+          NuGet.Config
         script: |
           if ('${{ needs.change-classification.outputs.needs_sideline }}' -eq 'true')
           {
-              dotnet restore godot/Sideline.csproj
+              dotnet restore godot/Sideline.csproj --configfile NuGet.Config
               dotnet build godot/Sideline.csproj --no-restore --configuration ${{ matrix.configuration }} -nologo
           }
 
           if ('${{ needs.change-classification.outputs.needs_lattice }}' -eq 'true')
           {
-              dotnet restore godot/scripts/lattice/Tests/Lattice.Tests.csproj
+              dotnet restore godot/scripts/lattice/Tests/Lattice.Tests.csproj --configfile NuGet.Config
               dotnet build godot/scripts/lattice/Tests/Lattice.Tests.csproj --no-restore --configuration ${{ matrix.configuration }} -nologo
               dotnet test godot/scripts/lattice/Tests/Lattice.Tests.csproj --no-build --configuration ${{ matrix.configuration }} -nologo --verbosity normal --maxcpucount:1
           }
@@ -175,14 +177,14 @@ jobs:
       shell: pwsh
       run: |
         $status = if ('${{ needs.change-classification.outputs.docs_only }}' -eq 'true') { 'skipped' } else { '${{ job.status }}' }
-        $summary = @"
-        ## Build & Test (windows-latest, ${{ matrix.configuration }})
-
-        - Status: `$status`
-        - docs_only: `${{ needs.change-classification.outputs.docs_only }}`
-        - needs_sideline: `${{ needs.change-classification.outputs.needs_sideline }}`
-        - needs_lattice: `${{ needs.change-classification.outputs.needs_lattice }}`
-        - Cache: `enabled`
-        "@
-
+        $summaryLines = @(
+          '## Build & Test (windows-latest, ${{ matrix.configuration }})',
+          '',
+          "- Status: `$status`",
+          '- docs_only: `${{ needs.change-classification.outputs.docs_only }}`',
+          '- needs_sideline: `${{ needs.change-classification.outputs.needs_sideline }}`',
+          '- needs_lattice: `${{ needs.change-classification.outputs.needs_lattice }}`',
+          '- Cache: `enabled`'
+        )
+        $summary = $summaryLines -join [Environment]::NewLine
         Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value $summary
