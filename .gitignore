@@ -118,3 +118,10 @@ TestResults/
 # BenchmarkDotNet 本地产物
 godot/Lattice.Benchmarks/benchmark-results/
 BenchmarkDotNet.Artifacts/
+
+# Codex / local temp configs
+.codex-temp*.config
+
+# Local Facet diagnostics dumps
+godot/sideline-restore-diag-*.txt
+godot/sideline-restorewalk-diag-*.txt
