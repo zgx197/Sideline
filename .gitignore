@@ -107,6 +107,8 @@ godot/*-diag.txt
 # Coverage reports
 coverage.info
 coverage/
+!docs/reports/coverage/
+!docs/reports/coverage/**
 
 # Test Results
 TestResults/

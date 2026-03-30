@@ -401,6 +401,10 @@ pre code {
         flex-direction: column;
         align-items: center;
     }
+
+    .report-split {
+        grid-template-columns: 1fr;
+    }
 }
 
 /* 像素化装饰元素 */
@@ -420,6 +424,88 @@ pre code {
     border: 2px solid #d4af37;
     margin-left: 12px;
     vertical-align: middle;
+}
+
+/* 开发报告入口 */
+.report-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 32px;
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 20px;
+}
+
+.report-split {
+    display: grid;
+    grid-template-columns: minmax(0, 1.4fr) minmax(280px, 0.8fr);
+    gap: 32px;
+}
+
+.report-card-title {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+
+.report-card-title h3 {
+    margin: 0;
+}
+
+.report-status-line {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin: 16px 0 20px;
+}
+
+.report-chip {
+    display: inline-block;
+    padding: 6px 12px;
+    border: 2px solid;
+    font-size: 0.9rem;
+    line-height: 1.2;
+}
+
+.report-chip-live {
+    background-color: rgba(78, 204, 163, 0.18);
+    border-color: var(--color-accent-green);
+    color: var(--color-accent-green);
+}
+
+.report-chip-pending {
+    background-color: rgba(157, 78, 221, 0.18);
+    border-color: var(--color-accent-purple);
+    color: #d7b4ff;
+}
+
+.report-chip-muted {
+    background-color: rgba(15, 15, 35, 0.8);
+    border-color: var(--color-text-muted);
+    color: var(--color-text-secondary);
+}
+
+.report-actions {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    margin-top: 24px;
+}
+
+.report-meta-list {
+    margin: 0;
+    padding-left: 24px;
+}
+
+.report-meta-list li {
+    margin-bottom: 10px;
+}
+
+.report-note {
+    color: var(--color-text-muted);
+    font-size: 0.95rem;
 }
 
 /* 表格样式 */
