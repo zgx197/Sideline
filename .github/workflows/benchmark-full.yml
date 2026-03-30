@@ -34,14 +34,20 @@ jobs:
         cache-dependency-path: |
           godot/Sideline.sln
           godot/scripts/lattice/Lattice.csproj
+          godot/scripts/lattice/Tools/SwizzleGenerator/SwizzleGenerator.csproj
+          godot/scripts/lattice/Tools/Lattice.Analyzers/Lattice.Analyzers.csproj
           godot/Lattice.Benchmarks/Lattice.Benchmarks.csproj
+          NuGet.Config
         script: |
+          dotnet restore godot/scripts/lattice/Tools/SwizzleGenerator/SwizzleGenerator.csproj --configfile NuGet.Config
+          dotnet restore godot/scripts/lattice/Tools/Lattice.Analyzers/Lattice.Analyzers.csproj --configfile NuGet.Config
+
           if (Test-Path 'godot/Lattice.Benchmarks/benchmark-results')
           {
               Remove-Item -LiteralPath 'godot/Lattice.Benchmarks/benchmark-results' -Recurse -Force
           }
 
-          dotnet restore godot/Lattice.Benchmarks/Lattice.Benchmarks.csproj
+          dotnet restore godot/Lattice.Benchmarks/Lattice.Benchmarks.csproj --configfile NuGet.Config
           dotnet run --configuration Release --project godot/Lattice.Benchmarks/Lattice.Benchmarks.csproj -- --filter "*" --exporters json html markdown
 
     - name: Debug Benchmark Output Paths
@@ -194,14 +200,14 @@ jobs:
       if: always()
       shell: pwsh
       run: |
-        $summary = @"
-        ## Full Benchmark Suite
-
-        - Status: `${{ job.status }}`
-        - Layer: `analysis`
-        - Responsibility: `benchmark only`
-        - Outputs: `benchmark reports + uploaded artifact`
-        - Explicitly excluded: `GitHub Pages publish`, `game release packaging`, `Godot export`
-        "@
-
+        $summaryLines = @(
+          '## Full Benchmark Suite',
+          '',
+          ('- Status: `{0}`' -f '${{ job.status }}'),
+          '- Layer: `analysis`',
+          '- Responsibility: `benchmark only`',
+          '- Outputs: `benchmark reports + uploaded artifact`',
+          '- Explicitly excluded: `GitHub Pages publish`, `game release packaging`, `Godot export`'
+        )
+        $summary = $summaryLines -join [Environment]::NewLine
         Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value $summary
