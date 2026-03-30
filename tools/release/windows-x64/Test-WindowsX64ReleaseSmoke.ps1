@@ -1,4 +1,4 @@
-param(
+﻿param(
     [Parameter(Mandatory = $true)]
     [string]$PublishDir,
 
@@ -13,24 +13,24 @@ $ErrorActionPreference = "Stop"
 
 if ($StartupTimeoutSeconds -lt 5)
 {
-    throw "StartupTimeoutSeconds 不能小于 5 秒。"
+    throw "StartupTimeoutSeconds must be at least 5 seconds."
 }
 
 if ($PollIntervalMilliseconds -lt 100)
 {
-    throw "PollIntervalMilliseconds 不能小于 100 毫秒。"
+    throw "PollIntervalMilliseconds must be at least 100 milliseconds."
 }
 
 $resolvedPublishDir = [System.IO.Path]::GetFullPath($PublishDir)
 if (-not (Test-Path -LiteralPath $resolvedPublishDir))
 {
-    throw "找不到待验证的发布目录: $resolvedPublishDir"
+    throw "Publish directory not found: $resolvedPublishDir"
 }
 
 $executablePath = Join-Path $resolvedPublishDir ("{0}.exe" -f $ProductName)
 if (-not (Test-Path -LiteralPath $executablePath))
 {
-    throw "Smoke Test 失败，缺少可执行文件: $executablePath"
+    throw "Smoke test failed because the executable is missing: $executablePath"
 }
 
 $logDir = Join-Path $resolvedPublishDir "logs"
@@ -57,8 +57,8 @@ function Test-StructuredSmokeEvidence
 
     $result = [ordered]@{
         BootstrapRuntimeReady = $false
-        InitialPageReady      = $false
-        LuaControllerReady    = $false
+        InitialPageReady = $false
+        LuaControllerReady = $false
     }
 
     if (-not (Test-Path -LiteralPath $Path))
@@ -117,7 +117,7 @@ function Test-StructuredSmokeEvidence
         }
     }
 
-    [pscustomobject]$result
+    return [pscustomobject]$result
 }
 
 $process = $null
@@ -133,7 +133,7 @@ try
     {
         if ($process.HasExited)
         {
-            $failureReason = "Sideline.exe 在 startup smoke test 期间提前退出，ExitCode=$($process.ExitCode)"
+            $failureReason = "Sideline.exe exited during startup smoke test. ExitCode=$($process.ExitCode)"
             break
         }
 
@@ -167,10 +167,10 @@ try
                 -Path $structuredLogPath `
                 -ExpectedPageId $ExpectedPageId `
                 -ExpectedLuaScript $ExpectedLuaScript
-            $failureReason = "未在 ${StartupTimeoutSeconds}s 内收集到完整启动证据。Bootstrap=$($evidence.BootstrapRuntimeReady); InitialPage=$($evidence.InitialPageReady); LuaController=$($evidence.LuaControllerReady)"
+            $failureReason = "Did not collect complete startup evidence within ${StartupTimeoutSeconds}s. Bootstrap=$($evidence.BootstrapRuntimeReady); InitialPage=$($evidence.InitialPageReady); LuaController=$($evidence.LuaControllerReady)"
         }
 
-        throw "Windows x64 发布包最小运行验证失败。$failureReason`nConsoleLog: $consoleLogPath`nStructuredLog: $structuredLogPath"
+        throw "Windows x64 release smoke test failed.`nReason: $failureReason`nConsoleLog: $consoleLogPath`nStructuredLog: $structuredLogPath"
     }
 }
 finally
@@ -189,11 +189,11 @@ finally
 }
 
 [pscustomobject]@{
-    PublishDir         = $resolvedPublishDir
-    Executable         = $executablePath
-    ConsoleLogPath     = $consoleLogPath
-    StructuredLogPath  = $structuredLogPath
-    ExpectedPageId     = $ExpectedPageId
-    ExpectedLuaScript  = $ExpectedLuaScript
-    SmokeTestPassed    = $smokePassed
+    PublishDir = $resolvedPublishDir
+    Executable = $executablePath
+    ConsoleLogPath = $consoleLogPath
+    StructuredLogPath = $structuredLogPath
+    ExpectedPageId = $ExpectedPageId
+    ExpectedLuaScript = $ExpectedLuaScript
+    SmokeTestPassed = $smokePassed
 }

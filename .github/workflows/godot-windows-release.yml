@@ -17,6 +17,7 @@ env:
   GODOT_VERSION: '4.6.1'
   GODOT_RELEASE_STATUS: 'stable'
   GODOT_PRODUCT_FLAVOR: 'mono'
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
 
 jobs:
   prepare:
@@ -47,14 +48,14 @@ jobs:
     - name: Summarize prepare
       shell: pwsh
       run: |
-        $summary = @"
-        ## Godot Windows x64 Release / Prepare
-
-        - Version: `${{ steps.metadata.outputs.version }}`
-        - Package: `${{ steps.metadata.outputs.package_name }}`
-        - Release title: `${{ steps.metadata.outputs.release_title }}`
-        "@
-
+        $summaryLines = @(
+          '## Godot Windows x64 Release / Prepare',
+          '',
+          '- Version: `${{ steps.metadata.outputs.version }}`',
+          '- Package: `${{ steps.metadata.outputs.package_name }}`',
+          '- Release title: `${{ steps.metadata.outputs.release_title }}`'
+        )
+        $summary = $summaryLines -join [Environment]::NewLine
         Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value $summary
 
   export-package:
@@ -77,6 +78,9 @@ jobs:
           godot/Sideline.csproj
           godot/scripts/lattice/Lattice.csproj
           godot/scripts/facet/Facet.Core.csproj
+          godot/scripts/lattice/Tools/SwizzleGenerator/SwizzleGenerator.csproj
+          godot/scripts/lattice/Tools/Lattice.Analyzers/Lattice.Analyzers.csproj
+          NuGet.Config
 
     - name: Prepare release directories
       id: dirs
@@ -93,6 +97,18 @@ jobs:
         "appdata_root=$appDataRoot" >> $env:GITHUB_OUTPUT
         "toolchain_root=$toolchainRoot" >> $env:GITHUB_OUTPUT
         "output_root=$outputRoot" >> $env:GITHUB_OUTPUT
+
+    - name: Restore release build dependencies
+      shell: pwsh
+      run: |
+        & dotnet restore godot/scripts/lattice/Tools/SwizzleGenerator/SwizzleGenerator.csproj --configfile NuGet.Config
+        if ($LASTEXITCODE -ne 0) { throw "restore SwizzleGenerator 失败，ExitCode=$LASTEXITCODE" }
+
+        & dotnet restore godot/scripts/lattice/Tools/Lattice.Analyzers/Lattice.Analyzers.csproj --configfile NuGet.Config
+        if ($LASTEXITCODE -ne 0) { throw "restore Lattice.Analyzers 失败，ExitCode=$LASTEXITCODE" }
+
+        & dotnet restore godot/Sideline.csproj --configfile NuGet.Config
+        if ($LASTEXITCODE -ne 0) { throw "restore Sideline 失败，ExitCode=$LASTEXITCODE" }
 
     - name: Install Godot export toolchain
       shell: pwsh
@@ -119,6 +135,14 @@ jobs:
         "publish_dir=$($export.PublishDir)" >> $env:GITHUB_OUTPUT
         "export_log=$($export.ExportLog)" >> $env:GITHUB_OUTPUT
 
+    - name: Upload export logs
+      if: always()
+      uses: actions/upload-artifact@v6
+      with:
+        name: sideline-win-x64-export-logs-${{ needs.prepare.outputs.version }}
+        path: ${{ steps.dirs.outputs.output_root }}/logs
+        if-no-files-found: warn
+
     - name: Smoke test Windows x64 release
       id: smoke
       shell: pwsh
@@ -142,14 +166,14 @@ jobs:
         "package_path=$($package.PackagePath)" >> $env:GITHUB_OUTPUT
 
     - name: Upload publish artifact
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v6
       with:
         name: ${{ needs.prepare.outputs.artifact_export_name }}
         path: ${{ steps.export.outputs.publish_dir }}
         if-no-files-found: error
 
     - name: Upload package artifact
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v6
       with:
         name: ${{ needs.prepare.outputs.artifact_package_name }}
         path: ${{ steps.package.outputs.package_path }}
@@ -159,17 +183,18 @@ jobs:
       if: always()
       shell: pwsh
       run: |
-        $summary = @"
-        ## Godot Windows x64 Release / Export and Package
-
-        - Status: `${{ job.status }}`
-        - Version: `${{ needs.prepare.outputs.version }}`
-        - Publish artifact: `${{ needs.prepare.outputs.artifact_export_name }}`
-        - Package artifact: `${{ needs.prepare.outputs.artifact_package_name }}`
-        - Smoke console log: `${{ steps.smoke.outputs.console_log }}`
-        - Smoke structured log: `${{ steps.smoke.outputs.structured_log }}`
-        "@
-
+        $summaryLines = @(
+          '## Godot Windows x64 Release / Export and Package',
+          '',
+          ('- Status: `{0}`' -f '${{ job.status }}'),
+          '- Version: `${{ needs.prepare.outputs.version }}`',
+          '- Publish artifact: `${{ needs.prepare.outputs.artifact_export_name }}`',
+          '- Package artifact: `${{ needs.prepare.outputs.artifact_package_name }}`',
+          '- Export logs artifact: `sideline-win-x64-export-logs-${{ needs.prepare.outputs.version }}`',
+          '- Smoke console log: `${{ steps.smoke.outputs.console_log }}`',
+          '- Smoke structured log: `${{ steps.smoke.outputs.structured_log }}`'
+        )
+        $summary = $summaryLines -join [Environment]::NewLine
         Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value $summary
 
   publish-release:
@@ -182,7 +207,7 @@ jobs:
       uses: actions/checkout@v5
 
     - name: Download package artifact
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v8
       with:
         name: ${{ needs.prepare.outputs.artifact_package_name }}
         path: ${{ runner.temp }}/release-package
@@ -216,13 +241,13 @@ jobs:
       if: always()
       shell: pwsh
       run: |
-        $summary = @"
-        ## Godot Windows x64 Release / Publish
-
-        - Status: `${{ job.status }}`
-        - Version: `${{ needs.prepare.outputs.version }}`
-        - Release title: `${{ needs.prepare.outputs.release_title }}`
-        - Asset: `${{ needs.prepare.outputs.package_name }}`
-        "@
-
+        $summaryLines = @(
+          '## Godot Windows x64 Release / Publish',
+          '',
+          ('- Status: `{0}`' -f '${{ job.status }}'),
+          '- Version: `${{ needs.prepare.outputs.version }}`',
+          '- Release title: `${{ needs.prepare.outputs.release_title }}`',
+          '- Asset: `${{ needs.prepare.outputs.package_name }}`'
+        )
+        $summary = $summaryLines -join [Environment]::NewLine
         Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value $summary
