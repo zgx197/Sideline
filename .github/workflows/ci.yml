@@ -1,7 +1,7 @@
 # Common CI Pipeline
 # 触发条件: 所有推送到 main 或面向 main 的 PR
 
-name: Common CI
+name: "[CI] Common Build"
 
 on:
   push:

@@ -39,10 +39,12 @@ bundle install
 ### 启动本地服务器
 
 ```bash
-bundle exec jekyll serve
+bundle exec jekyll serve --config _config.local.yml
 ```
 
 访问 http://localhost:4000/Sideline/
+
+本地预览使用完整的 `_config.local.yml`，避免因为 `remote_theme` 下载远程主题而受到本机代理或证书链问题影响。
 
 ## 添加新文章
 

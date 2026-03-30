@@ -1,0 +1,187 @@
+name: "[Site] Reports Pages"
+
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows:
+      - '[Analysis] [Weekly] Full Benchmark'
+      - '[Analysis] [Weekly] Full Coverage'
+    branches: [ main ]
+    types:
+      - completed
+
+permissions:
+  actions: read
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: reports-pages
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
+jobs:
+  build-pages:
+    name: Build Reports Pages
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v5
+
+    - name: Configure Pages
+      uses: actions/configure-pages@v5
+
+    - name: Download latest reports artifacts
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        set -euo pipefail
+
+        mkdir -p .reports-artifacts/coverage .reports-artifacts/benchmark .reports-artifacts/meta
+
+        download_latest_artifact() {
+          local workflow_file="$1"
+          local artifact_name="$2"
+          local target_dir="$3"
+          local metadata_path="$4"
+          local latest_url="$5"
+          local workflow_url="https://github.com/${GITHUB_REPOSITORY}/actions/workflows/${workflow_file}"
+
+          local run_id
+          run_id="$(gh run list --workflow "$workflow_file" --branch main --limit 20 --json databaseId,conclusion,headBranch --jq 'map(select(.conclusion == "success" and .headBranch == "main")) | .[0].databaseId')"
+
+          if [ -z "$run_id" ] || [ "$run_id" = "null" ]; then
+            echo "::warning::No successful run found for ${workflow_file}. Keeping fallback entry page."
+            jq -n \
+              --arg workflow_file "$workflow_file" \
+              --arg workflow_url "$workflow_url" \
+              --arg latest_url "$latest_url" \
+              '{
+                available: false,
+                workflow_file: $workflow_file,
+                workflow_url: $workflow_url,
+                latest_url: $latest_url
+              }' > "$metadata_path"
+            return 0
+          fi
+
+          rm -rf "$target_dir"
+          mkdir -p "$target_dir"
+          gh run download "$run_id" --name "$artifact_name" --dir "$target_dir"
+
+          gh run view "$run_id" --json databaseId,displayTitle,headBranch,headSha,updatedAt,url,workflowName > "$target_dir/run.json"
+
+          jq -n \
+            --slurpfile run "$target_dir/run.json" \
+            --arg workflow_file "$workflow_file" \
+            --arg workflow_url "$workflow_url" \
+            --arg latest_url "$latest_url" \
+            '($run[0]) as $r | {
+              available: true,
+              workflow_file: $workflow_file,
+              workflow_url: $workflow_url,
+              latest_url: $latest_url,
+              run_id: ($r.databaseId | tostring),
+              run_url: $r.url,
+              workflow_name: $r.workflowName,
+              run_title: $r.displayTitle,
+              branch: $r.headBranch,
+              commit: $r.headSha,
+              generated_at: $r.updatedAt
+            }' > "$metadata_path"
+
+          rm -f "$target_dir/run.json"
+        }
+
+        download_latest_artifact \
+          "full-coverage.yml" \
+          "coverage-full-report" \
+          ".reports-artifacts/coverage" \
+          ".reports-artifacts/meta/coverage.json" \
+          "/Sideline/reports/coverage/latest/"
+
+        download_latest_artifact \
+          "benchmark-full.yml" \
+          "benchmark-full-results" \
+          ".reports-artifacts/benchmark" \
+          ".reports-artifacts/meta/benchmark.json" \
+          "/Sideline/reports/benchmark/latest/"
+
+    - name: Prepare Pages source
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        rm -rf .pages-src .pages-build
+        mkdir -p .pages-src
+        cp -a docs/. .pages-src/
+        mkdir -p .pages-src/_data
+
+        jq -s '{coverage: .[0], benchmark: .[1]}' \
+          .reports-artifacts/meta/coverage.json \
+          .reports-artifacts/meta/benchmark.json > .pages-src/_data/reports_status.json
+
+        if [ "$(jq -r '.available' .reports-artifacts/meta/coverage.json)" = "true" ]; then
+          mkdir -p .pages-src/reports/coverage/latest
+          cp -a .reports-artifacts/coverage/. .pages-src/reports/coverage/latest/
+        fi
+
+        if [ "$(jq -r '.available' .reports-artifacts/meta/benchmark.json)" = "true" ]; then
+          mkdir -p .pages-src/reports/benchmark/latest
+          cp -a .reports-artifacts/benchmark/. .pages-src/reports/benchmark/latest/
+        fi
+
+        echo "=== Reports status ==="
+        cat .pages-src/_data/reports_status.json
+        echo
+        echo "=== Pages reports tree ==="
+        find .pages-src/reports -maxdepth 4 -type f | sort | head -400
+
+    - name: Build Jekyll site
+      uses: actions/jekyll-build-pages@v1
+      with:
+        source: ./.pages-src
+        destination: ./.pages-build
+
+    - name: Upload Pages artifact
+      uses: actions/upload-pages-artifact@v4
+      with:
+        path: ./.pages-build
+
+    - name: Summarize reports pages build
+      if: always()
+      shell: pwsh
+      run: |
+        $statusJson = Get-Content '.pages-src/_data/reports_status.json' -Raw | ConvertFrom-Json
+        $coverageState = if ($statusJson.coverage.available) { 'latest artifact published' } else { 'fallback entry page only' }
+        $benchmarkState = if ($statusJson.benchmark.available) { 'latest artifact published' } else { 'fallback entry page only' }
+
+        $summaryLines = @(
+          '## [Site] Reports Pages / Build',
+          '',
+          ('- Status: `{0}`' -f '${{ job.status }}'),
+          ('- Coverage: `{0}`' -f $coverageState),
+          ('- Benchmark: `{0}`' -f $benchmarkState),
+          '- Source: `docs/ + latest successful analysis artifacts`'
+        )
+        $summary = $summaryLines -join [Environment]::NewLine
+        Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value $summary
+
+  deploy-pages:
+    name: Deploy Reports Pages
+    needs: build-pages
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+    - name: Deploy to GitHub Pages
+      id: deployment
+      uses: actions/deploy-pages@v4

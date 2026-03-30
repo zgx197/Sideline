@@ -1,4 +1,4 @@
-name: Full Benchmark
+name: "[Analysis] [Weekly] Full Benchmark"
 
 on:
   workflow_dispatch:
@@ -14,6 +14,7 @@ concurrency:
 
 env:
   DOTNET_VERSION: '8.0.x'
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
 
 jobs:
   benchmark-full:
@@ -26,7 +27,7 @@ jobs:
       with:
         fetch-depth: 0
 
-    - name: Run Full Benchmarks
+    - name: Run full benchmarks
       uses: ./.github/actions/dotnet-ci
       with:
         dotnet-version: ${{ env.DOTNET_VERSION }}
@@ -50,7 +51,7 @@ jobs:
           dotnet restore godot/Lattice.Benchmarks/Lattice.Benchmarks.csproj --configfile NuGet.Config
           dotnet run --configuration Release --project godot/Lattice.Benchmarks/Lattice.Benchmarks.csproj -- --filter "*" --exporters json html markdown
 
-    - name: Debug Benchmark Output Paths
+    - name: Debug benchmark output paths
       if: always()
       shell: bash
       run: |
@@ -59,7 +60,7 @@ jobs:
           \( -path '*/benchmark-results/*' -o -path '*/BenchmarkDotNet.Artifacts/*' -o -name '*.log' -o -name '*-report-github.md' -o -name '*-report.html' -o -name '*-report.csv' \) \
           -type f | sort
 
-    - name: Validate Benchmark Execution
+    - name: Validate benchmark execution
       shell: bash
       run: |
         set -euo pipefail
@@ -100,7 +101,7 @@ jobs:
           exit 1
         fi
 
-    - name: Generate Benchmark Index
+    - name: Generate benchmark index
       shell: bash
       run: |
         set -euo pipefail
@@ -157,7 +158,7 @@ jobs:
           echo "- Commit: \`$SHORT_SHA\`"
           echo "- CI 运行: [$GITHUB_REPOSITORY #$GITHUB_RUN_ID]($RUN_URL)"
           echo
-          echo "> 本页由 GitHub Actions 定时或手动触发生成，用于完整回归分析。"
+          echo "> 本页由 GitHub Actions 定时或手动触发生成，用于完整性能回归分析。"
           echo
           echo "| 报告 | HTML | Markdown | CSV |"
           echo "|------|------|----------|-----|"
@@ -188,7 +189,7 @@ jobs:
           fi
         } > "$INDEX_FILE"
 
-    - name: Upload Full Benchmark Results
+    - name: Upload full benchmark results
       uses: actions/upload-artifact@v6
       with:
         name: benchmark-full-results
@@ -201,12 +202,13 @@ jobs:
       shell: pwsh
       run: |
         $summaryLines = @(
-          '## Full Benchmark Suite',
+          '## [Analysis] [Weekly] Full Benchmark',
           '',
           ('- Status: `{0}`' -f '${{ job.status }}'),
           '- Layer: `analysis`',
-          '- Responsibility: `benchmark only`',
-          '- Outputs: `benchmark reports + uploaded artifact`',
+          '- Trigger: `schedule + workflow_dispatch`',
+          '- Responsibility: `full benchmark only`',
+          '- Output artifact: `benchmark-full-results`',
           '- Explicitly excluded: `GitHub Pages publish`, `game release packaging`, `Godot export`'
         )
         $summary = $summaryLines -join [Environment]::NewLine

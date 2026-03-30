@@ -1,4 +1,4 @@
-name: PR Gate
+name: "[CI] PR Gate"
 
 on:
   pull_request:
@@ -71,7 +71,7 @@ jobs:
       shell: pwsh
       run: |
         $summaryLines = @(
-          '## PR Gate / Change Classification',
+          '## [CI] PR Gate / Change Classification',
           '',
           '| Scope | Result |',
           '|------|--------|',

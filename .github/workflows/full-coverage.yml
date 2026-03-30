@@ -1,0 +1,113 @@
+name: "[Analysis] [Weekly] Full Coverage"
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 2 * * 1'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: full-coverage-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_VERSION: '8.0.x'
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
+jobs:
+  coverage-full:
+    name: Full Coverage Report
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v5
+
+    - name: Run full coverage
+      uses: ./.github/actions/dotnet-ci
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+        cache: 'true'
+        cache-dependency-path: |
+          godot/Sideline.sln
+          godot/scripts/lattice/Lattice.csproj
+          godot/scripts/lattice/Tests/Lattice.Tests.csproj
+          godot/scripts/lattice/Tools/SwizzleGenerator/SwizzleGenerator.csproj
+          godot/scripts/lattice/Tools/Lattice.Analyzers/Lattice.Analyzers.csproj
+          NuGet.Config
+        script: |
+          dotnet restore godot/scripts/lattice/Tools/SwizzleGenerator/SwizzleGenerator.csproj --configfile NuGet.Config
+          dotnet restore godot/scripts/lattice/Tools/Lattice.Analyzers/Lattice.Analyzers.csproj --configfile NuGet.Config
+          dotnet restore godot/scripts/lattice/Tests/Lattice.Tests.csproj --configfile NuGet.Config
+
+          if (Test-Path 'godot/scripts/lattice/Tests/coverage')
+          {
+              Remove-Item -LiteralPath 'godot/scripts/lattice/Tests/coverage' -Recurse -Force
+          }
+
+          dotnet build godot/scripts/lattice/Tests/Lattice.Tests.csproj --no-restore --configuration Release -nologo
+          dotnet test godot/scripts/lattice/Tests/Lattice.Tests.csproj --no-build --configuration Release -nologo --verbosity minimal --maxcpucount:1 `
+            /p:CollectCoverage=true `
+            /p:CoverletOutputFormat=cobertura `
+            /p:CoverletOutput=./coverage/coverage.cobertura.xml
+
+    - name: Install ReportGenerator
+      shell: bash
+      run: dotnet tool install --global dotnet-reportgenerator-globaltool
+
+    - name: Generate coverage report
+      shell: bash
+      run: |
+        set -euo pipefail
+        cd godot/scripts/lattice/Tests
+        reportgenerator \
+          -reports:"./coverage/coverage.cobertura.xml" \
+          -targetdir:"./coverage/report" \
+          -reporttypes:"Html;MarkdownSummaryGithub"
+
+    - name: Validate coverage report
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        REPORT_DIR="godot/scripts/lattice/Tests/coverage/report"
+
+        if [ ! -d "$REPORT_DIR" ]; then
+          echo "::error::Coverage report directory not found: $REPORT_DIR"
+          exit 1
+        fi
+
+        if [ ! -f "$REPORT_DIR/index.html" ]; then
+          echo "::error::Coverage report index is missing: $REPORT_DIR/index.html"
+          exit 1
+        fi
+
+        echo "=== Coverage Report Files ==="
+        find "$REPORT_DIR" -maxdepth 2 -type f | sort | head -200
+
+    - name: Upload full coverage report
+      uses: actions/upload-artifact@v6
+      with:
+        name: coverage-full-report
+        path: godot/scripts/lattice/Tests/coverage/report/
+        retention-days: 90
+        if-no-files-found: error
+
+    - name: Summarize full coverage
+      if: always()
+      shell: pwsh
+      run: |
+        $summaryLines = @(
+          '## [Analysis] [Weekly] Full Coverage',
+          '',
+          ('- Status: `{0}`' -f '${{ job.status }}'),
+          '- Layer: `analysis`',
+          '- Trigger: `schedule + workflow_dispatch`',
+          '- Responsibility: `full coverage report only`',
+          '- Output artifact: `coverage-full-report`',
+          '- Explicitly excluded: `PR gate`, `daily main validation`, `GitHub Pages publish`'
+        )
+        $summary = $summaryLines -join [Environment]::NewLine
+        Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value $summary

@@ -1,0 +1,14 @@
+{
+  "coverage": {
+    "available": false,
+    "workflow_file": "full-coverage.yml",
+    "workflow_url": "https://github.com/zgx197/Sideline/actions/workflows/full-coverage.yml",
+    "latest_url": "/Sideline/reports/coverage/latest/"
+  },
+  "benchmark": {
+    "available": false,
+    "workflow_file": "benchmark-full.yml",
+    "workflow_url": "https://github.com/zgx197/Sideline/actions/workflows/benchmark-full.yml",
+    "latest_url": "/Sideline/reports/benchmark/latest/"
+  }
+}
