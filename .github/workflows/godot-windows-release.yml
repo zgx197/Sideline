@@ -1,4 +1,4 @@
-name: Godot Windows x64 Release
+name: "[Release] Godot Windows x64 Publish"
 
 on:
   push:
@@ -49,7 +49,7 @@ jobs:
       shell: pwsh
       run: |
         $summaryLines = @(
-          '## Godot Windows x64 Release / Prepare',
+          '## [Release] Godot Windows x64 Publish / Prepare',
           '',
           '- Version: `${{ steps.metadata.outputs.version }}`',
           '- Package: `${{ steps.metadata.outputs.package_name }}`',
@@ -184,7 +184,7 @@ jobs:
       shell: pwsh
       run: |
         $summaryLines = @(
-          '## Godot Windows x64 Release / Export and Package',
+          '## [Release] Godot Windows x64 Publish / Export and Package',
           '',
           ('- Status: `{0}`' -f '${{ job.status }}'),
           '- Version: `${{ needs.prepare.outputs.version }}`',
@@ -242,7 +242,7 @@ jobs:
       shell: pwsh
       run: |
         $summaryLines = @(
-          '## Godot Windows x64 Release / Publish',
+          '## [Release] Godot Windows x64 Publish / Publish',
           '',
           ('- Status: `{0}`' -f '${{ job.status }}'),
           '- Version: `${{ needs.prepare.outputs.version }}`',

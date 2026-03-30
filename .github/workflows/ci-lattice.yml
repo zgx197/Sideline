@@ -1,4 +1,4 @@
-name: Lattice CI
+name: "[CI] Lattice Validation"
 
 on:
   push:

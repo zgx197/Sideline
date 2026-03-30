@@ -1,4 +1,4 @@
-name: Godot Release Artifact
+name: "[Release] [Manual] Godot Artifact Validate"
 
 on:
   workflow_dispatch:
@@ -51,7 +51,7 @@ jobs:
       shell: pwsh
       run: |
         $summaryLines = @(
-          '## Godot Release Artifact / Prepare',
+          '## [Release] [Manual] Godot Artifact Validate / Prepare',
           '',
           '- Version: `${{ steps.metadata.outputs.version }}`',
           '- Package: `${{ steps.metadata.outputs.package_name }}`',
@@ -186,7 +186,7 @@ jobs:
       shell: pwsh
       run: |
         $summaryLines = @(
-          '## Godot Release Artifact / Export and Package',
+          '## [Release] [Manual] Godot Artifact Validate / Export and Package',
           '',
           ('- Status: `{0}`' -f '${{ job.status }}'),
           '- Version: `${{ needs.prepare.outputs.version }}`',

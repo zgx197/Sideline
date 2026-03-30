@@ -475,6 +475,12 @@ pre code {
     color: var(--color-accent-green);
 }
 
+.report-chip-ready {
+    background-color: rgba(255, 209, 102, 0.18);
+    border-color: var(--color-accent-gold);
+    color: var(--color-accent-gold);
+}
+
 .report-chip-pending {
     background-color: rgba(157, 78, 221, 0.18);
     border-color: var(--color-accent-purple);

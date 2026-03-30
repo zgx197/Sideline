@@ -1,15 +1,17 @@
 ---
 layout: default
 title: 代码覆盖率
-description: Sideline 开发报告中心中的代码覆盖率稳定入口页。
+description: Sideline 开发报告中心中的完整代码覆盖率入口页。
 ---
+
+{% assign coverage = site.data.reports_status.coverage %}
 
 <section class="hero" style="padding: 72px 20px;">
     <h1>代码覆盖率</h1>
-    <p class="hero-subtitle">稳定入口页已就绪，自动发布的 HTML 覆盖率报告将在后续接入。</p>
+    <p class="hero-subtitle">入口页保持稳定，完整 HTML 报告由周期性 workflow 自动发布。</p>
     <div class="hero-buttons">
         <a href="{{ '/reports/' | relative_url }}" class="pixel-btn pixel-btn-secondary">返回开发报告中心</a>
-        <a href="https://github.com/zgx197/Sideline/actions/workflows/ci-lattice.yml" target="_blank" class="pixel-btn pixel-btn-primary">查看 Lattice CI</a>
+        <a href="{{ coverage.workflow_url }}" target="_blank" class="pixel-btn pixel-btn-primary">查看 Full Coverage Workflow</a>
     </div>
 </section>
 
@@ -21,45 +23,43 @@ description: Sideline 开发报告中心中的代码覆盖率稳定入口页。
             </div>
             <div class="report-status-line">
                 <span class="report-chip report-chip-live">入口稳定可访问</span>
-                <span class="report-chip report-chip-pending">HTML 报告自动发布待接入</span>
+                {% if coverage.available %}
+                <span class="report-chip report-chip-ready">最新完整报告已发布</span>
+                {% else %}
+                <span class="report-chip report-chip-pending">等待首次完整报告</span>
+                {% endif %}
             </div>
             <p>
-                这个页面现在承担“稳定门户页”的职责：它永远存在，因此首页和导航不会再跳到 404。
-                真正的覆盖率静态报告接入后，会挂载到这个入口页下面，而不是让首页直接指向一次性产物路径。
+                <code>[Analysis] [Weekly] Full Coverage</code> 每周生成一次完整覆盖率 HTML 报告，
+                <code>[Site] Reports Pages</code> 会把最近一次成功结果挂载到本页下的 <code>latest/</code> 子路径。
             </p>
-            <p>
-                在自动发布接入之前，覆盖率相关信息仍以 GitHub Actions、测试工程和后续 CI 产物为准。
-            </p>
+            {% if coverage.available %}
+            <ul class="report-meta-list">
+                <li>最近生成时间：<code>{{ coverage.generated_at }}</code></li>
+                <li>对应分支：<code>{{ coverage.branch }}</code></li>
+                <li>对应提交：<code>{{ coverage.commit | slice: 0, 8 }}</code></li>
+            </ul>
             <div class="report-actions">
-                <a href="https://github.com/zgx197/Sideline/actions" target="_blank" class="pixel-btn pixel-btn-primary">查看 GitHub Actions</a>
-                <a href="{{ '/development/CIArchitecture/' | relative_url }}" class="pixel-btn pixel-btn-secondary">查看 CI 架构说明</a>
+                <a href="{{ '/reports/coverage/latest/' | relative_url }}" class="pixel-btn pixel-btn-primary">打开最新完整报告</a>
+                <a href="{{ coverage.run_url }}" target="_blank" class="pixel-btn pixel-btn-secondary">查看对应运行</a>
             </div>
+            {% else %}
+            <div class="report-actions">
+                <a href="{{ coverage.workflow_url }}" target="_blank" class="pixel-btn pixel-btn-primary">打开 Coverage Workflow</a>
+            </div>
+            {% endif %}
         </div>
 
         <div class="pixel-card pixel-card-green">
-            <h3 style="margin-top: 0;">后续会补上的内容</h3>
+            <h3 style="margin-top: 0;">为什么改成周期性完整覆盖率</h3>
             <ul class="report-meta-list">
-                <li>最新覆盖率报告的可浏览页面</li>
-                <li>最近一次生成时间与对应提交</li>
-                <li>报告生成来源的 workflow / run 链接</li>
-                <li>历史覆盖率报告归档入口</li>
+                <li>主线验证回归到日常门禁，不再为完整覆盖率报告额外拉长耗时。</li>
+                <li>覆盖率报告与性能基准统一归入 analysis 层，职责边界更清晰。</li>
+                <li>站点展示直接读取最近一次成功的完整报告，而不是依赖日常提交即时产出。</li>
             </ul>
             <p class="report-note">
-                页面先稳定，自动化再补齐。这能避免官网对外承诺了入口，却没有真实落地页的情况。
+                站点上展示的是“最近一次完整分析结果”，不保证与当前 <code>main</code> 的最新提交完全同步。
             </p>
         </div>
-    </div>
-</section>
-
-<section class="content-container" style="padding-top: 0;">
-    <div class="pixel-card">
-        <h3 style="margin-top: 0;">为什么现在不直接展示 HTML 覆盖率</h3>
-        <p>
-            当前仓库还没有“生成覆盖率静态站点并同步到 GitHub Pages”的完整自动化链路。
-            因此本页暂时作为稳定入口，后面再接入真正的覆盖率报告内容。
-        </p>
-        <p>
-            这样做的好处是：站点结构先固定下来，自动化落地时只需要把内容接进来，而不需要再次重构首页和导航。
-        </p>
     </div>
 </section>

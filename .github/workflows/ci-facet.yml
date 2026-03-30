@@ -1,7 +1,7 @@
 # Facet CI Pipeline
 # 触发条件: Facet 模块、Facet 编辑器工具、主工程 Facet 集成层变更
 
-name: Facet CI
+name: "[CI] Facet Validation"
 
 on:
   push:
