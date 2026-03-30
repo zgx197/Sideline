@@ -1,0 +1,51 @@
+title: "Sideline"
+description: "工作间隙偷偷经营地下世界的 2D 独立游戏"
+author: "Sideline Team"
+
+baseurl: "/Sideline"
+url: ""
+theme: jekyll-theme-cayman
+
+plugins:
+  - jekyll-feed
+  - jekyll-sitemap
+  - jekyll-seo-tag
+
+navigation:
+  - title: "首页"
+    url: "/"
+  - title: "关于游戏"
+    url: "/about/"
+  - title: "开发文档"
+    url: "/docs/"
+  - title: "开发规范"
+    url: "/development/Workflow"
+  - title: "开发报告"
+    url: "/reports/"
+  - title: "更新日志"
+    url: "/blog/"
+
+game_info:
+  version: "Phase 0"
+  platforms:
+    - "Windows (Steam)"
+  release_date: "预计 2025 Q4"
+
+social:
+  steam: "#"
+  github: "#"
+  email: "contact@sideline.game"
+
+markdown: kramdown
+highlighter: rouge
+kramdown:
+  input: GFM
+  syntax_highlighter: rouge
+
+paginate: 5
+paginate_path: "/blog/page/:num/"
+
+exclude:
+  - README.md
+  - Gemfile
+  - Gemfile.lock
