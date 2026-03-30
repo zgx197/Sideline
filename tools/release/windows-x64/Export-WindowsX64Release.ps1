@@ -1,4 +1,4 @@
-﻿param(
+param(
     [Parameter(Mandatory = $true)]
     [string]$Version,
 
@@ -55,7 +55,7 @@ $prereqs = & $prereqScript `
 if ($prereqs.Errors.Count -gt 0)
 {
     $message = ($prereqs.Errors -join [Environment]::NewLine)
-    throw "发布前置检查失败:`n$message"
+    throw "Release prerequisite check failed.`n$message"
 }
 
 $publishDir = Join-Path $resolvedOutputRoot "publish"
@@ -86,7 +86,11 @@ New-Item -ItemType Directory -Path $logDir -Force | Out-Null
 
 if (-not $SkipDotnetBuild)
 {
-    dotnet build $projectFile -c $BuildConfiguration -p:RestoreIgnoreFailedSources=true -nologo
+    & dotnet build $projectFile -c $BuildConfiguration -p:RestoreIgnoreFailedSources=true -nologo
+    if ($LASTEXITCODE -ne 0)
+    {
+        throw "dotnet build failed with ExitCode=$LASTEXITCODE. Export aborted."
+    }
 }
 
 $env:APPDATA = $AppDataRoot
@@ -134,7 +138,7 @@ if (-not $process.HasExited)
     {
     }
 
-    throw "Godot 导出超时，超过 ${ExportTimeoutSeconds}s 仍未完成。请检查日志目录: $logDir"
+    throw "Godot export timed out after ${ExportTimeoutSeconds}s. Check log directory: $logDir"
 }
 
 if (Test-Path -LiteralPath $stdoutLogPath)
@@ -152,44 +156,39 @@ if (Test-Path -LiteralPath $stderrLogPath)
     Get-Content -LiteralPath $stderrLogPath -Encoding UTF8 | Add-Content -LiteralPath $exportLogPath -Encoding UTF8
 }
 
-
 if (-not (Test-Path -LiteralPath $exePath))
 {
-    throw "Godot 导出命令已执行，但未生成目标可执行文件: $exePath"
+    throw "Godot export did not produce the target executable: $exePath"
 }
 
 if (-not (Test-Path -LiteralPath $pckPath))
 {
-    throw "Godot 导出未生成 PCK 文件: $pckPath`n请检查导出日志: $exportLogPath"
+    throw "Godot export did not produce the PCK file: $pckPath`nCheck export log: $exportLogPath"
 }
 
 if (-not (Test-Path -LiteralPath $managedDataDir))
 {
-    throw "Godot 导出未生成 .NET 数据目录: $managedDataDir`n请检查导出日志: $exportLogPath"
+    throw "Godot export did not produce the .NET data directory: $managedDataDir`nCheck export log: $exportLogPath"
 }
 
 if (-not (Test-Path -LiteralPath $runtimeConfigPath))
 {
-    throw "导出结果缺少 runtimeconfig 文件: $runtimeConfigPath"
+    throw "Export result is missing runtimeconfig: $runtimeConfigPath"
 }
 
 if (-not (Test-Path -LiteralPath $managedAssemblyPath))
 {
-    throw "导出结果缺少主程序集: $managedAssemblyPath"
+    throw "Export result is missing the main managed assembly: $managedAssemblyPath"
 }
-
-$exitCode = $process.ExitCode
 
 [pscustomobject]@{
-    Version                          = $metadata.Version
-    PublishDir                       = $publishDir
-    Executable                       = $exePath
-    PckPath                          = $pckPath
-    ManagedData                      = $managedDataDir
-    RuntimeConfigPath                = $runtimeConfigPath
-    ManagedAssembly                  = $managedAssemblyPath
-    ExportLog                        = $exportLogPath
+    Version                             = $metadata.Version
+    PublishDir                          = $publishDir
+    Executable                          = $exePath
+    PckPath                             = $pckPath
+    ManagedData                         = $managedDataDir
+    RuntimeConfigPath                   = $runtimeConfigPath
+    ManagedAssembly                     = $managedAssemblyPath
+    ExportLog                           = $exportLogPath
     ExportCompletedWithLingeringProcess = $exportCompletedWithLingeringProcess
 }
-
-
