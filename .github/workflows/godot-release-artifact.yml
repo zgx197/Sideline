@@ -21,6 +21,7 @@ env:
   GODOT_VERSION: '4.6.1'
   GODOT_RELEASE_STATUS: 'stable'
   GODOT_PRODUCT_FLAVOR: 'mono'
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
 
 jobs:
   prepare:
@@ -138,7 +139,7 @@ jobs:
 
     - name: Upload export logs
       if: always()
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v6
       with:
         name: sideline-win-x64-export-logs-${{ needs.prepare.outputs.version }}
         path: ${{ steps.dirs.outputs.output_root }}/logs
@@ -167,14 +168,14 @@ jobs:
         "package_path=$($package.PackagePath)" >> $env:GITHUB_OUTPUT
 
     - name: Upload publish artifact
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v6
       with:
         name: ${{ needs.prepare.outputs.artifact_export_name }}
         path: ${{ steps.export.outputs.publish_dir }}
         if-no-files-found: error
 
     - name: Upload package artifact
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v6
       with:
         name: ${{ needs.prepare.outputs.artifact_package_name }}
         path: ${{ steps.package.outputs.package_path }}
