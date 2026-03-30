@@ -110,6 +110,17 @@ coverage/
 !docs/reports/coverage/
 !docs/reports/coverage/**
 
+# ===========================
+# Docs / Jekyll local artifacts
+# ===========================
+docs/_site/
+docs/.jekyll-cache/
+docs/.jekyll-metadata
+docs/.sass-cache/
+docs/.bundle/
+docs/vendor/bundle/
+docs/Gemfile.lock
+
 # Test Results
 TestResults/
 
